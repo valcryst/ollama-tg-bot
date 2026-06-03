@@ -44,7 +44,7 @@ const DEFAULT_SETTINGS: Settings = {
   customSystemPrompt: "",
   randomReplyEnabled: false,
   randomReplyChance: 5,
-  numPredict: 256,
+  numPredict: 512,
   numCtx: 4096,
   temperature: 0.7,
   chatTimeoutSec: 120,

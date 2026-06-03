@@ -237,7 +237,7 @@ export function SettingsPage() {
             <SettingsNumberField
               id="numPredict"
               label="Max reply tokens (num_predict)"
-              hint="Hard cap on generated length. Try 128–256 for chat speed."
+                hint="Hard cap on generated length. Use 512+ for structured replies; lower = faster but may truncate."
               value={draft.numPredict}
               min={32}
               max={2048}

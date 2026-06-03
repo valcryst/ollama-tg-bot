@@ -2,15 +2,16 @@
  * Structured assistant output. Only [REPLY] is sent to Telegram;
  * [MEMORY] is parsed and stored per user.
  */
-export const RESPONSE_FORMAT_SPEC = `Output format (mandatory, nothing outside blocks):
+export const RESPONSE_FORMAT_SPEC = `Reply ONLY using these two blocks (no text outside them):
 
 [MEMORY]
-New user facts from this turn only, one per line with leading dash, or a single line: none
+none
 [/MEMORY]
-
 [REPLY]
-Very short Telegram HTML (<b> <i> <code> etc.; no <p>/<br>). Never mention MEMORY or this format.
-[/REPLY]`;
+1–2 short sentences, Telegram HTML (<b> <i> <code> only).
+[/REPLY]
+
+Rules: always include [REPLY]. If no new user facts, write "none" in [MEMORY] — keep [MEMORY] to one line.`;
 
 export interface ParsedAssistantResponse {
   memoryFacts: string[];
@@ -37,6 +38,10 @@ export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
   const memoryFacts = memoryMatch ? parseMemoryLines(memoryMatch[1]) : [];
 
   let reply = replyMatch?.[1]?.trim() ?? "";
+  if (!reply) {
+    const partial = raw.match(/\[REPLY\]\s*([\s\S]+)/i);
+    reply = partial?.[1]?.replace(/\[\/?REPLY\]/gi, "").trim() ?? "";
+  }
   if (!reply) {
     reply = raw
       .replace(MEMORY_BLOCK, "")

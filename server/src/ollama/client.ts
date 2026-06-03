@@ -1,8 +1,10 @@
 import { getSettings } from "../db/database.js";
 import { normalizeImageForOllama } from "./images.js";
+import { parseStructuredResponse } from "../response-format.js";
 import {
   getChatTimeoutMs,
   getOllamaChatOptions,
+  LENGTH_RETRY_MIN_PREDICT,
 } from "../settings-limits.js";
 import { sanitizeModelOutput } from "./sanitize.js";
 
@@ -25,6 +27,59 @@ export interface ChatMessage {
 
 /** Keep the model loaded in VRAM until Ollama restarts or the model is unloaded. */
 const OLLAMA_KEEP_ALIVE = -1;
+const MAX_NUM_PREDICT = 2048;
+
+interface OllamaChatResponse {
+  message?: {
+    role?: string;
+    content?: string;
+    thinking?: string;
+  };
+  done_reason?: string;
+  eval_count?: number;
+}
+
+function extractAssistantText(data: OllamaChatResponse): string {
+  const content = data.message?.content?.trim() ?? "";
+  const thinking = data.message?.thinking?.trim() ?? "";
+
+  for (const candidate of [content, thinking]) {
+    if (!candidate) continue;
+
+    const parsed = parseStructuredResponse(candidate);
+    if (parsed.reply.trim()) return parsed.reply.trim();
+
+    const sanitized = sanitizeModelOutput(candidate);
+    if (sanitized) return sanitized;
+
+    if (candidate.trim()) return candidate.trim();
+  }
+
+  return "";
+}
+
+function emptyResponseError(
+  model: string,
+  data: OllamaChatResponse,
+  numPredict: number,
+): Error {
+  const reason = data.done_reason ?? "unknown";
+  const evalCount = data.eval_count ?? 0;
+  const hadThinking = Boolean(data.message?.thinking?.trim());
+
+  let hint =
+    "Try /reset to shorten context, pick a different model, or raise max reply tokens in Settings.";
+  if (reason === "length") {
+    hint = `Generation used all ${numPredict} tokens (num_predict) before a usable [REPLY]. Raise max reply tokens in Settings (try 512+) or send /reset.`;
+  } else if (hadThinking) {
+    hint =
+      "This model returned thinking output but no final answer. Restart the server and retry, or switch models.";
+  }
+
+  return new Error(
+    `Ollama returned an empty response (model: ${model}, done_reason: ${reason}, tokens: ${evalCount}). ${hint}`,
+  );
+}
 
 function resolveBaseUrl(hostOverride?: string): string {
   const host = (hostOverride ?? getSettings().ollamaHost).trim();
@@ -73,6 +128,39 @@ async function prepareMessages(
   );
 }
 
+async function requestChat(
+  model: string,
+  prepared: ChatMessage[],
+  numPredict: number,
+): Promise<OllamaChatResponse> {
+  const settings = getSettings();
+  const res = await fetch(`${baseUrl()}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(getChatTimeoutMs(settings)),
+    body: JSON.stringify({
+      model,
+      messages: prepared,
+      stream: false,
+      think: false,
+      keep_alive: OLLAMA_KEEP_ALIVE,
+      options: getOllamaChatOptions(settings, { numPredict }),
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    if (res.status === 400 && /image|audio file/i.test(body)) {
+      throw new Error(
+        `Ollama rejected the image (is "${model}" a vision model?). ${body}`,
+      );
+    }
+    throw new Error(`Ollama chat failed (${res.status}): ${body}`);
+  }
+
+  return (await res.json()) as OllamaChatResponse;
+}
+
 export async function chat(
   messages: ChatMessage[],
   options?: { model?: string },
@@ -82,38 +170,28 @@ export async function chat(
   const prepared = await prepareMessages(messages);
 
   try {
-    const res = await fetch(`${baseUrl()}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(getChatTimeoutMs(settings)),
-      body: JSON.stringify({
-        model,
-        messages: prepared,
-        stream: false,
-        keep_alive: OLLAMA_KEEP_ALIVE,
-        options: getOllamaChatOptions(settings),
-      }),
-    });
+    let numPredict = settings.numPredict;
+    let lastData: OllamaChatResponse | null = null;
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      if (res.status === 400 && /image|audio file/i.test(body)) {
-        throw new Error(
-          `Ollama rejected the image (is "${model}" a vision model?). ${body}`,
-        );
-      }
-      throw new Error(`Ollama chat failed (${res.status}): ${body}`);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      lastData = await requestChat(model, prepared, numPredict);
+      const content = extractAssistantText(lastData);
+      if (content) return content;
+
+      const canRetry =
+        attempt === 0 &&
+        lastData.done_reason === "length" &&
+        numPredict < MAX_NUM_PREDICT;
+
+      if (!canRetry) break;
+
+      numPredict = Math.min(
+        MAX_NUM_PREDICT,
+        Math.max(numPredict * 2, LENGTH_RETRY_MIN_PREDICT),
+      );
     }
 
-    const data = (await res.json()) as {
-      message?: { content?: string };
-    };
-    const raw = data.message?.content?.trim() ?? "";
-    const content = sanitizeModelOutput(raw);
-    if (!content) {
-      throw new Error("Ollama returned an empty response");
-    }
-    return content;
+    throw emptyResponseError(model, lastData!, numPredict);
   } catch (err) {
     throw wrapChatError(err);
   }

@@ -20,15 +20,28 @@ export function buildChatMessages(
   chatKey: string,
   currentUser: ChatMessage,
   userMemoryFacts: string[] = [],
+  replyContext?: string | null,
 ): ChatMessage[] {
   const history = historyToChatMessages(getHistory(chatKey));
+  const turns: ChatMessage[] = [...history];
+
+  if (replyContext?.trim()) {
+    turns.push({
+      role: "user",
+      content:
+        `The user is replying to this earlier Telegram message (if they say "this", "that", or "it", they mean this):\n` +
+        replyContext.trim(),
+    });
+  }
+
+  turns.push(currentUser);
+
   return [
     {
       role: "system",
       content: buildSystemPrompt(customSystemPrompt, userMemoryFacts),
     },
-    ...history,
-    currentUser,
+    ...turns,
   ];
 }
 

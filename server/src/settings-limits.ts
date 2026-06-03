@@ -1,13 +1,19 @@
 import type { Settings } from "./db/database.js";
 
-export function getOllamaChatOptions(settings: Settings) {
+export function getOllamaChatOptions(
+  settings: Settings,
+  overrides?: { numPredict?: number },
+) {
   return {
-    num_predict: settings.numPredict,
+    num_predict: overrides?.numPredict ?? settings.numPredict,
     num_ctx: settings.numCtx,
     temperature: settings.temperature,
     top_p: 0.9,
   };
 }
+
+/** Minimum num_predict for a length-limit retry after an empty response. */
+export const LENGTH_RETRY_MIN_PREDICT = 512;
 
 export function getChatTimeoutMs(settings: Settings): number {
   return settings.chatTimeoutSec * 1000;

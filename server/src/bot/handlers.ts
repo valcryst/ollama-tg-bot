@@ -7,6 +7,7 @@ import {
   getUserFacts,
 } from "../db/user-memory.js";
 import { parseStructuredResponse } from "../response-format.js";
+import { sanitizeModelOutput } from "../ollama/sanitize.js";
 import { prepareTelegramHtml } from "../telegram/html.js";
 import {
   getSettings,
@@ -28,6 +29,13 @@ import {
   loadStickerForVision,
   stickerUnavailableText,
 } from "./stickers.js";
+import {
+  appendReplyContext,
+  formatReplyContext,
+  isReplyInBotThread,
+  isReplyToBot,
+  replyParameters,
+} from "./replies.js";
 
 /** Telegram clears typing after ~5s; refresh until stopped. */
 const TYPING_REFRESH_MS = 4000;
@@ -42,6 +50,19 @@ async function replyHtml(
   } catch {
     return await ctx.reply(text, extra);
   }
+}
+
+async function replyToUser(
+  ctx: Context,
+  text: string,
+  extra?: Parameters<Context["reply"]>[1],
+) {
+  const params = replyParameters(ctx);
+  return replyHtml(
+    ctx,
+    text,
+    params ? { reply_parameters: params, ...extra } : extra,
+  );
 }
 
 function startTypingIndicator(api: Api, chatId: number): () => void {
@@ -102,7 +123,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
           ctx.message.sticker,
         );
         if (!loaded) {
-          await ctx.reply(stickerUnavailableText(ctx.message.sticker));
+          await replyToUser(
+            ctx,
+            stickerUnavailableText(ctx.message.sticker),
+          );
           recordReply(false);
           return;
         }
@@ -119,16 +143,17 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       }
 
       const usedVision = images.length > 0;
-      const userContent = buildUserContent(text, usedVision, stickerVisionHint);
-      const historyLabel = historyUserLabel(
-        text,
-        usedVision,
-        stickerVisionHint,
-      );
+      const botId = ctx.me?.id;
+      const body = buildUserContent(text, usedVision, stickerVisionHint);
+      const historyBase = historyUserLabel(text, usedVision, stickerVisionHint);
+      const replyContext = formatReplyContext(ctx, botId);
+      const historyLabel = replyContext
+        ? appendReplyContext(ctx, historyBase, botId)
+        : historyBase;
 
       const currentUser: ChatMessage = {
         role: "user",
-        content: userContent,
+        content: body,
         ...(usedVision ? { images: images.map((i) => i.base64) } : {}),
       };
 
@@ -137,10 +162,18 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         convKey,
         currentUser,
         userMemoryFacts,
+        replyContext,
       );
 
       const raw = await chat(messages);
-      const { memoryFacts, reply: replyBody } = parseStructuredResponse(raw);
+      let { memoryFacts, reply: replyBody } = parseStructuredResponse(raw);
+
+      if (!replyBody.trim()) {
+        replyBody = sanitizeModelOutput(raw) || raw.trim();
+      }
+      if (!replyBody.trim()) {
+        throw new Error("Model response had no [REPLY] content");
+      }
 
       if (userId && memoryFacts.length > 0) {
         addUserFacts(userId, memoryFacts);
@@ -154,10 +187,8 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         if (i > 0) {
           await ctx.api.sendChatAction(chatId, "typing");
         }
-        if (i === 0 && ctx.message.message_id) {
-          await replyHtml(ctx, chunks[i], {
-            reply_parameters: { message_id: ctx.message.message_id },
-          });
+        if (i === 0) {
+          await replyToUser(ctx, chunks[i]);
         } else {
           await replyHtml(ctx, chunks[i]);
         }
@@ -175,11 +206,11 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       recordError(detail);
       const msg =
         err instanceof Error ? err.message : "Something went wrong";
-      await replyHtml(
+      await replyToUser(
         ctx,
         `Sorry, I could not get a response from Ollama.\n\n<code>${escapeHtml(msg)}</code>`,
       ).catch(() =>
-        ctx.reply("Sorry, I could not get a response from Ollama."),
+        replyToUser(ctx, "Sorry, I could not get a response from Ollama."),
       );
     } finally {
       stopTyping();
@@ -188,7 +219,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
   bot.command("start", async (ctx) => {
     const settings = getSettings();
-    await replyHtml(
+    await replyToUser(
       ctx,
       `Hi! I'm connected to Ollama.\n\n` +
         `• Mention @${botUsername} or reply to my messages in groups\n` +
@@ -205,14 +236,14 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     const convKey = resolveConversationKey(ctx);
     if (!convKey) return;
     clearHistory(convKey);
-    await replyHtml(ctx, "Chat context cleared for this conversation.");
+    await replyToUser(ctx, "Chat context cleared for this conversation.");
   });
 
   bot.command("forget", async (ctx) => {
     const userId = resolveUserId(ctx);
     if (!userId) return;
     clearUserMemory(userId);
-    await replyHtml(ctx, "Your stored memory has been cleared.");
+    await replyToUser(ctx, "Your stored memory has been cleared.");
   });
 }
 
@@ -228,8 +259,11 @@ function isAddressed(ctx: Context, botUsername: string): boolean {
   const msg = ctx.message;
   if (!msg) return false;
 
-  if (msg.reply_to_message?.from?.username === botUsername) return true;
-  if (msg.reply_to_message?.from?.id === ctx.me?.id) return true;
+  if (isReplyToBot(ctx, botUsername)) return true;
+  if (isReplyInBotThread(ctx, botUsername)) return true;
+
+  const textLower = (msg.text ?? msg.caption ?? "").toLowerCase();
+  if (textLower.includes(`@${botUsername.toLowerCase()}`)) return true;
 
   const entities = [...(msg.entities ?? []), ...(msg.caption_entities ?? [])];
   for (const entity of entities) {
