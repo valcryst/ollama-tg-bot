@@ -1,0 +1,28 @@
+services:
+  bot:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/app/data/bot.db
+      - DASHBOARD_DIST=/app/dashboard/dist
+    volumes:
+      - bot-data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # Uncomment if you want Ollama in the same stack (GPU profile may be needed)
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   restart: unless-stopped
+
+volumes:
+  bot-data:
+  # ollama-data:

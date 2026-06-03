@@ -1,0 +1,62 @@
+.error-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius);
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  margin-bottom: 1.25rem;
+}
+
+.error-banner.compact {
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.88rem;
+}
+
+.error-banner-body {
+  flex: 1;
+  min-width: 200px;
+}
+
+.error-banner strong {
+  display: block;
+  color: var(--danger);
+  font-size: 0.95rem;
+  margin-bottom: 0.35rem;
+}
+
+.error-banner.compact strong {
+  font-size: 0.88rem;
+}
+
+.error-banner p {
+  margin: 0 0 0.35rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.error-banner p:last-child {
+  margin-bottom: 0;
+}
+
+.error-meta {
+  font-family: var(--mono);
+  font-size: 0.78rem !important;
+  color: var(--muted) !important;
+}
+
+.error-hint {
+  font-size: 0.85rem !important;
+  color: var(--muted) !important;
+  margin-top: 0.5rem !important;
+}
+
+.error-banner-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}

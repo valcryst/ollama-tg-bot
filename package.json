@@ -1,0 +1,23 @@
+{
+  "name": "ollama-tg-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Telegram bot powered by Ollama with a configuration dashboard",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,dashboard -c blue,green \"npm run dev -w server\" \"npm run dev -w dashboard\"",
+    "build": "npm run build -w dashboard && npm run build -w server",
+    "start": "npm run start -w server",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d"
+  },
+  "workspaces": [
+    "server",
+    "dashboard"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
