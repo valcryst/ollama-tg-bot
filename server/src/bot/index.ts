@@ -29,7 +29,13 @@ export async function startBot(): Promise<Bot> {
   });
 
   void bot.start({
-    onStart: () => console.log(`Bot @${botUsername} is running`),
+    onStart: () => {
+      console.log(`Bot @${botUsername} is running`);
+      console.log(
+        "Groups: @mention the bot, reply to its messages, or use /cmd@botname. " +
+          "If @mentions are ignored, send /setprivacy to @BotFather and choose Disable.",
+      );
+    },
   });
 
   return bot;

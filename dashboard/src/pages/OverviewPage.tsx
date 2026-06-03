@@ -115,8 +115,15 @@ export function OverviewPage() {
               <strong>Private chat:</strong> send any message
             </li>
             <li>
-              <strong>Groups:</strong> @mention, reply to the bot, or enable
-              random replies in Settings
+              <strong>Groups:</strong> @mention the bot, reply to its messages,
+              or use <code>/start@your_bot</code> — plain <code>/start</code>{" "}
+              does not reach the bot in groups
+            </li>
+            <li>
+              <strong>Group setup:</strong> if the bot never answers, open
+              @BotFather → <code>/setprivacy</code> → <b>Disable</b>, then
+              remove and re-add the bot. “Has no access to messages” in group
+              permissions is normal until then.
             </li>
             <li>
               <strong>Vision:</strong> send a photo, image file, or sticker

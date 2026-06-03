@@ -30,10 +30,17 @@ import {
   stickerUnavailableText,
 } from "./stickers.js";
 import {
+  isMessageForBot,
+  isSlashCommandMessage,
+  stripBotMention,
+} from "./addressed.js";
+import {
+  groupSetupMessage,
+  wasBotAddedToChat,
+} from "./group-setup.js";
+import {
   appendReplyContext,
   formatReplyContext,
-  isReplyInBotThread,
-  isReplyToBot,
   replyParameters,
 } from "./replies.js";
 
@@ -77,6 +84,7 @@ function startTypingIndicator(api: Api, chatId: number): () => void {
 export function registerHandlers(bot: Bot, botUsername: string): void {
   bot.on("message", async (ctx) => {
     if (!ctx.message) return;
+    if (isSlashCommandMessage(ctx)) return;
 
     const text = extractText(ctx);
     const hasMedia =
@@ -86,7 +94,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
     if (!text && !hasMedia) return;
 
-    const addressed = isAddressed(ctx, botUsername);
+    const addressed = isMessageForBot(ctx);
     const settings = getSettings();
     const randomHit =
       settings.randomReplyEnabled &&
@@ -144,8 +152,14 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
       const usedVision = images.length > 0;
       const botId = ctx.me?.id;
-      const body = buildUserContent(text, usedVision, stickerVisionHint);
-      const historyBase = historyUserLabel(text, usedVision, stickerVisionHint);
+      const promptText =
+        stripBotMention(text, ctx.me?.username) || text;
+      const body = buildUserContent(promptText, usedVision, stickerVisionHint);
+      const historyBase = historyUserLabel(
+        promptText,
+        usedVision,
+        stickerVisionHint,
+      );
       const replyContext = formatReplyContext(ctx, botId);
       const historyLabel = replyContext
         ? appendReplyContext(ctx, historyBase, botId)
@@ -209,26 +223,51 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       await replyToUser(
         ctx,
         `Sorry, I could not get a response from Ollama.\n\n<code>${escapeHtml(msg)}</code>`,
-      ).catch(() =>
-        replyToUser(ctx, "Sorry, I could not get a response from Ollama."),
-      );
+      ).catch(async (replyErr) => {
+        console.error("Failed to send error reply:", replyErr);
+        await replyToUser(ctx, "Sorry, I could not get a response from Ollama.").catch(
+          (err) => console.error("Failed to send fallback reply:", err),
+        );
+      });
     } finally {
       stopTyping();
     }
   });
 
+  bot.on("my_chat_member", async (ctx) => {
+    const chat = ctx.chat;
+    if (!chat || (chat.type !== "group" && chat.type !== "supergroup")) return;
+
+    const { old_chat_member: oldMember, new_chat_member: newMember } =
+      ctx.myChatMember;
+    if (!wasBotAddedToChat(oldMember.status, newMember.status)) return;
+
+    try {
+      await ctx.api.sendMessage(chat.id, groupSetupMessage(botUsername), {
+        parse_mode: "HTML",
+      });
+    } catch (err) {
+      console.error("Failed to send group setup message:", err);
+    }
+  });
+
   bot.command("start", async (ctx) => {
     const settings = getSettings();
+    const inGroup =
+      ctx.chat?.type === "group" || ctx.chat?.type === "supergroup";
     await replyToUser(
       ctx,
-      `Hi! I'm connected to Ollama.\n\n` +
-        `• Mention @${botUsername} or reply to my messages in groups\n` +
-        `• Send me anything in private chat\n` +
-        `• Send photos or stickers (animated/video use a preview frame)\n` +
+      (inGroup
+        ? groupSetupMessage(botUsername) + "\n\n"
+        : `Hi! I'm connected to Ollama.\n\n`) +
+        (inGroup
+          ? ""
+          : `• Send me anything in private chat\n` +
+            `• Send photos or stickers (animated/video use a preview frame)\n`) +
         `• I remember recent messages in this chat\n` +
         `• I learn facts about you (stored per user)\n\n` +
         `Current model: <code>${escapeHtml(settings.model)}</code>\n` +
-        `Clear chat context: /reset · Clear your memory: /forget`,
+        `Clear chat context: /reset@${botUsername} · Clear your memory: /forget@${botUsername}`,
     );
   });
 
@@ -251,37 +290,6 @@ function extractText(ctx: Context): string {
   const msg = ctx.message;
   if (!msg) return "";
   return (msg.text ?? msg.caption ?? "").trim();
-}
-
-function isAddressed(ctx: Context, botUsername: string): boolean {
-  if (ctx.chat?.type === "private") return true;
-
-  const msg = ctx.message;
-  if (!msg) return false;
-
-  if (isReplyToBot(ctx, botUsername)) return true;
-  if (isReplyInBotThread(ctx, botUsername)) return true;
-
-  const textLower = (msg.text ?? msg.caption ?? "").toLowerCase();
-  if (textLower.includes(`@${botUsername.toLowerCase()}`)) return true;
-
-  const entities = [...(msg.entities ?? []), ...(msg.caption_entities ?? [])];
-  for (const entity of entities) {
-    if (entity.type === "mention") {
-      const mention = (msg.text ?? msg.caption ?? "").slice(
-        entity.offset,
-        entity.offset + entity.length,
-      );
-      if (mention.toLowerCase() === `@${botUsername.toLowerCase()}`) {
-        return true;
-      }
-    }
-    if (entity.type === "text_mention" && entity.user.id === ctx.me?.id) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 function buildUserContent(

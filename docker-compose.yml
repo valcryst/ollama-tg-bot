@@ -3,9 +3,10 @@ services:
     build: .
     ports:
       - "3000:3000"
-    env_file:
-      - .env
     environment:
+      # Set BOT_TOKEN in Portainer stack env, or in a .env file next to this compose file
+      - BOT_TOKEN=${BOT_TOKEN:?Set BOT_TOKEN — Portainer stack env or .env file}
+      - PORT=${PORT:-3000}
       - DATABASE_PATH=/app/data/bot.db
       - DASHBOARD_DIST=/app/dashboard/dist
     volumes:
