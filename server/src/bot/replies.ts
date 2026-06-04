@@ -1,5 +1,6 @@
 import type { Context } from "grammy";
 import type { Message, User } from "grammy/types";
+import { stickerHistoryLabel } from "./stickers.js";
 
 export function isReplyToBot(ctx: Context, botUsername: string): boolean {
   const msg = ctx.message;
@@ -148,9 +149,7 @@ function summarizeMessageContent(message: Message): string {
 
   if (message.photo) return "[photo]";
   if (message.sticker) {
-    return message.sticker.emoji
-      ? `[sticker ${message.sticker.emoji}]`
-      : "[sticker]";
+    return stickerHistoryLabel(message.sticker);
   }
   if (message.document) {
     return message.document.file_name

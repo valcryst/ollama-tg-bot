@@ -8,6 +8,8 @@ import {
 } from "../db/history.js";
 import { scheduleHistoryCompression } from "../context-compress.js";
 import { buildSystemPrompt } from "../prompts.js";
+import { stickerHistoryLabel } from "./stickers.js";
+import type { Sticker } from "@grammyjs/types";
 
 export function resolveConversationKey(ctx: Context): string | null {
   const chatId = ctx.chat?.id;
@@ -78,11 +80,11 @@ export function recordExchange(
 export function historyUserLabel(
   text: string,
   usedVision: boolean,
-  stickerHint?: string,
+  sticker?: Sticker,
 ): string {
-  if (text && stickerHint) return `${text}\n\n${stickerHint}`;
+  if (text && sticker) return `${text}\n${stickerHistoryLabel(sticker)}`;
   if (text) return text;
-  if (stickerHint) return stickerHint;
+  if (sticker) return stickerHistoryLabel(sticker);
   if (usedVision) return "[sent an image]";
   return "[message]";
 }

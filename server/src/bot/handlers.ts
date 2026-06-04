@@ -34,6 +34,7 @@ import { downloadTelegramFile } from "./files.js";
 import {
   loadStickerForVision,
   stickerUnavailableText,
+  stickerUserPrompt,
 } from "./stickers.js";
 import {
   isMessageForBot,
@@ -164,15 +165,14 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       }
 
       const usedVision = images.length > 0;
+      const sticker = ctx.message.sticker;
       const botId = ctx.me?.id;
       const promptText =
         stripBotMention(text, ctx.me?.username) || text;
-      const body = buildUserContent(promptText, usedVision, stickerVisionHint);
-      const historyBase = historyUserLabel(
-        promptText,
-        usedVision,
-        stickerVisionHint,
-      );
+      const body = sticker
+        ? stickerUserPrompt(sticker, promptText, stickerVisionHint)
+        : buildUserContent(promptText, usedVision);
+      const historyBase = historyUserLabel(promptText, usedVision, sticker);
       const replyContext = formatReplyContext(ctx, botId);
       const historyLabel = replyContext
         ? appendReplyContext(ctx, historyBase, botId)
@@ -332,14 +332,8 @@ function extractText(ctx: Context): string {
   return (msg.text ?? msg.caption ?? "").trim();
 }
 
-function buildUserContent(
-  text: string,
-  usedVision: boolean,
-  stickerHint?: string,
-): string {
-  if (text && stickerHint) return `${text}\n\n${stickerHint}`;
+function buildUserContent(text: string, usedVision: boolean): string {
   if (text) return text;
-  if (stickerHint) return stickerHint;
   if (usedVision) return "Describe what you see in this image.";
   return "Hello!";
 }
