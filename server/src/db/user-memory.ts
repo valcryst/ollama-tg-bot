@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { normalizeFactText } from "./memory-facts.js";
 
 const MAX_FACTS_PER_USER = 64;
 
@@ -42,12 +43,7 @@ export function listAllUserFacts(): UserFactRecord[] {
     created_at: number;
   }[];
 
-  return rows.map((r) => ({
-    id: r.id,
-    userId: r.user_id,
-    fact: r.fact,
-    createdAt: new Date(r.created_at * 1000).toISOString(),
-  }));
+  return rows.map(rowToUserFactRecord);
 }
 
 export function listUserFacts(userId: string): UserFactRecord[] {
@@ -64,17 +60,91 @@ export function listUserFacts(userId: string): UserFactRecord[] {
     created_at: number;
   }[];
 
-  return rows.map((r) => ({
+  return rows.map(rowToUserFactRecord);
+}
+
+function rowToUserFactRecord(r: {
+  id: number;
+  user_id: string;
+  fact: string;
+  created_at: number;
+}): UserFactRecord {
+  return {
     id: r.id,
     userId: r.user_id,
     fact: r.fact,
     createdAt: new Date(r.created_at * 1000).toISOString(),
-  }));
+  };
+}
+
+export function getUserFactById(id: number): UserFactRecord | null {
+  const row = db
+    .prepare(
+      `SELECT id, user_id, fact, created_at FROM user_facts WHERE id = ?`,
+    )
+    .get(id) as
+    | { id: number; user_id: string; fact: string; created_at: number }
+    | undefined;
+  return row ? rowToUserFactRecord(row) : null;
 }
 
 export function deleteUserFactById(id: number): boolean {
   const result = db.prepare(`DELETE FROM user_facts WHERE id = ?`).run(id);
   return result.changes > 0;
+}
+
+export function createUserFact(
+  userId: string,
+  fact: string,
+): UserFactRecord | null {
+  const normalized = normalizeFactText(fact);
+  if (!normalized) return null;
+
+  const existing = new Set(
+    getUserFacts(userId).map((f) => f.toLowerCase()),
+  );
+  if (existing.has(normalized.toLowerCase())) {
+    const row = db
+      .prepare(
+        `SELECT id, user_id, fact, created_at FROM user_facts
+         WHERE user_id = ? AND lower(fact) = lower(?)`,
+      )
+      .get(userId, normalized) as
+      | { id: number; user_id: string; fact: string; created_at: number }
+      | undefined;
+    return row ? rowToUserFactRecord(row) : null;
+  }
+
+  const result = db
+    .prepare(`INSERT INTO user_facts (user_id, fact) VALUES (?, ?)`)
+    .run(userId, normalized);
+  pruneUserFacts(userId);
+  return getUserFactById(Number(result.lastInsertRowid));
+}
+
+export function updateUserFactById(
+  id: number,
+  fact: string,
+): UserFactRecord | "duplicate" | null {
+  const normalized = normalizeFactText(fact);
+  if (!normalized) return null;
+
+  const current = getUserFactById(id);
+  if (!current) return null;
+
+  const duplicate = db
+    .prepare(
+      `SELECT 1 FROM user_facts
+       WHERE user_id = ? AND lower(fact) = lower(?) AND id != ?`,
+    )
+    .get(current.userId, normalized, id);
+  if (duplicate) return "duplicate";
+
+  db.prepare(`UPDATE user_facts SET fact = ? WHERE id = ?`).run(
+    normalized,
+    id,
+  );
+  return getUserFactById(id);
 }
 
 export function clearUserFactsForUser(userId: string): number {

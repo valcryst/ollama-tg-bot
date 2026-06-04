@@ -133,6 +133,33 @@
   margin-bottom: 0.25rem;
 }
 
+.memories-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.memories-tab {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.memories-tab:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.memories-tab.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 @media (max-width: 768px) {
   .app-shell {
     flex-direction: column;
@@ -565,6 +592,67 @@ input[type="range"] {
 
 .memory-item:last-child {
   border-bottom: none;
+}
+
+.memory-add-form {
+  margin-bottom: 1.25rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.memory-add-hint {
+  margin: 0 0 0.65rem;
+}
+
+.memory-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.memory-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.memory-add-field select,
+.memory-add-field input,
+.memory-edit-input {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  min-width: 10rem;
+}
+
+.memory-add-fact-field {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.memory-add-fact-field input {
+  width: 100%;
+}
+
+.memory-edit-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 2.5rem;
+}
+
+.memory-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex-shrink: 0;
 }
 
 .memory-item-body {

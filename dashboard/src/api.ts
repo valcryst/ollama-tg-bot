@@ -43,6 +43,13 @@ export interface UserMemoryFact {
   createdAt: string;
 }
 
+export interface GroupMemoryFact {
+  id: number;
+  groupId: string;
+  fact: string;
+  createdAt: string;
+}
+
 export interface OllamaModel {
   name: string;
   size?: number;
@@ -206,11 +213,40 @@ export const api = {
   getStats: () => request<Stats>("/api/stats"),
   getMemories: () =>
     request<{ facts: UserMemoryFact[]; total: number }>("/api/memories"),
+  createMemory: (userId: string, fact: string) =>
+    request<{ fact: UserMemoryFact }>("/api/memories", {
+      method: "POST",
+      body: JSON.stringify({ userId, fact }),
+    }),
+  updateMemory: (id: number, fact: string) =>
+    request<{ fact: UserMemoryFact }>(`/api/memories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ fact }),
+    }),
   deleteMemory: (id: number) =>
     request<{ ok: boolean }>(`/api/memories/${id}`, { method: "DELETE" }),
   clearUserMemories: (userId: string) =>
     request<{ ok: boolean; deleted: number }>(
       `/api/memories/user/${encodeURIComponent(userId)}`,
+      { method: "DELETE" },
+    ),
+  getGroupMemories: () =>
+    request<{ facts: GroupMemoryFact[]; total: number }>("/api/group-memories"),
+  createGroupMemory: (groupId: string, fact: string) =>
+    request<{ fact: GroupMemoryFact }>("/api/group-memories", {
+      method: "POST",
+      body: JSON.stringify({ groupId, fact }),
+    }),
+  updateGroupMemory: (id: number, fact: string) =>
+    request<{ fact: GroupMemoryFact }>(`/api/group-memories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ fact }),
+    }),
+  deleteGroupMemory: (id: number) =>
+    request<{ ok: boolean }>(`/api/group-memories/${id}`, { method: "DELETE" }),
+  clearGroupMemories: (groupId: string) =>
+    request<{ ok: boolean; deleted: number }>(
+      `/api/group-memories/group/${encodeURIComponent(groupId)}`,
       { method: "DELETE" },
     ),
   ollamaHealth: (host?: string) =>

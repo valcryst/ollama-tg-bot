@@ -1,12 +1,11 @@
 import type { Api, Bot, Context } from "grammy";
-import { chat, type ChatMessage } from "../ollama/client.js";
+import type { ChatMessage } from "../ollama/client.js";
 import { clearHistory } from "../db/history.js";
-import {
-  addUserFacts,
-  clearUserMemory,
-  getUserFacts,
-} from "../db/user-memory.js";
+import { clearGroupMemory, getGroupFacts } from "../db/group-memory.js";
+import { clearUserMemory, getUserFacts } from "../db/user-memory.js";
+import { scheduleMemoryPersistence } from "../memory-extract.js";
 import { parseStructuredResponse } from "../response-format.js";
+import { chatComplete } from "../ollama/client.js";
 import { sanitizeModelOutput } from "../ollama/sanitize.js";
 import { prepareTelegramHtml } from "../telegram/html.js";
 import {
@@ -20,7 +19,9 @@ import {
   buildChatMessages,
   historyUserLabel,
   recordExchange,
+  isGroupChat,
   resolveConversationKey,
+  resolveGroupChatId,
   resolveUserId,
 } from "./conversation.js";
 import type { ImagePayload } from "./files.js";
@@ -113,7 +114,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     if (!convKey) return;
 
     const userId = resolveUserId(ctx);
+    const groupChatId = resolveGroupChatId(ctx);
+    const inGroup = isGroupChat(ctx);
     const userMemoryFacts = userId ? getUserFacts(userId) : [];
+    const groupMemoryFacts = groupChatId ? getGroupFacts(groupChatId) : [];
 
     const stopTyping = startTypingIndicator(ctx.api, chatId);
 
@@ -177,20 +181,17 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         currentUser,
         userMemoryFacts,
         replyContext,
+        { isGroupChat: inGroup, groupMemoryFacts },
       );
 
-      const raw = await chat(messages);
-      let { memoryFacts, reply: replyBody } = parseStructuredResponse(raw);
+      const modelOutput = await chatComplete(messages);
+      let { reply: replyBody } = parseStructuredResponse(modelOutput);
 
       if (!replyBody.trim()) {
-        replyBody = sanitizeModelOutput(raw) || raw.trim();
+        replyBody = sanitizeModelOutput(modelOutput) || modelOutput.trim();
       }
       if (!replyBody.trim()) {
         throw new Error("Model response had no [REPLY] content");
-      }
-
-      if (userId && memoryFacts.length > 0) {
-        addUserFacts(userId, memoryFacts);
       }
 
       const reply = prepareTelegramHtml(replyBody);
@@ -209,6 +210,22 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       }
 
       recordReply(usedVision);
+
+      const memoryUserLabel = replyContext
+        ? appendReplyContext(ctx, historyBase, botId)
+        : historyBase;
+      scheduleMemoryPersistence({
+        userId,
+        groupChatId,
+        input: {
+          userMessage: memoryUserLabel,
+          replyContext,
+          assistantReply: replyBody,
+          existingUserFacts: userMemoryFacts,
+          existingGroupFacts: groupMemoryFacts,
+          isGroupChat: inGroup,
+        },
+      });
     } catch (err) {
       console.error("Handler error:", err);
       const detail: ErrorLogInput = {
@@ -253,8 +270,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
   bot.command("start", async (ctx) => {
     const settings = getSettings();
-    const inGroup =
-      ctx.chat?.type === "group" || ctx.chat?.type === "supergroup";
+    const inGroup = isGroupChat(ctx);
     await replyToUser(
       ctx,
       (inGroup
@@ -265,9 +281,14 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
           : `• Send me anything in private chat\n` +
             `• Send photos or stickers (animated/video use a preview frame)\n`) +
         `• I remember recent messages in this chat\n` +
-        `• I learn facts about you (stored per user)\n\n` +
+        `• I learn facts about you (stored per user)` +
+        (inGroup ? `\n• I learn facts about this group (stored per chat)` : "") +
+        `\n\n` +
         `Current model: <code>${escapeHtml(settings.model)}</code>\n` +
-        `Clear chat context: /reset@${botUsername} · Clear your memory: /forget@${botUsername}`,
+        `Clear chat context: /reset@${botUsername} · Clear your memory: /forget@${botUsername}` +
+        (inGroup
+          ? ` · Clear group memory: /forgetgroup@${botUsername}`
+          : ""),
     );
   });
 
@@ -283,6 +304,16 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     if (!userId) return;
     clearUserMemory(userId);
     await replyToUser(ctx, "Your stored memory has been cleared.");
+  });
+
+  bot.command("forgetgroup", async (ctx) => {
+    const groupChatId = resolveGroupChatId(ctx);
+    if (!groupChatId) {
+      await replyToUser(ctx, "Group memory is only available in group chats.");
+      return;
+    }
+    clearGroupMemory(groupChatId);
+    await replyToUser(ctx, "Stored memory for this group has been cleared.");
   });
 }
 

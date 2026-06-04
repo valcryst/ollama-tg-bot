@@ -1,0 +1,141 @@
+import { addGroupFacts } from "./db/group-memory.js";
+import { addUserFacts } from "./db/user-memory.js";
+import { chatComplete } from "./ollama/client.js";
+import type { ChatMessage } from "./ollama/client.js";
+import { parseStructuredResponse } from "./response-format.js";
+
+const MEMORY_EXTRACT_NUM_PREDICT = 384;
+
+const EXTRACTOR_SYSTEM = `You extract durable facts worth storing long-term from a single Telegram chat turn.
+
+Output ONLY these blocks (no other text):
+
+[MEMORY]
+none
+[/MEMORY]
+[GROUP_MEMORY]
+none
+[/GROUP_MEMORY]
+
+[MEMORY] = new facts about the current user only (name, preferences, role, timezone, how they want to be addressed). One fact per line. "none" if nothing new.
+
+[GROUP_MEMORY] = new facts about the group/chat itself (purpose of the group, rules, recurring topics, in-jokes, what this chat is for). Not facts about individual users. "none" if nothing new or not a group chat.
+
+Decide on your own — the user does not need to say "remember". Store facts that would still matter in a future session.
+
+Store when the user shares:
+- who they are, preferences, standing instructions
+- what this group is for, norms, ongoing context
+- corrections to prior assumptions
+
+Do NOT store:
+- greetings, jokes, sarcasm, or the assistant's own banter
+- one-off questions, transient moods, or message meta ("user replied to…")
+- facts already listed under "Already stored"
+- duplicates rephrased slightly`;
+
+export interface MemoryExtractInput {
+  userMessage: string;
+  replyContext: string | null;
+  assistantReply: string;
+  existingUserFacts: string[];
+  existingGroupFacts: string[];
+  isGroupChat: boolean;
+}
+
+export interface MemoryExtractResult {
+  userFacts: string[];
+  groupFacts: string[];
+}
+
+export async function extractMemoriesFromTurn(
+  input: MemoryExtractInput,
+): Promise<MemoryExtractResult> {
+  const userBlock = formatStored("user", input.existingUserFacts);
+  const groupBlock = input.isGroupChat
+    ? formatStored("group", input.existingGroupFacts)
+    : "Not a group chat — always write none in [GROUP_MEMORY].";
+
+  let turn = `User message:\n${input.userMessage.trim() || "(non-text message)"}`;
+  if (input.replyContext?.trim()) {
+    turn += `\n\nReplied-to context:\n${input.replyContext.trim()}`;
+  }
+  turn += `\n\nAssistant reply (for context only, do not store its jokes as facts):\n${input.assistantReply.trim()}`;
+
+  const messages: ChatMessage[] = [
+    { role: "system", content: EXTRACTOR_SYSTEM },
+    {
+      role: "user",
+      content:
+        `Already stored about this user:\n${userBlock}\n\n` +
+        `Already stored about this group:\n${groupBlock}\n\n` +
+        `---\n${turn}`,
+    },
+  ];
+
+  try {
+    const raw = await chatComplete(messages, {
+      numPredict: MEMORY_EXTRACT_NUM_PREDICT,
+    });
+    const parsed = parseStructuredResponse(raw);
+    return {
+      userFacts: parsed.memoryFacts,
+      groupFacts: input.isGroupChat ? parsed.groupMemoryFacts : [],
+    };
+  } catch (err) {
+    console.error("Memory extraction failed:", err);
+    return { userFacts: [], groupFacts: [] };
+  }
+}
+
+function formatStored(kind: string, facts: string[]): string {
+  if (facts.length === 0) return `(none yet for this ${kind})`;
+  return facts.map((f) => `- ${f}`).join("\n");
+}
+
+export interface MemoryPersistContext {
+  input: MemoryExtractInput;
+  userId: string | null;
+  groupChatId: string | null;
+}
+
+/** Run memory extraction and DB writes without blocking the Telegram reply. */
+export function scheduleMemoryPersistence(ctx: MemoryPersistContext): void {
+  void persistMemories(ctx).catch((err) => {
+    console.error("Background memory persistence failed:", err);
+  });
+}
+
+async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
+  const extracted = await extractMemoriesFromTurn(ctx.input);
+
+  if (ctx.userId) {
+    const userNew = newFactsOnly(ctx.input.existingUserFacts, extracted.userFacts);
+    if (userNew.length > 0) addUserFacts(ctx.userId, userNew);
+  }
+  if (ctx.groupChatId) {
+    const groupNew = newFactsOnly(
+      ctx.input.existingGroupFacts,
+      extracted.groupFacts,
+    );
+    if (groupNew.length > 0) addGroupFacts(ctx.groupChatId, groupNew);
+  }
+}
+
+/** Facts in incoming that are not already stored (case-insensitive). */
+export function newFactsOnly(
+  existing: string[],
+  incoming: string[],
+): string[] {
+  const keys = new Set(existing.map((f) => f.toLowerCase()));
+  const out: string[] = [];
+  for (const fact of incoming) {
+    const normalized = fact.trim();
+    if (normalized.length < 2) continue;
+    const key = normalized.toLowerCase();
+    if (keys.has(key)) continue;
+    keys.add(key);
+    out.push(normalized);
+  }
+  return out;
+}

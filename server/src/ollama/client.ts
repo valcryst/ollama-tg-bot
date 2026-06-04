@@ -39,23 +39,22 @@ interface OllamaChatResponse {
   eval_count?: number;
 }
 
-function extractAssistantText(data: OllamaChatResponse): string {
+function pickAssistantRaw(data: OllamaChatResponse): string {
   const content = data.message?.content?.trim() ?? "";
   const thinking = data.message?.thinking?.trim() ?? "";
+  return content || thinking || "";
+}
 
-  for (const candidate of [content, thinking]) {
-    if (!candidate) continue;
+function extractReplyText(raw: string): string {
+  if (!raw) return "";
 
-    const parsed = parseStructuredResponse(candidate);
-    if (parsed.reply.trim()) return parsed.reply.trim();
+  const parsed = parseStructuredResponse(raw);
+  if (parsed.reply.trim()) return parsed.reply.trim();
 
-    const sanitized = sanitizeModelOutput(candidate);
-    if (sanitized) return sanitized;
+  const sanitized = sanitizeModelOutput(raw);
+  if (sanitized) return sanitized;
 
-    if (candidate.trim()) return candidate.trim();
-  }
-
-  return "";
+  return raw.trim();
 }
 
 function emptyResponseError(
@@ -161,27 +160,30 @@ async function requestChat(
   return (await res.json()) as OllamaChatResponse;
 }
 
-export async function chat(
+/** Full model output (includes [MEMORY] / [GROUP_MEMORY] blocks when present). */
+export async function chatComplete(
   messages: ChatMessage[],
-  options?: { model?: string },
+  options?: { model?: string; numPredict?: number },
 ): Promise<string> {
   const settings = getSettings();
   const model = options?.model ?? settings.model;
   const prepared = await prepareMessages(messages);
+  const cap = options?.numPredict ?? settings.numPredict;
 
   try {
-    let numPredict = settings.numPredict;
+    let numPredict = cap;
     let lastData: OllamaChatResponse | null = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       lastData = await requestChat(model, prepared, numPredict);
-      const content = extractAssistantText(lastData);
-      if (content) return content;
+      const raw = pickAssistantRaw(lastData);
+      if (raw) return raw;
 
       const canRetry =
         attempt === 0 &&
         lastData.done_reason === "length" &&
-        numPredict < MAX_NUM_PREDICT;
+        numPredict < MAX_NUM_PREDICT &&
+        options?.numPredict == null;
 
       if (!canRetry) break;
 
@@ -195,6 +197,18 @@ export async function chat(
   } catch (err) {
     throw wrapChatError(err);
   }
+}
+
+export async function chat(
+  messages: ChatMessage[],
+  options?: { model?: string },
+): Promise<string> {
+  const raw = await chatComplete(messages, options);
+  const reply = extractReplyText(raw);
+  if (!reply) {
+    throw new Error("Model response had no [REPLY] content");
+  }
+  return reply;
 }
 
 function wrapChatError(err: unknown): Error {

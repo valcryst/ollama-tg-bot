@@ -9,9 +9,24 @@ import {
 import { checkHealth, listModels } from "../ollama/client.js";
 import { BASE_SYSTEM_PROMPT } from "../prompts.js";
 import {
+  clearGroupFactsForGroup,
+  createGroupFact,
+  deleteGroupFactById,
+  listAllGroupFacts,
+  updateGroupFactById,
+} from "../db/group-memory.js";
+import {
+  MAX_FACT_LENGTH,
+  MIN_FACT_LENGTH,
+  normalizeEntityId,
+  normalizeFactText,
+} from "../db/memory-facts.js";
+import {
   clearUserFactsForUser,
+  createUserFact,
   deleteUserFactById,
   listAllUserFacts,
+  updateUserFactById,
 } from "../db/user-memory.js";
 import { listRecentErrors } from "../db/error-log.js";
 
@@ -103,6 +118,66 @@ export function createApiRouter(): Router {
     }
   });
 
+  router.post("/memories", (req, res) => {
+    try {
+      const userId = normalizeEntityId(
+        (req.body as { userId?: string })?.userId,
+      );
+      const fact = normalizeFactText((req.body as { fact?: string })?.fact);
+      if (!userId) {
+        res.status(400).json({ error: "userId is required" });
+        return;
+      }
+      if (!fact) {
+        res.status(400).json({
+          error: `fact must be ${MIN_FACT_LENGTH}–${MAX_FACT_LENGTH} characters`,
+        });
+        return;
+      }
+      const created = createUserFact(userId, fact);
+      if (!created) {
+        res.status(400).json({ error: "Could not create memory" });
+        return;
+      }
+      res.status(201).json({ fact: created });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to create memory",
+      });
+    }
+  });
+
+  router.patch("/memories/:id", (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id < 1) {
+        res.status(400).json({ error: "Invalid memory id" });
+        return;
+      }
+      const fact = normalizeFactText((req.body as { fact?: string })?.fact);
+      if (!fact) {
+        res.status(400).json({
+          error: `fact must be ${MIN_FACT_LENGTH}–${MAX_FACT_LENGTH} characters`,
+        });
+        return;
+      }
+      const updated = updateUserFactById(id, fact);
+      if (updated === "duplicate") {
+        res.status(409).json({ error: "That fact already exists for this user" });
+        return;
+      }
+      if (!updated) {
+        res.status(404).json({ error: "Memory not found" });
+        return;
+      }
+      res.json({ fact: updated });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to update memory",
+      });
+    }
+  });
+
   router.delete("/memories/:id", (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -134,6 +209,121 @@ export function createApiRouter(): Router {
     } catch (err) {
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to clear user memory",
+      });
+    }
+  });
+
+  router.get("/group-memories", (_req, res) => {
+    try {
+      const facts = listAllGroupFacts();
+      res.json({ facts, total: facts.length });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error ? err.message : "Failed to load group memories",
+      });
+    }
+  });
+
+  router.post("/group-memories", (req, res) => {
+    try {
+      const groupId = normalizeEntityId(
+        (req.body as { groupId?: string })?.groupId,
+      );
+      const fact = normalizeFactText((req.body as { fact?: string })?.fact);
+      if (!groupId) {
+        res.status(400).json({ error: "groupId is required" });
+        return;
+      }
+      if (!fact) {
+        res.status(400).json({
+          error: `fact must be ${MIN_FACT_LENGTH}–${MAX_FACT_LENGTH} characters`,
+        });
+        return;
+      }
+      const created = createGroupFact(groupId, fact);
+      if (!created) {
+        res.status(400).json({ error: "Could not create memory" });
+        return;
+      }
+      res.status(201).json({ fact: created });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error ? err.message : "Failed to create group memory",
+      });
+    }
+  });
+
+  router.patch("/group-memories/:id", (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id < 1) {
+        res.status(400).json({ error: "Invalid memory id" });
+        return;
+      }
+      const fact = normalizeFactText((req.body as { fact?: string })?.fact);
+      if (!fact) {
+        res.status(400).json({
+          error: `fact must be ${MIN_FACT_LENGTH}–${MAX_FACT_LENGTH} characters`,
+        });
+        return;
+      }
+      const updated = updateGroupFactById(id, fact);
+      if (updated === "duplicate") {
+        res
+          .status(409)
+          .json({ error: "That fact already exists for this group" });
+        return;
+      }
+      if (!updated) {
+        res.status(404).json({ error: "Memory not found" });
+        return;
+      }
+      res.json({ fact: updated });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error ? err.message : "Failed to update group memory",
+      });
+    }
+  });
+
+  router.delete("/group-memories/:id", (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id < 1) {
+        res.status(400).json({ error: "Invalid memory id" });
+        return;
+      }
+      if (!deleteGroupFactById(id)) {
+        res.status(404).json({ error: "Memory not found" });
+        return;
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error ? err.message : "Failed to delete group memory",
+      });
+    }
+  });
+
+  router.delete("/group-memories/group/:groupId", (req, res) => {
+    try {
+      const groupId = req.params.groupId?.trim();
+      if (!groupId) {
+        res.status(400).json({ error: "groupId is required" });
+        return;
+      }
+      const deleted = clearGroupFactsForGroup(groupId);
+      res.json({ ok: true, deleted });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to clear group memory",
       });
     }
   });

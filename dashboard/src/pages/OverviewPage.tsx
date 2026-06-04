@@ -131,7 +131,8 @@ export function OverviewPage() {
             </li>
             <li>
               <strong>Commands:</strong> <code>/reset</code> clears chat
-              history, <code>/forget</code> clears your stored memories
+              history, <code>/forget</code> clears your stored memories,{" "}
+              <code>/forgetgroup</code> clears group memories (groups only)
             </li>
           </ul>
         </div>

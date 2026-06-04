@@ -21,6 +21,7 @@ export function buildChatMessages(
   currentUser: ChatMessage,
   userMemoryFacts: string[] = [],
   replyContext?: string | null,
+  memoryOptions: { isGroupChat?: boolean; groupMemoryFacts?: string[] } = {},
 ): ChatMessage[] {
   const history = historyToChatMessages(getHistory(chatKey));
   const turns: ChatMessage[] = [...history];
@@ -39,7 +40,7 @@ export function buildChatMessages(
   return [
     {
       role: "system",
-      content: buildSystemPrompt(customSystemPrompt, userMemoryFacts),
+      content: buildSystemPrompt(customSystemPrompt, userMemoryFacts, memoryOptions),
     },
     ...turns,
   ];
@@ -48,6 +49,18 @@ export function buildChatMessages(
 export function resolveUserId(ctx: Context): string | null {
   const id = ctx.from?.id;
   return id != null ? String(id) : null;
+}
+
+export function resolveGroupChatId(ctx: Context): string | null {
+  const chat = ctx.chat;
+  if (!chat || (chat.type !== "group" && chat.type !== "supergroup")) {
+    return null;
+  }
+  return String(chat.id);
+}
+
+export function isGroupChat(ctx: Context): boolean {
+  return resolveGroupChatId(ctx) != null;
 }
 
 export function recordExchange(

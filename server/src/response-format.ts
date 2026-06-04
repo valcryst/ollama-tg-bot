@@ -1,24 +1,26 @@
 /**
- * Structured assistant output. Only [REPLY] is sent to Telegram;
- * [MEMORY] is parsed and stored per user.
+ * Structured assistant output. Only [REPLY] is sent to Telegram.
+ * Memory blocks are parsed from the full model output or a dedicated extract pass.
  */
-export const RESPONSE_FORMAT_SPEC = `Reply ONLY using these two blocks (no text outside them):
+export const REPLY_FORMAT_SPEC = `Reply ONLY using this block (no text outside it):
 
-[MEMORY]
-none
-[/MEMORY]
 [REPLY]
 1–2 short sentences, Telegram HTML (<b> <i> <code> only).
 [/REPLY]
 
-Rules: always include [REPLY]. If no new user facts, write "none" in [MEMORY] — keep [MEMORY] to one line.`;
+Rules: always include [REPLY]. Do not output [MEMORY] or [GROUP_MEMORY] in your reply — memory is handled separately.`;
+
+/** Used by the dedicated memory extraction pass. */
+export const MEMORY_EXTRACT_FORMAT_SPEC = `Output ONLY [MEMORY] and [GROUP_MEMORY] blocks as specified.`;
 
 export interface ParsedAssistantResponse {
   memoryFacts: string[];
+  groupMemoryFacts: string[];
   reply: string;
 }
 
 const MEMORY_BLOCK = /\[MEMORY\]\s*([\s\S]*?)\s*\[\/MEMORY\]/i;
+const GROUP_MEMORY_BLOCK = /\[GROUP_MEMORY\]\s*([\s\S]*?)\s*\[\/GROUP_MEMORY\]/i;
 const REPLY_BLOCK = /\[REPLY\]\s*([\s\S]*?)\s*\[\/REPLY\]/i;
 
 function parseMemoryLines(block: string): string[] {
@@ -33,9 +35,13 @@ function parseMemoryLines(block: string): string[] {
 
 export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
   const memoryMatch = raw.match(MEMORY_BLOCK);
+  const groupMemoryMatch = raw.match(GROUP_MEMORY_BLOCK);
   const replyMatch = raw.match(REPLY_BLOCK);
 
   const memoryFacts = memoryMatch ? parseMemoryLines(memoryMatch[1]) : [];
+  const groupMemoryFacts = groupMemoryMatch
+    ? parseMemoryLines(groupMemoryMatch[1])
+    : [];
 
   let reply = replyMatch?.[1]?.trim() ?? "";
   if (!reply) {
@@ -45,10 +51,11 @@ export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
   if (!reply) {
     reply = raw
       .replace(MEMORY_BLOCK, "")
+      .replace(GROUP_MEMORY_BLOCK, "")
       .replace(/\[\/?REPLY\]/gi, "")
       .trim();
   }
   if (!reply) reply = raw.trim();
 
-  return { memoryFacts, reply };
+  return { memoryFacts, groupMemoryFacts, reply };
 }

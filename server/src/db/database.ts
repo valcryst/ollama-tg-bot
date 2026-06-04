@@ -3,6 +3,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { config } from "../config.js";
 import { bindHistoryDatabase, configureHistoryAccess } from "./history.js";
+import { bindGroupMemoryDatabase } from "./group-memory.js";
 import { bindUserMemoryDatabase } from "./user-memory.js";
 import { appendErrorLog, bindErrorLogDatabase } from "./error-log.js";
 import { validateSettingsFields } from "../settings-limits.js";
@@ -110,6 +111,7 @@ export function initDatabase(): void {
   migrateLegacySystemPrompt();
   bindHistoryDatabase(db);
   bindUserMemoryDatabase(db);
+  bindGroupMemoryDatabase(db);
   bindErrorLogDatabase(db);
   configureHistoryAccess(getSettings);
 }
