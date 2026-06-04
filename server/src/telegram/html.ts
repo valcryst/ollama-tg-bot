@@ -1,8 +1,21 @@
 import { sanitizeModelOutput } from "../ollama/sanitize.js";
 
+const PAIRED_TAGS = new Set([
+  "b",
+  "i",
+  "u",
+  "s",
+  "code",
+  "pre",
+  "blockquote",
+  "tg-spoiler",
+  "a",
+]);
+
 /** Prepare model output for Telegram parse_mode HTML. */
 export function prepareTelegramHtml(text: string): string {
   let s = sanitizeModelOutput(text);
+  s = markdownBoldToHtml(s);
 
   s = s.replace(/<\/?(?:p|div|ul|ol|li|h[1-6]|section|article)\b[^>]*>/gi, "\n");
   s = s.replace(/<br\s*\/?>/gi, "\n");
@@ -10,25 +23,115 @@ export function prepareTelegramHtml(text: string): string {
     tag.startsWith("</") ? "</tg-spoiler>" : "<tg-spoiler>",
   );
 
-  s = s.replace(/<[^>]+>/g, (tag) =>
-    isAllowedTelegramTag(tag) ? tag : "",
-  );
+  s = balanceTelegramHtml(s);
 
   return s.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function isAllowedTelegramTag(tag: string): boolean {
-  const t = tag.trim();
+/** Models often use **bold** despite being told to use HTML. */
+function markdownBoldToHtml(text: string): string {
+  return text
+    .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+    .replace(/__([^_\n]+)__/g, "<b>$1</b>");
+}
 
-  if (/^<\/?(?:b|strong|i|em|u|ins|s|strike|del|code|pre|blockquote|tg-spoiler)>$/i.test(t)) {
-    return true;
+function balanceTelegramHtml(text: string): string {
+  const parts = text.split(/(<[^>]+>)/g);
+  const stack: string[] = [];
+  const out: string[] = [];
+
+  for (const part of parts) {
+    if (!part) continue;
+
+    if (!part.startsWith("<")) {
+      out.push(part);
+      continue;
+    }
+
+    const normalized = normalizeTelegramTag(part);
+    if (!normalized) continue;
+
+    if (normalized.startsWith("</")) {
+      const name = normalized.slice(2, -1);
+      const idx = stack.lastIndexOf(name);
+      if (idx === -1) continue;
+      stack.splice(idx);
+      out.push(normalized);
+      continue;
+    }
+
+    const name = normalized.slice(1, -1);
+    if (PAIRED_TAGS.has(name)) {
+      stack.push(name);
+      out.push(normalized);
+    }
   }
-  if (/^<a\s+href="[^"]*"\s*>$/i.test(t)) return true;
-  if (/^<span\s+class="tg-spoiler"\s*>$/i.test(t)) return true;
-  if (/^<\/(?:a|code|span)>$/i.test(t)) return true;
-  if (/^<pre><code\s+class="language-[\w-]+"\s*>$/i.test(t)) return true;
-  if (/^<\/code>(?:<\/pre>)?$/i.test(t)) return true;
-  if (/^<blockquote(?:\s+expandable)?>$/i.test(t)) return true;
 
-  return false;
+  while (stack.length > 0) {
+    const name = stack.pop()!;
+    out.push(`</${name}>`);
+  }
+
+  return out.join("");
+}
+
+function normalizeTelegramTag(raw: string): string | null {
+  const tag = raw.trim();
+
+  const linkOpen = tag.match(/^<a\s+href="([^"]*)"\s*>$/i);
+  if (linkOpen) return `<a href="${linkOpen[1]}">`;
+  if (/^<\/a>$/i.test(tag)) return "</a>";
+
+  const preOpen = tag.match(/^<pre>\s*<code(?:\s+class="language-([\w-]+)")?\s*>$/i);
+  if (preOpen) {
+    const lang = preOpen[1];
+    return lang
+      ? `<pre><code class="language-${lang}">`
+      : "<pre><code>";
+  }
+  if (/^<\/code>\s*<\/pre>$/i.test(tag)) return "</code></pre>";
+  if (/^<\/code>$/i.test(tag)) return "</code>";
+
+  const blockquoteOpen = tag.match(/^<blockquote(?:\s+expandable)?\s*>$/i);
+  if (blockquoteOpen) {
+    return tag.toLowerCase().includes("expandable")
+      ? "<blockquote expandable>"
+      : "<blockquote>";
+  }
+  if (/^<\/blockquote>$/i.test(tag)) return "</blockquote>";
+
+  const spoilerOpen = tag.match(/^<span\s+class="tg-spoiler"\s*>$/i);
+  if (spoilerOpen) return '<span class="tg-spoiler">';
+  if (/^<\/span>$/i.test(tag)) return "</span>";
+
+  const generic = tag.match(/^<\s*(\/?)\s*([a-z][a-z0-9-]*)\b[^>]*>$/i);
+  if (!generic) return null;
+
+  const closing = generic[1] === "/";
+  const name = canonicalTagName(generic[2]);
+  if (!name) return null;
+
+  return closing ? `</${name}>` : `<${name}>`;
+}
+
+function canonicalTagName(name: string): string | null {
+  const n = name.toLowerCase();
+  if (n === "strong") return "b";
+  if (n === "em") return "i";
+  if (n === "ins") return "u";
+  if (n === "strike" || n === "del") return "s";
+  if (n === "tg_spoiler") return "tg-spoiler";
+  if (
+    n === "b" ||
+    n === "i" ||
+    n === "u" ||
+    n === "s" ||
+    n === "code" ||
+    n === "pre" ||
+    n === "blockquote" ||
+    n === "tg-spoiler"
+  ) {
+    return n;
+  }
+  return null;
 }
