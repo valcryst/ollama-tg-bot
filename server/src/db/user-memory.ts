@@ -199,3 +199,13 @@ export function formatUserMemoryForPrompt(facts: string[]): string {
   }
   return facts.map((f) => `- ${f}`).join("\n");
 }
+
+export function userMemoryTotalChars(facts: string[]): number {
+  return facts.reduce((n, f) => n + f.length, 0);
+}
+
+/** Replace all facts for a user (e.g. after LLM merge/compression). */
+export function replaceUserFacts(userId: string, facts: string[]): void {
+  clearUserMemory(userId);
+  if (facts.length > 0) addUserFacts(userId, facts);
+}

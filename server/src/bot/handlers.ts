@@ -3,6 +3,11 @@ import type { ChatMessage } from "../ollama/client.js";
 import { clearHistory } from "../db/history.js";
 import { clearGroupMemory, getGroupFacts } from "../db/group-memory.js";
 import { clearUserMemory, getUserFacts } from "../db/user-memory.js";
+import {
+  scheduleGroupMemoryCompression,
+  scheduleHistoryCompression,
+  scheduleUserMemoryCompression,
+} from "../context-compress.js";
 import { scheduleMemoryPersistence } from "../memory-extract.js";
 import { parseStructuredResponse } from "../response-format.js";
 import { chatComplete } from "../ollama/client.js";
@@ -118,6 +123,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     const inGroup = isGroupChat(ctx);
     const userMemoryFacts = userId ? getUserFacts(userId) : [];
     const groupMemoryFacts = groupChatId ? getGroupFacts(groupChatId) : [];
+
+    if (userId) scheduleUserMemoryCompression(userId);
+    if (groupChatId) scheduleGroupMemoryCompression(groupChatId);
+    scheduleHistoryCompression(convKey);
 
     const stopTyping = startTypingIndicator(ctx.api, chatId);
 

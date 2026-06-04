@@ -12,9 +12,16 @@ export function configureHistoryAccess(getSettings: () => Settings): void {
 
 export type HistoryRole = "user" | "assistant";
 
+/** Stored as a user turn; merged into newer summaries when history is compressed. */
+export const HISTORY_SUMMARY_PREFIX = "[Earlier conversation summary]";
+
 export interface StoredMessage {
   role: HistoryRole;
   content: string;
+}
+
+export function isHistorySummaryMessage(content: string): boolean {
+  return content.startsWith(HISTORY_SUMMARY_PREFIX);
 }
 
 let db: DatabaseSync;
@@ -74,6 +81,34 @@ export function appendMessage(
 
 export function clearHistory(chatKey: string): void {
   db.prepare(`DELETE FROM chat_messages WHERE chat_key = ?`).run(chatKey);
+}
+
+export function historyTotalChars(history: StoredMessage[]): number {
+  return history.reduce((n, m) => n + m.content.length, 0);
+}
+
+/** Replace all stored messages for a conversation (used after LLM compression). */
+export function replaceHistory(
+  chatKey: string,
+  messages: StoredMessage[],
+): void {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    clearHistory(chatKey);
+    const insert = db.prepare(
+      `INSERT INTO chat_messages (chat_key, role, content) VALUES (?, ?, ?)`,
+    );
+    for (const msg of messages) {
+      const trimmed = msg.content.trim();
+      if (!trimmed) continue;
+      insert.run(chatKey, msg.role, trimmed);
+    }
+    pruneHistory(chatKey);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
 }
 
 function pruneHistory(chatKey: string): void {

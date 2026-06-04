@@ -1,3 +1,7 @@
+import {
+  scheduleGroupMemoryCompression,
+  scheduleUserMemoryCompression,
+} from "./context-compress.js";
 import { addGroupFacts } from "./db/group-memory.js";
 import { addUserFacts } from "./db/user-memory.js";
 import { chatComplete } from "./ollama/client.js";
@@ -111,14 +115,20 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
 
   if (ctx.userId) {
     const userNew = newFactsOnly(ctx.input.existingUserFacts, extracted.userFacts);
-    if (userNew.length > 0) addUserFacts(ctx.userId, userNew);
+    if (userNew.length > 0) {
+      addUserFacts(ctx.userId, userNew);
+      scheduleUserMemoryCompression(ctx.userId);
+    }
   }
   if (ctx.groupChatId) {
     const groupNew = newFactsOnly(
       ctx.input.existingGroupFacts,
       extracted.groupFacts,
     );
-    if (groupNew.length > 0) addGroupFacts(ctx.groupChatId, groupNew);
+    if (groupNew.length > 0) {
+      addGroupFacts(ctx.groupChatId, groupNew);
+      scheduleGroupMemoryCompression(ctx.groupChatId);
+    }
   }
 }
 

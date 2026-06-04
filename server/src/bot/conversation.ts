@@ -6,6 +6,7 @@ import {
   getHistory,
   historyToChatMessages,
 } from "../db/history.js";
+import { scheduleHistoryCompression } from "../context-compress.js";
 import { buildSystemPrompt } from "../prompts.js";
 
 export function resolveConversationKey(ctx: Context): string | null {
@@ -70,6 +71,7 @@ export function recordExchange(
 ): void {
   appendMessage(chatKey, "user", userText);
   appendMessage(chatKey, "assistant", assistantText);
+  scheduleHistoryCompression(chatKey);
 }
 
 /** Text stored in history (images are not re-sent). */

@@ -199,3 +199,13 @@ export function formatGroupMemoryForPrompt(facts: string[]): string {
   }
   return facts.map((f) => `- ${f}`).join("\n");
 }
+
+export function groupMemoryTotalChars(facts: string[]): number {
+  return facts.reduce((n, f) => n + f.length, 0);
+}
+
+/** Replace all facts for a group (e.g. after LLM merge/compression). */
+export function replaceGroupFacts(groupId: string, facts: string[]): void {
+  clearGroupMemory(groupId);
+  if (facts.length > 0) addGroupFacts(groupId, facts);
+}
