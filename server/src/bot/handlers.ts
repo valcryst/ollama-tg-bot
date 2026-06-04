@@ -26,13 +26,11 @@ import {
   resolveUserId,
 } from "./conversation.js";
 import { runChatTurn } from "./chat-turn.js";
-import type { ImagePayload } from "./files.js";
-import { downloadTelegramFile } from "./files.js";
 import {
-  loadStickerForVision,
-  stickerUnavailableText,
-  stickerUserPrompt,
-} from "./stickers.js";
+  findReplyMediaMessage,
+  loadVisionFromMessage,
+} from "./message-media.js";
+import { stickerUserPrompt } from "./stickers.js";
 import {
   isMessageForBot,
   isSlashCommandMessage,
@@ -124,48 +122,58 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     scheduleHistoryCompression(convKey);
 
     try {
-      const images: ImagePayload[] = [];
-      let stickerVisionHint: string | undefined;
+      let visionFromReply = false;
+      let loaded = await loadVisionFromMessage(bot.token, ctx.message);
 
-      if (ctx.message.photo) {
-        const photo = ctx.message.photo[ctx.message.photo.length - 1];
-        const img = await downloadTelegramFile(bot.token, photo.file_id);
-        if (img) images.push(img);
-      } else if (ctx.message.sticker) {
-        const loaded = await loadStickerForVision(
-          bot.token,
-          ctx.message.sticker,
-        );
-        if (!loaded) {
-          await replyToUser(
-            ctx,
-            stickerUnavailableText(ctx.message.sticker),
-          );
-          recordReply(false);
-          return;
-        }
-        images.push(loaded.payload);
-        stickerVisionHint = loaded.visionHint;
-      } else if (
-        ctx.message.document?.mime_type?.startsWith("image/")
-      ) {
-        const img = await downloadTelegramFile(
-          bot.token,
-          ctx.message.document.file_id,
-        );
-        if (img) images.push(img);
+      if (loaded.unavailableText) {
+        await replyToUser(ctx, loaded.unavailableText);
+        recordReply(false);
+        return;
       }
 
+      if (loaded.images.length === 0) {
+        const replyMediaMsg = findReplyMediaMessage(ctx.message);
+        if (replyMediaMsg) {
+          const replyLoaded = await loadVisionFromMessage(
+            bot.token,
+            replyMediaMsg,
+          );
+          if (replyLoaded.unavailableText) {
+            await replyToUser(ctx, replyLoaded.unavailableText);
+            recordReply(false);
+            return;
+          }
+          if (replyLoaded.images.length > 0) {
+            loaded = replyLoaded;
+            visionFromReply = true;
+          }
+        }
+      }
+
+      const images = loaded.images;
       const usedVision = images.length > 0;
-      const sticker = ctx.message.sticker;
+      const sticker = loaded.sourceSticker ?? ctx.message.sticker;
+      const stickerVisionHint = loaded.visionHint;
       const botId = ctx.me?.id;
       const promptText =
         stripBotMention(text, ctx.me?.username) || text;
       const body = sticker
         ? stickerUserPrompt(sticker, promptText, stickerVisionHint)
-        : buildUserContent(promptText, usedVision);
-      const historyBase = historyUserLabel(promptText, usedVision, sticker);
-      const replyContext = formatReplyContext(ctx, botId);
+        : buildUserContent(promptText, usedVision, visionFromReply);
+      const historyBase = historyUserLabel(
+        promptText,
+        usedVision,
+        visionFromReply ? undefined : sticker,
+        visionFromReply,
+      );
+      let replyContext = formatReplyContext(ctx, botId);
+      if (visionFromReply && usedVision) {
+        const mediaNote =
+          "The photo or image from the replied-to message is attached to this turn for you to view.";
+        replyContext = replyContext
+          ? `${replyContext}\n• ${mediaNote}`
+          : `• ${mediaNote}`;
+      }
       const historyLabel = replyContext
         ? appendReplyContext(ctx, historyBase, botId)
         : historyBase;
@@ -375,9 +383,25 @@ function extractText(ctx: Context): string {
   return (msg.text ?? msg.caption ?? "").trim();
 }
 
-function buildUserContent(text: string, usedVision: boolean): string {
-  if (text) return text;
-  if (usedVision) return "Describe what you see in this image.";
+function buildUserContent(
+  text: string,
+  usedVision: boolean,
+  aboutRepliedMedia = false,
+): string {
+  if (text) {
+    if (aboutRepliedMedia && usedVision) {
+      return (
+        `${text}\n\n` +
+        "(They are asking about the image from the message they replied to; it is attached to this turn.)"
+      );
+    }
+    return text;
+  }
+  if (usedVision) {
+    return aboutRepliedMedia
+      ? "Answer about the image from the message they replied to."
+      : "Describe what you see in this image.";
+  }
   return "Hello!";
 }
 

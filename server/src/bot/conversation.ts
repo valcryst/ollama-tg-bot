@@ -107,10 +107,12 @@ export function historyUserLabel(
   text: string,
   usedVision: boolean,
   sticker?: Sticker,
+  visionFromReply = false,
 ): string {
   if (text && sticker) return `${text}\n${stickerHistoryLabel(sticker)}`;
   if (text) return text;
   if (sticker) return stickerHistoryLabel(sticker);
+  if (usedVision && visionFromReply) return "[replied to an image]";
   if (usedVision) return "[sent an image]";
   return "[message]";
 }

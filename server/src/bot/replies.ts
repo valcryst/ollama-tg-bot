@@ -147,7 +147,7 @@ function summarizeMessageContent(message: Message): string {
   const text = (message.text ?? message.caption ?? "").trim();
   if (text) return text;
 
-  if (message.photo) return "[photo]";
+  if (message.photo?.length) return "[photo]";
   if (message.sticker) {
     return stickerHistoryLabel(message.sticker);
   }
