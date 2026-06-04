@@ -31,11 +31,9 @@ import {
   loadVisionFromMessage,
 } from "./message-media.js";
 import { stickerUserPrompt } from "./stickers.js";
-import {
-  isMessageForBot,
-  isSlashCommandMessage,
-  stripBotMention,
-} from "./addressed.js";
+import { isMessageAddressedToBot } from "./address-analyze.js";
+import { stripBotAddressing } from "./bot-identity.js";
+import { isSlashCommandMessage } from "./addressed.js";
 import {
   groupSetupMessage,
   wasBotAddedToChat,
@@ -91,7 +89,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
     if (!text && !hasMedia) return;
 
-    const addressed = isMessageForBot(ctx);
+    const addressed = await isMessageAddressedToBot(ctx);
     const settings = getSettings();
     const randomHit =
       settings.randomReplyEnabled &&
@@ -155,8 +153,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       const sticker = loaded.sourceSticker ?? ctx.message.sticker;
       const stickerVisionHint = loaded.visionHint;
       const botId = ctx.me?.id;
-      const promptText =
-        stripBotMention(text, ctx.me?.username) || text;
+      const promptText = stripBotAddressing(text) || text;
       const body = sticker
         ? stickerUserPrompt(sticker, promptText, stickerVisionHint)
         : buildUserContent(promptText, usedVision, visionFromReply);

@@ -1,5 +1,6 @@
 import { Bot } from "grammy";
 import { requireBotToken } from "../config.js";
+import { setBotIdentity } from "./bot-identity.js";
 import { registerHandlers } from "./handlers.js";
 
 let botInstance: Bot | null = null;
@@ -21,6 +22,7 @@ export async function startBot(): Promise<Bot> {
 
   const me = await bot.api.getMe();
   botUsername = me.username ?? `bot${me.id}`;
+  setBotIdentity(me, botUsername);
 
   registerHandlers(bot, botUsername);
 
@@ -33,7 +35,8 @@ export async function startBot(): Promise<Bot> {
     onStart: () => {
       console.log(`Bot @${botUsername} is running`);
       console.log(
-        "Groups: @mention, reply, or react to the bot's messages. " +
+        "Groups: @mention, reply, name, or react to the bot's messages. " +
+          "Other messages are checked by the model for indirect address. " +
           "Emoji reactions in groups require the bot to be an admin. " +
           "If @mentions are ignored, send /setprivacy to @BotFather and choose Disable.",
       );
