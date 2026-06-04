@@ -1,34 +1,27 @@
-import type { Api, Bot, Context } from "grammy";
+import type { Bot, Context } from "grammy";
 import type { ChatMessage } from "../ollama/client.js";
 import { clearHistory } from "../db/history.js";
 import { clearGroupMemory, getGroupFacts } from "../db/group-memory.js";
 import { clearUserMemory, getUserFacts } from "../db/user-memory.js";
+import { rememberMessageRef } from "../db/message-refs.js";
 import {
   scheduleGroupMemoryCompression,
   scheduleHistoryCompression,
   scheduleUserMemoryCompression,
 } from "../context-compress.js";
-import { scheduleMemoryPersistence } from "../memory-extract.js";
-import { parseStructuredResponse } from "../response-format.js";
-import { chatComplete } from "../ollama/client.js";
-import { sanitizeModelOutput } from "../ollama/sanitize.js";
-import { prepareTelegramHtml } from "../telegram/html.js";
 import {
   getSettings,
-  recordError,
   recordMessageReceived,
   recordReply,
-  type ErrorLogInput,
 } from "../db/database.js";
 import {
-  buildChatMessages,
   historyUserLabel,
-  recordExchange,
   isGroupChat,
   resolveConversationKey,
   resolveGroupChatId,
   resolveUserId,
 } from "./conversation.js";
+import { runChatTurn } from "./chat-turn.js";
 import type { ImagePayload } from "./files.js";
 import { downloadTelegramFile } from "./files.js";
 import {
@@ -50,9 +43,13 @@ import {
   formatReplyContext,
   replyParameters,
 } from "./replies.js";
-
-/** Telegram clears typing after ~5s; refresh until stopped. */
-const TYPING_REFRESH_MS = 4000;
+import {
+  formatReactionPrompt,
+  isReactionAddressed,
+  parseReactionChange,
+  reactionHistoryLabel,
+  resolveReaction,
+} from "./reactions.js";
 
 async function replyHtml(
   ctx: Context,
@@ -77,15 +74,6 @@ async function replyToUser(
     text,
     params ? { reply_parameters: params, ...extra } : extra,
   );
-}
-
-function startTypingIndicator(api: Api, chatId: number): () => void {
-  const refresh = () => {
-    void api.sendChatAction(chatId, "typing").catch(() => {});
-  };
-  refresh();
-  const timer = setInterval(refresh, TYPING_REFRESH_MS);
-  return () => clearInterval(timer);
 }
 
 export function registerHandlers(bot: Bot, botUsername: string): void {
@@ -128,8 +116,6 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     if (userId) scheduleUserMemoryCompression(userId);
     if (groupChatId) scheduleGroupMemoryCompression(groupChatId);
     scheduleHistoryCompression(convKey);
-
-    const stopTyping = startTypingIndicator(ctx.api, chatId);
 
     try {
       const images: ImagePayload[] = [];
@@ -178,58 +164,38 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         ? appendReplyContext(ctx, historyBase, botId)
         : historyBase;
 
+      rememberMessageRef(
+        convKey,
+        ctx.message.message_id,
+        "user",
+        historyLabel,
+      );
+
+      const memoryUserLabel = replyContext
+        ? appendReplyContext(ctx, historyBase, botId)
+        : historyBase;
+
       const currentUser: ChatMessage = {
         role: "user",
         content: body,
         ...(usedVision ? { images: images.map((i) => i.base64) } : {}),
       };
 
-      const messages = buildChatMessages(
-        settings.customSystemPrompt,
+      await runChatTurn(ctx, {
         convKey,
-        currentUser,
-        userMemoryFacts,
-        replyContext,
-        { isGroupChat: inGroup, groupMemoryFacts },
-      );
-
-      const modelOutput = await chatComplete(messages);
-      let { reply: replyBody } = parseStructuredResponse(modelOutput);
-
-      if (!replyBody.trim()) {
-        replyBody = sanitizeModelOutput(modelOutput) || modelOutput.trim();
-      }
-      if (!replyBody.trim()) {
-        throw new Error("Model response had no [REPLY] content");
-      }
-
-      const reply = prepareTelegramHtml(replyBody);
-      recordExchange(convKey, historyLabel, reply);
-      const chunks = splitMessage(reply);
-
-      for (let i = 0; i < chunks.length; i++) {
-        if (i > 0) {
-          await ctx.api.sendChatAction(chatId, "typing");
-        }
-        if (i === 0) {
-          await replyToUser(ctx, chunks[i]);
-        } else {
-          await replyHtml(ctx, chunks[i]);
-        }
-      }
-
-      recordReply(usedVision);
-
-      const memoryUserLabel = replyContext
-        ? appendReplyContext(ctx, historyBase, botId)
-        : historyBase;
-      scheduleMemoryPersistence({
+        chatId,
         userId,
         groupChatId,
-        input: {
+        inGroup,
+        currentUser,
+        historyLabel,
+        userMemoryFacts,
+        groupMemoryFacts,
+        replyContext,
+        usedVision,
+        memoryInput: {
           userMessage: memoryUserLabel,
           replyContext,
-          assistantReply: replyBody,
           existingUserFacts: userMemoryFacts,
           existingGroupFacts: groupMemoryFacts,
           isGroupChat: inGroup,
@@ -237,27 +203,76 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       });
     } catch (err) {
       console.error("Handler error:", err);
-      const detail: ErrorLogInput = {
-        message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-        chatId,
-        userId: userId ?? undefined,
-      };
-      recordError(detail);
-      const msg =
-        err instanceof Error ? err.message : "Something went wrong";
-      await replyToUser(
-        ctx,
-        `Sorry, I could not get a response from Ollama.\n\n<code>${escapeHtml(msg)}</code>`,
-      ).catch(async (replyErr) => {
-        console.error("Failed to send error reply:", replyErr);
-        await replyToUser(ctx, "Sorry, I could not get a response from Ollama.").catch(
-          (err) => console.error("Failed to send fallback reply:", err),
-        );
-      });
-    } finally {
-      stopTyping();
     }
+  });
+
+  bot.on("message_reaction", async (ctx) => {
+    const change = parseReactionChange(ctx);
+    if (!change) return;
+
+    const resolved = resolveReaction(ctx);
+    if (!resolved) return;
+
+    const settings = getSettings();
+    const randomHit =
+      settings.randomReplyEnabled &&
+      resolved.chatType !== "private" &&
+      Math.random() * 100 < settings.randomReplyChance;
+
+    if (
+      !isReactionAddressed(
+        resolved.chatType,
+        resolved.targetRole,
+        randomHit,
+      )
+    ) {
+      console.log(
+        `Ignored reaction in ${resolved.chatType} chat ${resolved.chatId} ` +
+          `(msg ${resolved.messageId}, target=${resolved.targetRole ?? "unknown"})`,
+      );
+      return;
+    }
+
+    recordMessageReceived();
+
+    const { convKey, chatId, messageId, targetRole, targetContent } = resolved;
+    const userId = resolveUserId(ctx);
+    const inGroup =
+      resolved.chatType === "group" || resolved.chatType === "supergroup";
+    const groupChatId = inGroup ? String(chatId) : null;
+    const userMemoryFacts = userId ? getUserFacts(userId) : [];
+    const groupMemoryFacts = groupChatId ? getGroupFacts(groupChatId) : [];
+
+    if (userId) scheduleUserMemoryCompression(userId);
+    if (groupChatId) scheduleGroupMemoryCompression(groupChatId);
+    scheduleHistoryCompression(convKey);
+
+    const reactor = ctx.from ?? ctx.messageReaction?.user;
+    const body = formatReactionPrompt(reactor, change, targetRole, targetContent);
+    const historyLabel = reactionHistoryLabel(reactor, change, targetRole);
+
+    const currentUser: ChatMessage = { role: "user", content: body };
+
+    await runChatTurn(ctx, {
+      convKey,
+      chatId,
+      userId,
+      groupChatId,
+      inGroup,
+      currentUser,
+      historyLabel,
+      userMemoryFacts,
+      groupMemoryFacts,
+      memoryInput: {
+        userMessage: historyLabel,
+        replyContext: targetContent,
+        existingUserFacts: userMemoryFacts,
+        existingGroupFacts: groupMemoryFacts,
+        isGroupChat: inGroup,
+      },
+      replyToMessageId: messageId,
+      messageThreadId: resolved.messageThreadId,
+    });
   });
 
   bot.on("my_chat_member", async (ctx) => {
@@ -268,10 +283,15 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       ctx.myChatMember;
     if (!wasBotAddedToChat(oldMember.status, newMember.status)) return;
 
+    let text = groupSetupMessage(botUsername);
+    if (newMember.status !== "administrator") {
+      text +=
+        "\n\n<b>Emoji reactions:</b> make me a <b>group admin</b> so I can see " +
+        "when you react to my messages (required by Telegram in groups).";
+    }
+
     try {
-      await ctx.api.sendMessage(chat.id, groupSetupMessage(botUsername), {
-        parse_mode: "HTML",
-      });
+      await ctx.api.sendMessage(chat.id, text, { parse_mode: "HTML" });
     } catch (err) {
       console.error("Failed to send group setup message:", err);
     }
@@ -288,7 +308,8 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         (inGroup
           ? ""
           : `• Send me anything in private chat\n` +
-            `• Send photos or stickers (animated/video use a preview frame)\n`) +
+            `• Send photos or stickers (animated/video use a preview frame)\n` +
+            `• React to my messages with emoji — I'll respond\n`) +
         `• I remember recent messages in this chat\n` +
         `• I learn facts about you (stored per user)` +
         (inGroup ? `\n• I learn facts about this group (stored per chat)` : "") +
@@ -343,20 +364,4 @@ function escapeHtml(text: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-}
-
-function splitMessage(text: string, maxLen = 4000): string[] {
-  if (text.length <= maxLen) return [text];
-
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > maxLen) {
-    let splitAt = remaining.lastIndexOf("\n", maxLen);
-    if (splitAt < maxLen * 0.5) splitAt = maxLen;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).trimStart();
-  }
-  if (remaining) chunks.push(remaining);
-  return chunks;
 }

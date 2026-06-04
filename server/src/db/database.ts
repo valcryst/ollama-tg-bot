@@ -6,6 +6,7 @@ import { bindHistoryDatabase, configureHistoryAccess } from "./history.js";
 import { bindGroupMemoryDatabase } from "./group-memory.js";
 import { bindUserMemoryDatabase } from "./user-memory.js";
 import { appendErrorLog, bindErrorLogDatabase } from "./error-log.js";
+import { bindMessageRefsDatabase } from "./message-refs.js";
 import { validateSettingsFields } from "../settings-limits.js";
 
 export interface Settings {
@@ -113,6 +114,7 @@ export function initDatabase(): void {
   bindUserMemoryDatabase(db);
   bindGroupMemoryDatabase(db);
   bindErrorLogDatabase(db);
+  bindMessageRefsDatabase(db);
   configureHistoryAccess(getSettings);
 }
 

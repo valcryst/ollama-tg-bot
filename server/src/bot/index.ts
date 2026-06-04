@@ -29,10 +29,12 @@ export async function startBot(): Promise<Bot> {
   });
 
   void bot.start({
+    allowed_updates: ["message", "message_reaction", "my_chat_member"],
     onStart: () => {
       console.log(`Bot @${botUsername} is running`);
       console.log(
-        "Groups: @mention the bot, reply to its messages, or use /cmd@botname. " +
+        "Groups: @mention, reply, or react to the bot's messages. " +
+          "Emoji reactions in groups require the bot to be an admin. " +
           "If @mentions are ignored, send /setprivacy to @BotFather and choose Disable.",
       );
     },

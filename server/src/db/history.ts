@@ -45,6 +45,16 @@ export function conversationKey(chatId: number, threadId?: number): string {
   return threadId != null ? `${chatId}:${threadId}` : String(chatId);
 }
 
+export function threadIdFromChatKey(
+  chatKey: string,
+  chatId: number,
+): number | undefined {
+  const prefix = `${chatId}:`;
+  if (!chatKey.startsWith(prefix)) return undefined;
+  const threadId = Number(chatKey.slice(prefix.length));
+  return Number.isInteger(threadId) && threadId > 0 ? threadId : undefined;
+}
+
 export function getHistory(chatKey: string): StoredMessage[] {
   const { historyMaxMessages } = readSettings();
   const rows = db
