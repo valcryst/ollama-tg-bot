@@ -15,6 +15,8 @@ import {
   recordReply,
 } from "../db/database.js";
 import {
+  currentSpeakerFromUser,
+  groupMemoryUserMessage,
   historyUserLabel,
   isGroupChat,
   resolveConversationKey,
@@ -174,6 +176,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       const memoryUserLabel = replyContext
         ? appendReplyContext(ctx, historyBase, botId)
         : historyBase;
+      const speaker = inGroup ? currentSpeakerFromUser(ctx.from) : null;
 
       const currentUser: ChatMessage = {
         role: "user",
@@ -191,10 +194,11 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         historyLabel,
         userMemoryFacts,
         groupMemoryFacts,
+        currentSpeaker: speaker,
         replyContext,
         usedVision,
         memoryInput: {
-          userMessage: memoryUserLabel,
+          userMessage: groupMemoryUserMessage(memoryUserLabel, speaker),
           replyContext,
           existingUserFacts: userMemoryFacts,
           existingGroupFacts: groupMemoryFacts,
@@ -236,7 +240,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     recordMessageReceived();
 
     const { convKey, chatId, messageId, targetRole, targetContent } = resolved;
-    const userId = resolveUserId(ctx);
+    const userId =
+      resolved.reactor?.id != null
+        ? String(resolved.reactor.id)
+        : resolveUserId(ctx);
     const inGroup =
       resolved.chatType === "group" || resolved.chatType === "supergroup";
     const groupChatId = inGroup ? String(chatId) : null;
@@ -247,7 +254,8 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     if (groupChatId) scheduleGroupMemoryCompression(groupChatId);
     scheduleHistoryCompression(convKey);
 
-    const reactor = ctx.from ?? ctx.messageReaction?.user;
+    const reactor = resolved.reactor;
+    const speaker = inGroup ? currentSpeakerFromUser(reactor) : null;
     const body = formatReactionPrompt(reactor, change, targetRole, targetContent);
     const historyLabel = reactionHistoryLabel(reactor, change, targetRole);
 
@@ -263,8 +271,9 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       historyLabel,
       userMemoryFacts,
       groupMemoryFacts,
+      currentSpeaker: speaker,
       memoryInput: {
-        userMessage: historyLabel,
+        userMessage: groupMemoryUserMessage(historyLabel, speaker),
         replyContext: targetContent,
         existingUserFacts: userMemoryFacts,
         existingGroupFacts: groupMemoryFacts,
@@ -326,7 +335,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     const convKey = resolveConversationKey(ctx);
     if (!convKey) return;
     clearHistory(convKey);
-    await replyToUser(ctx, "Chat context cleared for this conversation.");
+    const scope = isGroupChat(ctx)
+      ? "your messages with the bot in this group"
+      : "this conversation";
+    await replyToUser(ctx, `Chat context cleared for ${scope}.`);
   });
 
   bot.command("forget", async (ctx) => {

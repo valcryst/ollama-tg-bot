@@ -10,12 +10,27 @@ import { scheduleHistoryCompression } from "../context-compress.js";
 import { buildSystemPrompt } from "../prompts.js";
 import { stickerHistoryLabel } from "./stickers.js";
 import type { Sticker } from "@grammyjs/types";
+import {
+  currentSpeakerFromUser,
+  wrapCurrentTurnForGroup,
+  type CurrentSpeaker,
+} from "./speaker.js";
+
+export type { CurrentSpeaker } from "./speaker.js";
 
 export function resolveConversationKey(ctx: Context): string | null {
   const chatId = ctx.chat?.id;
   if (chatId == null) return null;
+
+  const inGroup =
+    ctx.chat?.type === "group" || ctx.chat?.type === "supergroup";
   const threadId = ctx.message?.message_thread_id;
-  return conversationKey(chatId, threadId);
+  const userId = ctx.from?.id;
+
+  return conversationKey(chatId, {
+    threadId,
+    userId: inGroup && userId != null ? String(userId) : undefined,
+  });
 }
 
 export function buildChatMessages(
@@ -24,7 +39,11 @@ export function buildChatMessages(
   currentUser: ChatMessage,
   userMemoryFacts: string[] = [],
   replyContext?: string | null,
-  memoryOptions: { isGroupChat?: boolean; groupMemoryFacts?: string[] } = {},
+  memoryOptions: {
+    isGroupChat?: boolean;
+    groupMemoryFacts?: string[];
+    currentSpeaker?: CurrentSpeaker | null;
+  } = {},
 ): ChatMessage[] {
   const history = historyToChatMessages(getHistory(chatKey));
   const turns: ChatMessage[] = [...history];
@@ -38,7 +57,13 @@ export function buildChatMessages(
     });
   }
 
-  turns.push(currentUser);
+  const { isGroupChat = false, currentSpeaker = null } = memoryOptions;
+  let userContent = currentUser.content;
+  if (isGroupChat && currentSpeaker) {
+    userContent = wrapCurrentTurnForGroup(userContent, currentSpeaker);
+  }
+
+  turns.push({ ...currentUser, content: userContent });
 
   return [
     {
@@ -88,3 +113,13 @@ export function historyUserLabel(
   if (usedVision) return "[sent an image]";
   return "[message]";
 }
+
+export function groupMemoryUserMessage(
+  baseLabel: string,
+  speaker: CurrentSpeaker | null,
+): string {
+  if (!speaker) return baseLabel;
+  return `[Speaker: ${speaker.label}] ${baseLabel}`;
+}
+
+export { currentSpeakerFromUser };

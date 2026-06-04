@@ -41,18 +41,45 @@ export function bindHistoryDatabase(database: DatabaseSync): void {
   `);
 }
 
-export function conversationKey(chatId: number, threadId?: number): string {
-  return threadId != null ? `${chatId}:${threadId}` : String(chatId);
+export interface ConversationKeyOptions {
+  threadId?: number;
+  /** Group chats: keep history separate per member. */
+  userId?: string;
+}
+
+export function conversationKey(
+  chatId: number,
+  options?: ConversationKeyOptions,
+): string {
+  const parts = [String(chatId)];
+  if (options?.threadId != null) parts.push(String(options.threadId));
+  if (options?.userId) parts.push(options.userId);
+  return parts.join(":");
 }
 
 export function threadIdFromChatKey(
   chatKey: string,
   chatId: number,
+  options?: { group?: boolean },
 ): number | undefined {
-  const prefix = `${chatId}:`;
-  if (!chatKey.startsWith(prefix)) return undefined;
-  const threadId = Number(chatKey.slice(prefix.length));
-  return Number.isInteger(threadId) && threadId > 0 ? threadId : undefined;
+  const parts = chatKey.split(":");
+  if (parts[0] !== String(chatId)) return undefined;
+
+  if (options?.group) {
+    // chat:thread:user (forum topic)
+    if (parts.length >= 3) {
+      const threadId = Number(parts[1]);
+      return Number.isInteger(threadId) && threadId > 0 ? threadId : undefined;
+    }
+    return undefined;
+  }
+
+  // private: chat:thread
+  if (parts.length === 2) {
+    const threadId = Number(parts[1]);
+    return Number.isInteger(threadId) && threadId > 0 ? threadId : undefined;
+  }
+  return undefined;
 }
 
 export function getHistory(chatKey: string): StoredMessage[] {

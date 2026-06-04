@@ -21,7 +21,7 @@ none
 none
 [/GROUP_MEMORY]
 
-[MEMORY] = new facts about the current user only (name, preferences, role, timezone, how they want to be addressed). One fact per line. "none" if nothing new.
+[MEMORY] = new facts about the current speaker only (name, preferences, role, timezone, how they want to be addressed). One fact per line. "none" if nothing new. In group chats, never store other members' traits here.
 
 [GROUP_MEMORY] = new facts about the group/chat itself (purpose of the group, rules, recurring topics, in-jokes, what this chat is for). Not facts about individual users. "none" if nothing new or not a group chat.
 

@@ -14,22 +14,46 @@ When a separate user turn says they are "replying to" a message, answer about th
 
 Keep every [REPLY] extremely short: one or two sentences when possible, only a few lines when necessary.`;
 
+const GROUP_SYSTEM_ADDENDUM = `This is a GROUP chat with multiple people.
+
+- You are replying to ONE person right now. Their name and id are marked in the current message as [CURRENT SPEAKER].
+- Chat history shown to you is only your prior exchanges with THAT same person in this group — not other members.
+- Facts under "this person" apply to the current speaker only. Group facts are about the chat in general.
+- Never attribute another member's messages, preferences, or name to the person you are answering now.
+- If the current speaker refers to someone else, use only what is in this thread or group facts — do not invent.`;
+
 export const BASE_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT_CORE}\n\n${REPLY_FORMAT_SPEC}`;
 
 export function buildSystemPrompt(
   customPrompt: string,
   userMemoryFacts: string[] = [],
-  options: { isGroupChat?: boolean; groupMemoryFacts?: string[] } = {},
+  options: {
+    isGroupChat?: boolean;
+    groupMemoryFacts?: string[];
+    currentSpeaker?: { label: string; userId: string } | null;
+  } = {},
 ): string {
   const userSection = formatUserMemoryForPrompt(userMemoryFacts);
-  const { isGroupChat = false, groupMemoryFacts = [] } = options;
+  const { isGroupChat = false, groupMemoryFacts = [], currentSpeaker } =
+    options;
 
-  let prompt =
-    `${BASE_SYSTEM_PROMPT_CORE}\n\n## Known facts about this user\n${userSection}`;
+  let prompt = BASE_SYSTEM_PROMPT_CORE;
+  if (isGroupChat) prompt += `\n\n${GROUP_SYSTEM_ADDENDUM}`;
+
+  const userHeading = isGroupChat
+    ? "## Known facts about the person you are replying to now"
+    : "## Known facts about this user";
+  prompt += `\n\n${userHeading}\n${userSection}`;
+
+  if (isGroupChat && currentSpeaker) {
+    prompt +=
+      `\n\n## Current speaker (reply to them only)\n` +
+      `${currentSpeaker.label} (id: ${currentSpeaker.userId})`;
+  }
 
   if (isGroupChat) {
     const groupSection = formatGroupMemoryForPrompt(groupMemoryFacts);
-    prompt += `\n\n## Known facts about this group\n${groupSection}`;
+    prompt += `\n\n## Known facts about this group (shared)\n${groupSection}`;
   }
 
   const custom = customPrompt.trim();

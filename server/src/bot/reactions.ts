@@ -4,7 +4,8 @@ import {
   findMessageRefInChat,
   type MessageRefRole,
 } from "../db/message-refs.js";
-import { threadIdFromChatKey } from "../db/history.js";
+import { conversationKey, threadIdFromChatKey } from "../db/history.js";
+import { currentSpeakerFromUser } from "./speaker.js";
 
 export interface ReactionChange {
   emojiAdded: string[];
@@ -21,6 +22,7 @@ export interface ResolvedReaction {
   messageThreadId?: number;
   targetRole: MessageRefRole | null;
   targetContent: string | null;
+  reactor: User | undefined;
 }
 
 export function parseReactionChange(ctx: Context): ReactionChange | null {
@@ -46,10 +48,20 @@ export function resolveReaction(ctx: Context): ResolvedReaction | null {
 
   const chatId = update.chat.id;
   const messageId = update.message_id;
+  const inGroup =
+    update.chat.type === "group" || update.chat.type === "supergroup";
   const match = findMessageRefInChat(chatId, messageId);
+  const reactor = ctx.from ?? update.user;
 
-  const convKey = match?.chatKey ?? String(chatId);
-  const messageThreadId = threadIdFromChatKey(convKey, chatId);
+  const messageThreadId = match
+    ? threadIdFromChatKey(match.chatKey, chatId, { group: inGroup })
+    : undefined;
+
+  const convKey = conversationKey(chatId, {
+    threadId: messageThreadId,
+    userId:
+      inGroup && reactor?.id != null ? String(reactor.id) : undefined,
+  });
 
   return {
     convKey,
@@ -59,8 +71,10 @@ export function resolveReaction(ctx: Context): ResolvedReaction | null {
     messageThreadId,
     targetRole: match?.role ?? null,
     targetContent: match?.content ?? null,
+    reactor,
   };
 }
+
 
 export function isReactionAddressed(
   chatType: Chat["type"],

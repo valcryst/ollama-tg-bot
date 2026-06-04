@@ -11,7 +11,11 @@ import {
 import { parseStructuredResponse } from "../response-format.js";
 import { sanitizeModelOutput } from "../ollama/sanitize.js";
 import { prepareTelegramHtml } from "../telegram/html.js";
-import { buildChatMessages, recordExchange } from "./conversation.js";
+import {
+  buildChatMessages,
+  recordExchange,
+  type CurrentSpeaker,
+} from "./conversation.js";
 import { scheduleMemoryPersistence } from "../memory-extract.js";
 import type { MemoryExtractInput } from "../memory-extract.js";
 
@@ -31,6 +35,7 @@ export interface ChatTurnInput {
   userMemoryFacts: string[];
   groupMemoryFacts: string[];
   memoryInput: ChatTurnMemoryInput;
+  currentSpeaker?: CurrentSpeaker | null;
   replyContext?: string | null;
   usedVision?: boolean;
   replyToMessageId?: number;
@@ -126,6 +131,7 @@ export async function runChatTurn(
       {
         isGroupChat: input.inGroup,
         groupMemoryFacts: input.groupMemoryFacts,
+        currentSpeaker: input.currentSpeaker,
       },
     );
 
