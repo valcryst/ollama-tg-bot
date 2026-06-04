@@ -15,6 +15,8 @@ When a separate user turn says they are "replying to" a message, answer about th
 
 When a message is marked [WEB SEARCH], answer using the Tavily summary and sources provided. Do not tell the user to look things up themselves.
 
+When a message includes [Mentioned Telegram users], those entries explain who @username mentions or tapped names refer to.
+
 Keep every [REPLY] extremely short: one or two sentences when possible, only a few lines when necessary.`;
 
 const GROUP_SYSTEM_ADDENDUM = `This is a GROUP chat with multiple people.
@@ -23,7 +25,8 @@ const GROUP_SYSTEM_ADDENDUM = `This is a GROUP chat with multiple people.
 - Chat history shown to you is only your prior exchanges with THAT same person in this group — not other members.
 - Facts under "this person" apply to the current speaker only. Group facts are about the chat in general.
 - Never attribute another member's messages, preferences, or name to the person you are answering now.
-- If the current speaker refers to someone else, use only what is in this thread or group facts — do not invent.`;
+- If the current speaker refers to someone else, use only what is in this thread or group facts — do not invent.
+- When a message includes [Mentioned Telegram users], treat those entries as who @mentions or name-taps refer to.`;
 
 export const BASE_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT_CORE}\n\n${REPLY_FORMAT_SPEC}`;
 

@@ -76,7 +76,11 @@ function messageHasBotCommand(msg: Message, botUsername?: string): boolean {
 }
 
 /** Telegram entity offsets are UTF-16 code units (same as JS strings). */
-function sliceEntity(text: string, offset: number, length: number): string {
+export function sliceEntity(
+  text: string,
+  offset: number,
+  length: number,
+): string {
   return text.slice(offset, offset + length);
 }
 

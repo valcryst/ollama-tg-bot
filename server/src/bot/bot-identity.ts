@@ -94,10 +94,6 @@ export function messageReferencesBotByName(
   for (const alias of bot.aliases) {
     if (alias.length < 3 || GENERIC_ALIAS_BLOCKLIST.has(alias)) continue;
 
-    if (alias.length >= 6 && trimmed.toLowerCase().includes(alias)) {
-      return true;
-    }
-
     const re = new RegExp(`(?:^|[^\\w@])${escapeRegex(alias)}(?:[^\\w]|$)`, "i");
     if (re.test(trimmed)) return true;
   }

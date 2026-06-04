@@ -36,6 +36,7 @@ import { stickerUserPrompt } from "./stickers.js";
 import { isMessageAddressedToBot } from "./address-analyze.js";
 import { stripBotAddressing } from "./bot-identity.js";
 import { isSlashCommandMessage } from "./addressed.js";
+import { enrichTextWithUserMentions } from "./mentions.js";
 import {
   groupSetupMessage,
   wasBotAddedToChat,
@@ -81,6 +82,7 @@ async function replyToUser(
 export function registerHandlers(bot: Bot, botUsername: string): void {
   bot.on("message", async (ctx) => {
     if (!ctx.message) return;
+    if (ctx.from?.is_bot) return;
     if (isSlashCommandMessage(ctx)) return;
 
     const text = extractText(ctx);
@@ -162,12 +164,19 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       const sticker = loaded.sourceSticker ?? ctx.message.sticker;
       const stickerVisionHint = loaded.visionHint;
       const botId = ctx.me?.id;
+      const botUsername = ctx.me?.username;
       const promptText = stripBotAddressing(text) || text;
+      const messageText = enrichTextWithUserMentions(promptText, ctx.message, {
+        botId,
+        botUsername,
+        senderId: ctx.from?.id,
+        senderUsername: ctx.from?.username,
+      });
       const body = sticker
-        ? stickerUserPrompt(sticker, promptText, stickerVisionHint)
-        : buildUserContent(promptText, usedVision, visionFromReply);
+        ? stickerUserPrompt(sticker, messageText, stickerVisionHint)
+        : buildUserContent(messageText, usedVision, visionFromReply);
       const historyBase = historyUserLabel(
-        promptText,
+        messageText,
         usedVision,
         visionFromReply ? undefined : sticker,
         visionFromReply,

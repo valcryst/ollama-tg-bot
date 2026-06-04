@@ -7,6 +7,7 @@ import {
   type BotIdentity,
 } from "./bot-identity.js";
 import { isMessageForBot } from "./addressed.js";
+import { stripNonBotMentions } from "./mentions.js";
 import { stickerHistoryLabel } from "./stickers.js";
 
 const ADDRESS_CHECK_NUM_PREDICT = 96;
@@ -84,8 +85,15 @@ export async function isMessageAddressedToBot(ctx: Context): Promise<boolean> {
   if (isMessageForBot(ctx)) return true;
 
   const bot = getBotIdentity();
+  const textForNameCheck = stripNonBotMentions(ctx.message, {
+    botId: ctx.me?.id,
+    botUsername: ctx.me?.username,
+  });
+  if (textForNameCheck && messageReferencesBotByName(textForNameCheck, bot)) {
+    return true;
+  }
+
   const text = messageTextForAddressCheck(ctx);
-  if (text && messageReferencesBotByName(text, bot)) return true;
 
   return analyzeGroupMessageForBot(ctx, bot, text);
 }
