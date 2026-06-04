@@ -14,6 +14,7 @@ export function AppLayout() {
     apiOnline,
     stats,
     ollamaOk,
+    tavilyConfigured,
     apiUnreachable,
     sectionErrors,
     saveOk,
@@ -75,6 +76,22 @@ export function AppLayout() {
                 ? "reachable"
                 : ollamaOk === false
                   ? "unreachable"
+                  : "—"}
+            </span>
+            <span
+              className={`badge ${
+                tavilyConfigured === true
+                  ? "ok"
+                  : tavilyConfigured === false
+                    ? ""
+                    : "warn"
+              }`}
+            >
+              Tavily{" "}
+              {tavilyConfigured === true
+                ? "on"
+                : tavilyConfigured === false
+                  ? "off"
                   : "—"}
             </span>
           </div>

@@ -27,13 +27,21 @@ npm run dev
 | Variable | Where | Default |
 |----------|-------|---------|
 | `BOT_TOKEN` | everywhere | required |
+| `TAVILY_API_KEY` | optional | empty (web search off) |
 | `PORT` | Docker / Portainer only | `3000` |
 
 Do not put `PORT` in `.env` for local dev — it is only for `docker-compose.yml` (`PORT:PORT` mapping + app listen).
 
+Ollama host is set in the **dashboard** (Settings). Tavily is configured via **`TAVILY_API_KEY`** in `.env`.
+
+### Web search (Tavily)
+
+With `TAVILY_API_KEY` set, the model decides whether a message needs a web search; the bot calls [Tavily](https://tavily.com) and injects the summary plus sources before replying.
+
 ## Features
 
 - Group & private chats, vision (images/stickers), optional random group replies
+- Optional web search via Tavily (model decides when to search)
 - Dashboard: Ollama host, model, prompts, stats
 
 ## Stack

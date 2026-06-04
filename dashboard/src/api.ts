@@ -129,6 +129,9 @@ function hintForPath(path: string, status: number): string | undefined {
       return "API route not found — is the server running on :3000? Vite proxies /api in dev.";
     }
   }
+  if (path === "/api/tavily/status") {
+    return undefined;
+  }
   if (path === "/api/models" || path === "/api/ollama/health") {
     if (status === 502) {
       return "Could not reach Ollama. Open Settings and verify the Ollama host URL, then ensure ollama serve is running.";
@@ -281,4 +284,6 @@ export const api = {
     request<{ ok: boolean }>(withHostQuery("/api/ollama/health", host)).then(
       (r) => r.ok,
     ),
+  tavilyStatus: () =>
+    request<{ configured: boolean; ok: boolean }>("/api/tavily/status"),
 };

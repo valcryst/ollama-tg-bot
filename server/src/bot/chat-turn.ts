@@ -12,6 +12,13 @@ import { parseStructuredResponse } from "../response-format.js";
 import { sanitizeModelOutput } from "../ollama/sanitize.js";
 import { prepareTelegramHtml } from "../telegram/html.js";
 import {
+  formatTavilyContext,
+  formatTavilyFailure,
+  isTavilyConfigured,
+  tavilySearch,
+} from "../tavily/client.js";
+import { analyzeSearchNeed } from "./search-analyze.js";
+import {
   buildChatMessages,
   recordExchange,
   type CurrentSpeaker,
@@ -123,6 +130,28 @@ export async function runChatTurn(
   );
 
   try {
+    let webSearchContext: string | null = null;
+    if (isTavilyConfigured()) {
+      const decision = await analyzeSearchNeed({
+        userMessage: input.currentUser.content,
+        replyContext: input.replyContext,
+      });
+      if (decision.needsSearch && decision.query) {
+        try {
+          const payload = await tavilySearch(decision.query);
+          webSearchContext = formatTavilyContext(decision.query, payload);
+          console.log(
+            `Tavily: ${payload.results.length} source(s)` +
+              (payload.answer ? ", with summary" : "") +
+              ` for "${decision.query}"`,
+          );
+        } catch (err) {
+          console.error("Tavily search failed:", err);
+          webSearchContext = formatTavilyFailure(decision.query, err);
+        }
+      }
+    }
+
     const messages = buildChatMessages(
       settings.customSystemPrompt,
       input.convKey,
@@ -134,6 +163,7 @@ export async function runChatTurn(
         groupMemoryFacts: input.groupMemoryFacts,
         generalMemoryFacts: input.generalMemoryFacts,
         currentSpeaker: input.currentSpeaker,
+        webSearchContext,
       },
     );
 

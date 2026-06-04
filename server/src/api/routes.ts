@@ -7,6 +7,7 @@ import {
   type Settings,
 } from "../db/database.js";
 import { checkHealth, listModels } from "../ollama/client.js";
+import { isTavilyConfigured } from "../tavily/client.js";
 import { BASE_SYSTEM_PROMPT } from "../prompts.js";
 import {
   clearGroupFactsForGroup,
@@ -98,6 +99,10 @@ export function createApiRouter(): Router {
       const status = message.includes("not configured") ? 400 : 502;
       res.status(status).json({ error: message });
     }
+  });
+
+  router.get("/tavily/status", (_req, res) => {
+    res.json({ configured: isTavilyConfigured(), ok: isTavilyConfigured() });
   });
 
   router.get("/ollama/health", async (req, res) => {

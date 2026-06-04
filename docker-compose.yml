@@ -5,6 +5,7 @@ services:
       - "${PORT:-3000}:${PORT:-3000}"
     environment:
       BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
       NODE_ENV: production
       PORT: ${PORT:-3000}
     volumes:

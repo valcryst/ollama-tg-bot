@@ -44,6 +44,7 @@ export function buildChatMessages(
     groupMemoryFacts?: string[];
     generalMemoryFacts?: string[];
     currentSpeaker?: CurrentSpeaker | null;
+    webSearchContext?: string | null;
   } = {},
 ): ChatMessage[] {
   const history = historyToChatMessages(getHistory(chatKey));
@@ -55,6 +56,17 @@ export function buildChatMessages(
       content:
         `The user is replying to this earlier Telegram message (if they say "this", "that", or "it", they mean this):\n` +
         replyContext.trim(),
+    });
+  }
+
+  const { webSearchContext } = memoryOptions;
+  if (webSearchContext?.trim()) {
+    turns.push({
+      role: "user",
+      content:
+        `[WEB SEARCH — use for your reply to the next message. ` +
+        `Answer from the Tavily summary and sources below.]\n\n` +
+        webSearchContext.trim(),
     });
   }
 

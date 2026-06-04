@@ -1,5 +1,6 @@
 import type { Bot, Context } from "grammy";
 import type { ChatMessage } from "../ollama/client.js";
+import { config } from "../config.js";
 import { clearHistory } from "../db/history.js";
 import { clearGroupMemory, getGroupFacts } from "../db/group-memory.js";
 import { getGeneralFacts } from "../db/general-memory.js";
@@ -336,6 +337,9 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
             `• Send photos or stickers (animated/video use a preview frame)\n` +
             `• React to my messages with emoji — I'll respond\n`) +
         `• I remember recent messages in this chat\n` +
+        (config.tavilyApiKey
+          ? `• I can search the web via Tavily when needed\n`
+          : "") +
         `• I learn facts about you (stored per user)` +
         (inGroup ? `\n• I learn facts about this group (stored per chat)` : "") +
         `\n\n` +

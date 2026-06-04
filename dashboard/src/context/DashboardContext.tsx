@@ -28,6 +28,7 @@ interface DashboardContextValue {
   stats: Stats | null;
   models: OllamaModel[];
   ollamaOk: boolean | null;
+  tavilyConfigured: boolean | null;
   apiOnline: boolean | null;
   loading: boolean;
   saving: boolean;
@@ -57,6 +58,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [models, setModels] = useState<OllamaModel[]>([]);
   const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
+  const [tavilyConfigured, setTavilyConfigured] = useState<boolean | null>(
+    null,
+  );
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -151,6 +155,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       setModels([]);
     }
 
+    try {
+      const tavily = await api.tavilyStatus();
+      setTavilyConfigured(tavily.configured);
+    } catch {
+      setTavilyConfigured(null);
+    }
+
     setSectionErrors(nextErrors);
     setLoading(false);
   }, [applyModels]);
@@ -190,6 +201,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         setOllamaOk(false);
         setSectionErrors((prev) => ({ ...prev, ollama: err }));
+      }
+
+      try {
+        const tavily = await api.tavilyStatus();
+        setTavilyConfigured(tavily.configured);
+      } catch {
+        setTavilyConfigured(null);
       }
     }, 5000);
     return () => clearInterval(id);
@@ -313,6 +331,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     stats,
     models,
     ollamaOk,
+    tavilyConfigured,
     apiOnline,
     loading,
     saving,

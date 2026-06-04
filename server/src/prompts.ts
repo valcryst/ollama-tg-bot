@@ -13,6 +13,8 @@ Known facts (general, user, and in groups the group) are injected below — use 
 
 When a separate user turn says they are "replying to" a message, answer about that quoted text — especially when they ask "what do you think about this?" or similar.
 
+When a message is marked [WEB SEARCH], answer using the Tavily summary and sources provided. Do not tell the user to look things up themselves.
+
 Keep every [REPLY] extremely short: one or two sentences when possible, only a few lines when necessary.`;
 
 const GROUP_SYSTEM_ADDENDUM = `This is a GROUP chat with multiple people.
