@@ -2,28 +2,16 @@ services:
   bot:
     build: .
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:${PORT:-3000}"
     environment:
-      # Set BOT_TOKEN in Portainer stack env, or in a .env file next to this compose file
-      - BOT_TOKEN=${BOT_TOKEN:?Set BOT_TOKEN — Portainer stack env or .env file}
-      - PORT=${PORT:-3000}
-      - DATABASE_PATH=/app/data/bot.db
-      - DASHBOARD_DIST=/app/dashboard/dist
+      BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN}
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
     volumes:
       - bot-data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
-  # Uncomment if you want Ollama in the same stack (GPU profile may be needed)
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama-data:/root/.ollama
-  #   restart: unless-stopped
-
 volumes:
   bot-data:
-  # ollama-data:

@@ -30,11 +30,8 @@ export function OfflinePage({ primaryLoadError, onRetry }: OfflinePageProps) {
             <code>BOT_TOKEN</code>
           </li>
           <li>
-            Run <code>npm run dev -w server</code> (port 3000)
-          </li>
-          <li>
-            Keep this UI on port 5173, or open port 3000 after{" "}
-            <code>npm run build</code>
+            Run <code>npm run dev</code> (or <code>npm run dev -w server</code> in
+            another terminal)
           </li>
         </ol>
         <button type="button" onClick={onRetry}>

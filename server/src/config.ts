@@ -3,22 +3,17 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, "..", "..");
 
-const envPath = path.resolve(__dirname, '..', '..', ".env");
-
-dotenv.config({
-  path: envPath,
-});
+dotenv.config({ path: path.join(rootDir, ".env") });
 
 export const config = {
   botToken: process.env.BOT_TOKEN ?? "",
+  host: "0.0.0.0",
   port: Number(process.env.PORT ?? 3000),
   databasePath:
-    process.env.DATABASE_PATH ??
-    path.join(__dirname, "..", "..", "data", "bot.db"),
-  dashboardDist:
-    process.env.DASHBOARD_DIST ??
-    path.join(__dirname, "..", "..", "dashboard", "dist"),
+    process.env.DATABASE_PATH ?? path.join(rootDir, "data", "bot.db"),
+  dashboardDist: path.join(rootDir, "dashboard", "dist"),
 };
 
 export function requireBotToken(): string {

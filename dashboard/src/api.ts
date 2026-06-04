@@ -113,7 +113,7 @@ function hintForPath(path: string, status: number): string | undefined {
       return "The backend may have crashed on startup (check the server terminal). In dev, run: npm run dev -w server";
     }
     if (status === 404) {
-      return "API route not found — is the server running on port 3000? The Vite dev server should proxy /api to it.";
+      return "API route not found — is the server running on :3000? Vite proxies /api in dev.";
     }
   }
   if (path === "/api/models" || path === "/api/ollama/health") {
@@ -150,7 +150,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       path,
       message: "Could not connect to the API",
       hint:
-        "Start the backend with npm run dev -w server (port 3000). If the dashboard runs on :5173, Vite proxies /api automatically.",
+        "Start the backend: npm run dev -w server (or npm run dev). Vite proxies /api in dev.",
     });
   }
 

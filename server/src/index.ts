@@ -13,7 +13,6 @@ async function main(): Promise<void> {
   const app = express();
   app.use(cors());
   app.use(express.json());
-
   app.use("/api", createApiRouter());
 
   app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -24,24 +23,22 @@ async function main(): Promise<void> {
     });
   });
 
-  const dashboardPath = config.dashboardDist;
-  if (fs.existsSync(path.join(dashboardPath, "index.html"))) {
-    app.use(express.static(dashboardPath));
+  const indexHtml = path.join(config.dashboardDist, "index.html");
+  if (fs.existsSync(indexHtml)) {
+    app.use(express.static(config.dashboardDist));
     app.get("*", (req, res, next) => {
       if (req.path.startsWith("/api")) return next();
-      res.sendFile(path.join(dashboardPath, "index.html"));
+      res.sendFile(indexHtml);
     });
-    console.log(`Dashboard served from ${dashboardPath}`);
-  } else {
-    console.log(
-      "Dashboard build not found — run `npm run build` or use dashboard dev server on :5173",
-    );
+    console.log(`Dashboard: ${config.dashboardDist}`);
+  } else if (!process.env.NODE_ENV || process.env.NODE_ENV === "development") {
+    console.log("No dashboard build — run npm run dev -w dashboard (Vite)");
   }
 
   await startBot();
 
-  const server = app.listen(config.port, () => {
-    console.log(`API listening on http://localhost:${config.port}`);
+  const server = app.listen(config.port, config.host, () => {
+    console.log(`Listening on http://${config.host}:${config.port}`);
   });
 
   const shutdown = async () => {
