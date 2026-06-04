@@ -66,6 +66,7 @@ export function createApiRouter(): Router {
         "customSystemPrompt",
         "randomReplyEnabled",
         "randomReplyChance",
+        "reactToEveryImage",
         "numPredict",
         "numCtx",
         "temperature",

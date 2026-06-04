@@ -71,3 +71,10 @@ export function messageHasVisionMedia(message: Message): boolean {
   if (message.document?.mime_type?.startsWith("image/")) return true;
   return false;
 }
+
+/** Photo or image file in the message itself (not stickers). */
+export function messageHasUserImage(message: Message): boolean {
+  if (message.photo?.length) return true;
+  if (message.document?.mime_type?.startsWith("image/")) return true;
+  return false;
+}

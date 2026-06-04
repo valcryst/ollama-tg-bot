@@ -30,6 +30,7 @@ import { runChatTurn } from "./chat-turn.js";
 import {
   findReplyMediaMessage,
   loadVisionFromMessage,
+  messageHasUserImage,
 } from "./message-media.js";
 import { stickerUserPrompt } from "./stickers.js";
 import { isMessageAddressedToBot } from "./address-analyze.js";
@@ -92,13 +93,20 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
     const addressed = await isMessageAddressedToBot(ctx);
     const settings = getSettings();
+    const inGroup = ctx.chat?.type !== "private";
     const randomHit =
       settings.randomReplyEnabled &&
-      ctx.chat?.type !== "private" &&
+      inGroup &&
       !addressed &&
       Math.random() * 100 < settings.randomReplyChance;
+    const imageHit =
+      settings.reactToEveryImage &&
+      inGroup &&
+      !addressed &&
+      !randomHit &&
+      messageHasUserImage(ctx.message);
 
-    if (!addressed && !randomHit) return;
+    if (!addressed && !randomHit && !imageHit) return;
 
     recordMessageReceived();
 
@@ -110,7 +118,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
     const userId = resolveUserId(ctx);
     const groupChatId = resolveGroupChatId(ctx);
-    const inGroup = isGroupChat(ctx);
+    const inGroupChat = isGroupChat(ctx);
     const userMemoryFacts = userId ? getUserFacts(userId) : [];
     const groupMemoryFacts = groupChatId ? getGroupFacts(groupChatId) : [];
     const generalMemoryFacts = getGeneralFacts();
@@ -187,7 +195,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       const memoryUserLabel = replyContext
         ? appendReplyContext(ctx, historyBase, botId)
         : historyBase;
-      const speaker = inGroup ? currentSpeakerFromUser(ctx.from) : null;
+      const speaker = inGroupChat ? currentSpeakerFromUser(ctx.from) : null;
 
       const currentUser: ChatMessage = {
         role: "user",
@@ -200,7 +208,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         chatId,
         userId,
         groupChatId,
-        inGroup,
+        inGroup: inGroupChat,
         currentUser,
         historyLabel,
         userMemoryFacts,
@@ -215,7 +223,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
           existingUserFacts: userMemoryFacts,
           existingGroupFacts: groupMemoryFacts,
           existingGeneralFacts: generalMemoryFacts,
-          isGroupChat: inGroup,
+          isGroupChat: inGroupChat,
         },
       });
     } catch (err) {

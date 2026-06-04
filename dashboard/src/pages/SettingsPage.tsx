@@ -229,6 +229,26 @@ export function SettingsPage() {
               </div>
             )}
 
+            <div className="field toggle-row">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={draft.reactToEveryImage}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      reactToEveryImage: e.target.checked,
+                    })
+                  }
+                />
+                React to every image
+              </label>
+              <p className="hint">
+                In group chats, comment on photos and image files even when
+                they are not addressed to the bot (requires a vision model).
+              </p>
+            </div>
+
             <h3 className="section-title">Ollama performance</h3>
             <p className="hint section-hint">
               Lower values = faster replies. Takes effect on the next message.

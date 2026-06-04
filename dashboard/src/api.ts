@@ -5,6 +5,7 @@ export interface Settings {
   baseSystemPrompt?: string;
   randomReplyEnabled: boolean;
   randomReplyChance: number;
+  reactToEveryImage: boolean;
   numPredict: number;
   numCtx: number;
   temperature: number;

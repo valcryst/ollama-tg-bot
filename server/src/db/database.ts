@@ -16,6 +16,8 @@ export interface Settings {
   customSystemPrompt: string;
   randomReplyEnabled: boolean;
   randomReplyChance: number;
+  /** In groups, comment on photos/image files even when not addressed to the bot. */
+  reactToEveryImage: boolean;
   /** Max tokens Ollama may generate per reply (lower = faster). */
   numPredict: number;
   /** Context window size sent to Ollama. */
@@ -47,6 +49,7 @@ const DEFAULT_SETTINGS: Settings = {
   customSystemPrompt: "",
   randomReplyEnabled: false,
   randomReplyChance: 5,
+  reactToEveryImage: false,
   numPredict: 512,
   numCtx: 4096,
   temperature: 0.7,
@@ -161,6 +164,7 @@ export function getSettings(): Settings {
     customSystemPrompt: getSetting<string>("customSystemPrompt"),
     randomReplyEnabled: getSetting<boolean>("randomReplyEnabled"),
     randomReplyChance: getSetting<number>("randomReplyChance"),
+    reactToEveryImage: getSetting<boolean>("reactToEveryImage"),
     numPredict: getSetting<number>("numPredict"),
     numCtx: getSetting<number>("numCtx"),
     temperature: getSetting<number>("temperature"),
