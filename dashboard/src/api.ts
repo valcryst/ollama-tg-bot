@@ -50,6 +50,12 @@ export interface GroupMemoryFact {
   createdAt: string;
 }
 
+export interface GeneralMemoryFact {
+  id: number;
+  fact: string;
+  createdAt: string;
+}
+
 export interface OllamaModel {
   name: string;
   size?: number;
@@ -249,6 +255,28 @@ export const api = {
       `/api/group-memories/group/${encodeURIComponent(groupId)}`,
       { method: "DELETE" },
     ),
+  getGeneralMemories: () =>
+    request<{ facts: GeneralMemoryFact[]; total: number }>(
+      "/api/general-memories",
+    ),
+  createGeneralMemory: (fact: string) =>
+    request<{ fact: GeneralMemoryFact }>("/api/general-memories", {
+      method: "POST",
+      body: JSON.stringify({ fact }),
+    }),
+  updateGeneralMemory: (id: number, fact: string) =>
+    request<{ fact: GeneralMemoryFact }>(`/api/general-memories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ fact }),
+    }),
+  deleteGeneralMemory: (id: number) =>
+    request<{ ok: boolean }>(`/api/general-memories/${id}`, {
+      method: "DELETE",
+    }),
+  clearGeneralMemories: () =>
+    request<{ ok: boolean; deleted: number }>("/api/general-memories", {
+      method: "DELETE",
+    }),
   ollamaHealth: (host?: string) =>
     request<{ ok: boolean }>(withHostQuery("/api/ollama/health", host)).then(
       (r) => r.ok,

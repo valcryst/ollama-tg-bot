@@ -42,6 +42,7 @@ export function buildChatMessages(
   memoryOptions: {
     isGroupChat?: boolean;
     groupMemoryFacts?: string[];
+    generalMemoryFacts?: string[];
     currentSpeaker?: CurrentSpeaker | null;
   } = {},
 ): ChatMessage[] {

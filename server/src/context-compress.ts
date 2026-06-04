@@ -1,5 +1,10 @@
 import { getSettings } from "./db/database.js";
 import {
+  getGeneralFacts,
+  generalMemoryTotalChars,
+  replaceGeneralFacts,
+} from "./db/general-memory.js";
+import {
   getGroupFacts,
   groupMemoryTotalChars,
   replaceGroupFacts,
@@ -85,6 +90,12 @@ export function groupMemoryNeedsCompression(groupId: string): boolean {
   return groupMemoryTotalChars(facts) >= MEMORY_COMPRESS_MIN_CHARS;
 }
 
+export function generalMemoryNeedsCompression(): boolean {
+  const facts = getGeneralFacts();
+  if (facts.length < MEMORY_COMPRESS_MIN_FACTS) return false;
+  return generalMemoryTotalChars(facts) >= MEMORY_COMPRESS_MIN_CHARS;
+}
+
 export function scheduleHistoryCompression(chatKey: string): void {
   const key = `history:${chatKey}`;
   if (inFlight.has(key)) return;
@@ -109,6 +120,15 @@ export function scheduleGroupMemoryCompression(groupId: string): void {
   inFlight.add(key);
   void compressGroupMemoryIfNeeded(groupId)
     .catch((err) => console.error("Group memory compression failed:", err))
+    .finally(() => inFlight.delete(key));
+}
+
+export function scheduleGeneralMemoryCompression(): void {
+  const key = "general";
+  if (inFlight.has(key)) return;
+  inFlight.add(key);
+  void compressGeneralMemoryIfNeeded()
+    .catch((err) => console.error("General memory compression failed:", err))
     .finally(() => inFlight.delete(key));
 }
 
@@ -197,9 +217,20 @@ async function compressGroupMemoryIfNeeded(groupId: string): Promise<void> {
   );
 }
 
+async function compressGeneralMemoryIfNeeded(): Promise<void> {
+  if (!generalMemoryNeedsCompression()) return;
+  const facts = getGeneralFacts();
+  const merged = await compressFactsWithModel(facts, "general");
+  if (merged.length === 0) return;
+  replaceGeneralFacts(merged);
+  console.log(
+    `Compressed general memory: ${facts.length} facts → ${merged.length}`,
+  );
+}
+
 async function compressFactsWithModel(
   facts: string[],
-  kind: "user" | "group",
+  kind: "user" | "group" | "general",
 ): Promise<string[]> {
   const lines = facts.map((f) => `- ${f}`).join("\n");
   const messages: ChatMessage[] = [

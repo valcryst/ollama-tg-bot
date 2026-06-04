@@ -2,9 +2,11 @@ import type { Bot, Context } from "grammy";
 import type { ChatMessage } from "../ollama/client.js";
 import { clearHistory } from "../db/history.js";
 import { clearGroupMemory, getGroupFacts } from "../db/group-memory.js";
+import { getGeneralFacts } from "../db/general-memory.js";
 import { clearUserMemory, getUserFacts } from "../db/user-memory.js";
 import { rememberMessageRef } from "../db/message-refs.js";
 import {
+  scheduleGeneralMemoryCompression,
   scheduleGroupMemoryCompression,
   scheduleHistoryCompression,
   scheduleUserMemoryCompression,
@@ -114,9 +116,11 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     const inGroup = isGroupChat(ctx);
     const userMemoryFacts = userId ? getUserFacts(userId) : [];
     const groupMemoryFacts = groupChatId ? getGroupFacts(groupChatId) : [];
+    const generalMemoryFacts = getGeneralFacts();
 
     if (userId) scheduleUserMemoryCompression(userId);
     if (groupChatId) scheduleGroupMemoryCompression(groupChatId);
+    scheduleGeneralMemoryCompression();
     scheduleHistoryCompression(convKey);
 
     try {
@@ -194,6 +198,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         historyLabel,
         userMemoryFacts,
         groupMemoryFacts,
+        generalMemoryFacts,
         currentSpeaker: speaker,
         replyContext,
         usedVision,
@@ -202,6 +207,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
           replyContext,
           existingUserFacts: userMemoryFacts,
           existingGroupFacts: groupMemoryFacts,
+          existingGeneralFacts: generalMemoryFacts,
           isGroupChat: inGroup,
         },
       });
@@ -249,9 +255,11 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     const groupChatId = inGroup ? String(chatId) : null;
     const userMemoryFacts = userId ? getUserFacts(userId) : [];
     const groupMemoryFacts = groupChatId ? getGroupFacts(groupChatId) : [];
+    const generalMemoryFacts = getGeneralFacts();
 
     if (userId) scheduleUserMemoryCompression(userId);
     if (groupChatId) scheduleGroupMemoryCompression(groupChatId);
+    scheduleGeneralMemoryCompression();
     scheduleHistoryCompression(convKey);
 
     const reactor = resolved.reactor;
@@ -271,12 +279,14 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       historyLabel,
       userMemoryFacts,
       groupMemoryFacts,
+      generalMemoryFacts,
       currentSpeaker: speaker,
       memoryInput: {
         userMessage: groupMemoryUserMessage(historyLabel, speaker),
         replyContext: targetContent,
         existingUserFacts: userMemoryFacts,
         existingGroupFacts: groupMemoryFacts,
+        existingGeneralFacts: generalMemoryFacts,
         isGroupChat: inGroup,
       },
       replyToMessageId: messageId,

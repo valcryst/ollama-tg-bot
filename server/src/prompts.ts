@@ -1,4 +1,5 @@
 import { REPLY_FORMAT_SPEC } from "./response-format.js";
+import { formatGeneralMemoryForPrompt } from "./db/general-memory.js";
 import { formatGroupMemoryForPrompt } from "./db/group-memory.js";
 import { formatUserMemoryForPrompt } from "./db/user-memory.js";
 
@@ -8,7 +9,7 @@ When users send stickers, each sticker has an associated emoji from its pack —
 
 When users react to a message with emoji, treat that reaction as something they said to you — respond to the feeling or intent behind it, especially when they react to your messages.
 
-Known facts about the user and (in groups) the group are injected below — use them naturally. A separate step stores new durable facts; you only write the public reply.
+Known facts (general, user, and in groups the group) are injected below — use them naturally. A separate step stores new durable facts; you only write the public reply.
 
 When a separate user turn says they are "replying to" a message, answer about that quoted text — especially when they ask "what do you think about this?" or similar.
 
@@ -30,15 +31,23 @@ export function buildSystemPrompt(
   options: {
     isGroupChat?: boolean;
     groupMemoryFacts?: string[];
+    generalMemoryFacts?: string[];
     currentSpeaker?: { label: string; userId: string } | null;
   } = {},
 ): string {
   const userSection = formatUserMemoryForPrompt(userMemoryFacts);
-  const { isGroupChat = false, groupMemoryFacts = [], currentSpeaker } =
-    options;
+  const {
+    isGroupChat = false,
+    groupMemoryFacts = [],
+    generalMemoryFacts = [],
+    currentSpeaker,
+  } = options;
 
   let prompt = BASE_SYSTEM_PROMPT_CORE;
   if (isGroupChat) prompt += `\n\n${GROUP_SYSTEM_ADDENDUM}`;
+
+  const generalSection = formatGeneralMemoryForPrompt(generalMemoryFacts);
+  prompt += `\n\n## General knowledge (all chats)\n${generalSection}`;
 
   const userHeading = isGroupChat
     ? "## Known facts about the person you are replying to now"

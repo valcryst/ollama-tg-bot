@@ -1,7 +1,9 @@
 import {
+  scheduleGeneralMemoryCompression,
   scheduleGroupMemoryCompression,
   scheduleUserMemoryCompression,
 } from "./context-compress.js";
+import { addGeneralFacts } from "./db/general-memory.js";
 import { addGroupFacts } from "./db/group-memory.js";
 import { addUserFacts } from "./db/user-memory.js";
 import { chatComplete } from "./ollama/client.js";
@@ -20,23 +22,30 @@ none
 [GROUP_MEMORY]
 none
 [/GROUP_MEMORY]
+[GENERAL_MEMORY]
+none
+[/GENERAL_MEMORY]
 
 [MEMORY] = new facts about the current speaker only (name, preferences, role, timezone, how they want to be addressed). One fact per line. "none" if nothing new. In group chats, never store other members' traits here.
 
 [GROUP_MEMORY] = new facts about the group/chat itself (purpose of the group, rules, recurring topics, in-jokes, what this chat is for). Not facts about individual users. "none" if nothing new or not a group chat.
+
+[GENERAL_MEMORY] = new facts that apply across all chats: glossary terms, definitions, project/domain facts, standing instructions not tied to one person or group. "none" if nothing new.
 
 Decide on your own — the user does not need to say "remember". Store facts that would still matter in a future session.
 
 Store when the user shares:
 - who they are, preferences, standing instructions
 - what this group is for, norms, ongoing context
+- definitions, acronyms, or knowledge meant for every conversation
 - corrections to prior assumptions
 
 Do NOT store:
 - greetings, jokes, sarcasm, or the assistant's own banter
 - one-off questions, transient moods, or message meta ("user replied to…")
 - facts already listed under "Already stored"
-- duplicates rephrased slightly`;
+- duplicates rephrased slightly
+- user-specific traits in [GENERAL_MEMORY] or group-only context in [GENERAL_MEMORY]`;
 
 export interface MemoryExtractInput {
   userMessage: string;
@@ -44,12 +53,14 @@ export interface MemoryExtractInput {
   assistantReply: string;
   existingUserFacts: string[];
   existingGroupFacts: string[];
+  existingGeneralFacts: string[];
   isGroupChat: boolean;
 }
 
 export interface MemoryExtractResult {
   userFacts: string[];
   groupFacts: string[];
+  generalFacts: string[];
 }
 
 export async function extractMemoriesFromTurn(
@@ -59,6 +70,7 @@ export async function extractMemoriesFromTurn(
   const groupBlock = input.isGroupChat
     ? formatStored("group", input.existingGroupFacts)
     : "Not a group chat — always write none in [GROUP_MEMORY].";
+  const generalBlock = formatStored("general", input.existingGeneralFacts);
 
   let turn = `User message:\n${input.userMessage.trim() || "(non-text message)"}`;
   if (input.replyContext?.trim()) {
@@ -73,6 +85,7 @@ export async function extractMemoriesFromTurn(
       content:
         `Already stored about this user:\n${userBlock}\n\n` +
         `Already stored about this group:\n${groupBlock}\n\n` +
+        `Already stored general knowledge:\n${generalBlock}\n\n` +
         `---\n${turn}`,
     },
   ];
@@ -85,10 +98,11 @@ export async function extractMemoriesFromTurn(
     return {
       userFacts: parsed.memoryFacts,
       groupFacts: input.isGroupChat ? parsed.groupMemoryFacts : [],
+      generalFacts: parsed.generalMemoryFacts,
     };
   } catch (err) {
     console.error("Memory extraction failed:", err);
-    return { userFacts: [], groupFacts: [] };
+    return { userFacts: [], groupFacts: [], generalFacts: [] };
   }
 }
 
@@ -129,6 +143,15 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
       addGroupFacts(ctx.groupChatId, groupNew);
       scheduleGroupMemoryCompression(ctx.groupChatId);
     }
+  }
+
+  const generalNew = newFactsOnly(
+    ctx.input.existingGeneralFacts,
+    extracted.generalFacts,
+  );
+  if (generalNew.length > 0) {
+    addGeneralFacts(generalNew);
+    scheduleGeneralMemoryCompression();
   }
 }
 

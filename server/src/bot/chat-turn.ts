@@ -34,6 +34,7 @@ export interface ChatTurnInput {
   historyLabel: string;
   userMemoryFacts: string[];
   groupMemoryFacts: string[];
+  generalMemoryFacts: string[];
   memoryInput: ChatTurnMemoryInput;
   currentSpeaker?: CurrentSpeaker | null;
   replyContext?: string | null;
@@ -131,6 +132,7 @@ export async function runChatTurn(
       {
         isGroupChat: input.inGroup,
         groupMemoryFacts: input.groupMemoryFacts,
+        generalMemoryFacts: input.generalMemoryFacts,
         currentSpeaker: input.currentSpeaker,
       },
     );

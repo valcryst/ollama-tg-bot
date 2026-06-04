@@ -547,6 +547,13 @@ input[type="range"] {
   margin: 0 0 0.35rem;
 }
 
+.memories-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .memory-groups {
   display: flex;
   flex-direction: column;

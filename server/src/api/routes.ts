@@ -22,6 +22,13 @@ import {
   normalizeFactText,
 } from "../db/memory-facts.js";
 import {
+  clearAllGeneralFacts,
+  createGeneralFact,
+  deleteGeneralFactById,
+  listGeneralFacts,
+  updateGeneralFactById,
+} from "../db/general-memory.js";
+import {
   clearUserFactsForUser,
   createUserFact,
   deleteUserFactById,
@@ -324,6 +331,115 @@ export function createApiRouter(): Router {
           err instanceof Error
             ? err.message
             : "Failed to clear group memory",
+      });
+    }
+  });
+
+  router.get("/general-memories", (_req, res) => {
+    try {
+      const facts = listGeneralFacts();
+      res.json({ facts, total: facts.length });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to load general memories",
+      });
+    }
+  });
+
+  router.post("/general-memories", (req, res) => {
+    try {
+      const fact = normalizeFactText((req.body as { fact?: string })?.fact);
+      if (!fact) {
+        res.status(400).json({
+          error: `fact must be ${MIN_FACT_LENGTH}–${MAX_FACT_LENGTH} characters`,
+        });
+        return;
+      }
+      const created = createGeneralFact(fact);
+      if (!created) {
+        res.status(400).json({ error: "Could not create memory" });
+        return;
+      }
+      res.status(201).json({ fact: created });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to create general memory",
+      });
+    }
+  });
+
+  router.patch("/general-memories/:id", (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id < 1) {
+        res.status(400).json({ error: "Invalid memory id" });
+        return;
+      }
+      const fact = normalizeFactText((req.body as { fact?: string })?.fact);
+      if (!fact) {
+        res.status(400).json({
+          error: `fact must be ${MIN_FACT_LENGTH}–${MAX_FACT_LENGTH} characters`,
+        });
+        return;
+      }
+      const updated = updateGeneralFactById(id, fact);
+      if (updated === "duplicate") {
+        res.status(409).json({ error: "That fact already exists" });
+        return;
+      }
+      if (!updated) {
+        res.status(404).json({ error: "Memory not found" });
+        return;
+      }
+      res.json({ fact: updated });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to update general memory",
+      });
+    }
+  });
+
+  router.delete("/general-memories", (_req, res) => {
+    try {
+      const deleted = clearAllGeneralFacts();
+      res.json({ ok: true, deleted });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to clear general memories",
+      });
+    }
+  });
+
+  router.delete("/general-memories/:id", (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id < 1) {
+        res.status(400).json({ error: "Invalid memory id" });
+        return;
+      }
+      if (!deleteGeneralFactById(id)) {
+        res.status(404).json({ error: "Memory not found" });
+        return;
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to delete general memory",
       });
     }
   });

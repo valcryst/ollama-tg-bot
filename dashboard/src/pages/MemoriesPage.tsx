@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { useDashboard } from "../context/DashboardContext";
+import { GeneralMemoriesPanel } from "../components/GeneralMemoriesPanel";
 import {
   MemoriesPanel,
   type MemoryKind,
 } from "../components/MemoriesPanel";
 
+type TabKind = MemoryKind | "general";
+
 export function MemoriesPage() {
   const { apiOnline } = useDashboard();
-  const [kind, setKind] = useState<MemoryKind>("user");
+  const [kind, setKind] = useState<TabKind>("user");
 
   return (
     <div className="page">
@@ -30,8 +33,23 @@ export function MemoriesPage() {
         >
           Groups
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={kind === "general"}
+          className={
+            kind === "general" ? "memories-tab active" : "memories-tab"
+          }
+          onClick={() => setKind("general")}
+        >
+          General
+        </button>
       </div>
-      <MemoriesPanel apiOnline={apiOnline === true} kind={kind} embedded />
+      {kind === "general" ? (
+        <GeneralMemoriesPanel apiOnline={apiOnline === true} embedded />
+      ) : (
+        <MemoriesPanel apiOnline={apiOnline === true} kind={kind} embedded />
+      )}
     </div>
   );
 }
