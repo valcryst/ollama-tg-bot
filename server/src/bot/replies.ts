@@ -148,9 +148,7 @@ function summarizeMessageContent(message: Message): string {
   if (text) return text;
 
   if (message.photo?.length) return "[photo]";
-  if (message.sticker) {
-    return stickerHistoryLabel(message.sticker);
-  }
+  if (message.sticker) return stickerHistoryLabel(message.sticker);
   if (message.document) {
     return message.document.file_name
       ? `[file: ${message.document.file_name}]`

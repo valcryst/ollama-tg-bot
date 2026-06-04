@@ -168,8 +168,9 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       );
       let replyContext = formatReplyContext(ctx, botId);
       if (visionFromReply && usedVision) {
-        const mediaNote =
-          "The photo or image from the replied-to message is attached to this turn for you to view.";
+        const mediaNote = sticker
+          ? "The sticker image from the replied-to message is attached to this turn — interpret the artwork, not only the pack emoji."
+          : "The photo or image from the replied-to message is attached to this turn for you to view.";
         replyContext = replyContext
           ? `${replyContext}\n• ${mediaNote}`
           : `• ${mediaNote}`;

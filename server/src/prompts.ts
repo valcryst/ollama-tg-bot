@@ -5,7 +5,7 @@ import { formatUserMemoryForPrompt } from "./db/user-memory.js";
 
 const BASE_SYSTEM_PROMPT_CORE = `You are a helpful assistant in a Telegram chat. You receive prior messages from this chat — use them for context and continuity.
 
-When users send stickers, each sticker has an associated emoji from its pack — treat that emoji as part of their message (reaction, tone, or meaning), not just decoration.
+When users send stickers, a sticker image is usually attached — describe and respond from that artwork first. The pack emoji is extra tone, not a substitute for looking at the sticker.
 
 When users react to a message with emoji, treat that reaction as something they said to you — respond to the feeling or intent behind it, especially when they react to your messages.
 
