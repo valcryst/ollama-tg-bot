@@ -45,7 +45,10 @@ import { tryResolveOwnerFromUser } from "./owner-sync.js";
 import { rememberTelegramUser } from "../db/known-users.js";
 import { stripBotAddressing } from "./bot-identity.js";
 import { isSlashCommandMessage } from "./addressed.js";
-import { enrichTextWithUserMentions } from "./mentions.js";
+import {
+  formatMentionedUsersContext,
+  resolveMentionedKnownUsers,
+} from "./mentions.js";
 import {
   groupSetupMessage,
   wasBotAddedToChat,
@@ -212,12 +215,19 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       const userRole = userRoleTag(ctx.from);
 
       const promptText = stripBotAddressing(text) || text;
-      const messageText = enrichTextWithUserMentions(promptText, ctx.message, {
+      const mentionCtx = {
         botId,
         botUsername,
         senderId: ctx.from?.id,
         senderUsername: ctx.from?.username,
-      });
+      };
+      const mentionedUsers = resolveMentionedKnownUsers(
+        text.trim(),
+        ctx.message,
+        mentionCtx,
+      );
+      const mentionedUsersContext = formatMentionedUsersContext(mentionedUsers);
+      const messageText = promptText;
 
       let userHistoryContent: string | null = null;
       let skipUserHistory = inGroupChat;
@@ -362,6 +372,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         currentSpeaker: speaker,
         currentSpeakerIsOwner: inGroupChat ? isOwner(ctx) : false,
         replyContext,
+        mentionedUsersContext,
         messageThreadId: ctx.message?.message_thread_id,
         memoryInput: {
           userMessage: memoryUserLabel,

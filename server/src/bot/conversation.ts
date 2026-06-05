@@ -35,6 +35,7 @@ export function resolveConversationKey(ctx: Context): string | null {
 export interface LatestTurnOptions {
   body: string;
   speakerTag?: string | null;
+  mentionedUsersContext?: string | null;
   replyContext?: string | null;
   webSearchContext?: string | null;
   currentSpeaker?: CurrentSpeaker | null;
@@ -55,6 +56,10 @@ function buildLatestTurnMessage(options: LatestTurnOptions): string {
         `Tag: ${options.speakerTag ?? options.currentSpeaker.userId}\n` +
         ownerLine,
     );
+  }
+
+  if (options.mentionedUsersContext?.trim()) {
+    parts.push(options.mentionedUsersContext.trim());
   }
 
   if (options.replyContext?.trim()) {

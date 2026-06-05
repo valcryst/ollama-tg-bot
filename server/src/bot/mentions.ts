@@ -6,14 +6,16 @@ import {
   getKnownUserById,
   type KnownUserRecord,
 } from "../db/known-users.js";
+import { getUserFacts } from "../db/user-memory.js";
 import { userRoleTagFromKnown } from "./history-format.js";
 import { formatSpeakerLabel } from "./speaker.js";
 import { sliceEntity } from "./addressed.js";
 
-interface ResolvedMention {
+export interface MentionedKnownUser {
   userId: string;
   visible: string;
   description: string;
+  isKnown: boolean;
 }
 
 export interface MentionContext {
@@ -23,23 +25,62 @@ export interface MentionContext {
   senderUsername?: string;
 }
 
-/** Append who @mentions and name references refer to (from known_users). */
+/** Resolve @mentions and name references against known_users. */
+export function resolveMentionedKnownUsers(
+  text: string,
+  message: Message | undefined,
+  context: MentionContext = {},
+): MentionedKnownUser[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  return collectMentionedKnownUsers(trimmed, message, context);
+}
+
+/** Passive history / transcript: append a compact mention footer. */
 export function enrichTextWithUserMentions(
   text: string,
   message: Message | undefined,
   context: MentionContext = {},
 ): string {
-  const trimmed = text.trim();
-  if (!trimmed) return text;
-
-  const mentions = collectMentionedKnownUsers(trimmed, message, context);
+  const mentions = resolveMentionedKnownUsers(text, message, context);
   if (mentions.length === 0) return text;
 
   const lines = mentions.map((m) => `• ${m.visible} → ${m.description}`);
   return (
-    `${trimmed}\n\n` +
+    `${text.trim()}\n\n` +
     `[Mentioned Telegram users in this message:\n${lines.join("\n")}]`
   );
+}
+
+/**
+ * Prominent latest-turn block — model must use this when asked who someone is.
+ */
+export function formatMentionedUsersContext(
+  mentions: MentionedKnownUser[],
+): string | null {
+  const known = mentions.filter((m) => m.isKnown);
+  if (known.length === 0) return null;
+
+  const lines = [
+    "[MENTIONED USERS — people referenced in this message]",
+    "If the speaker asks who they are, identify them from here. Do not claim you lack this information.",
+  ];
+
+  for (const m of known) {
+    lines.push(`• ${m.visible} → ${m.description}`);
+    const facts = getUserFacts(m.userId);
+    if (facts.length > 0) {
+      for (const fact of facts) {
+        lines.push(`  - ${fact}`);
+      }
+    } else {
+      lines.push(
+        "  - (no extra stored facts — use their Telegram name/username above)",
+      );
+    }
+  }
+
+  return lines.join("\n");
 }
 
 /** Remove @mentions of people other than the bot (for name-based address detection). */
@@ -71,7 +112,7 @@ function collectMentionedKnownUsers(
   text: string,
   message: Message | undefined,
   context: MentionContext,
-): ResolvedMention[] {
+): MentionedKnownUser[] {
   const { botId, botUsername, senderId, senderUsername } = context;
   const excludeUserIds = [
     senderId != null ? String(senderId) : null,
@@ -79,7 +120,7 @@ function collectMentionedKnownUsers(
   ].filter((id): id is string => Boolean(id));
 
   const seen = new Set<string>();
-  const mentions: ResolvedMention[] = [];
+  const mentions: MentionedKnownUser[] = [];
 
   const addRecord = (record: KnownUserRecord, visible: string) => {
     if (seen.has(record.userId)) return;
@@ -88,6 +129,7 @@ function collectMentionedKnownUsers(
       userId: record.userId,
       visible,
       description: formatKnownMentionDescription(record),
+      isKnown: true,
     });
   };
 
@@ -142,14 +184,14 @@ function pickVisibleReference(text: string, record: KnownUserRecord): string {
 function collectEntityMentions(
   message: Message,
   context: MentionContext,
-): ResolvedMention[] {
+): MentionedKnownUser[] {
   const { text, entities } = messageTextAndEntities(message);
   if (!text) return [];
 
   const { botId, botUsername, senderId, senderUsername } = context;
   const botUser = botUsername?.toLowerCase();
   const senderUser = senderUsername?.toLowerCase();
-  const mentions: ResolvedMention[] = [];
+  const mentions: MentionedKnownUser[] = [];
 
   for (const entity of entities) {
     if (entity.type === "text_mention") {
@@ -158,18 +200,20 @@ function collectEntityMentions(
       if (senderId != null && user.id === senderId) continue;
 
       const visible = `"${sliceEntity(text, entity.offset, entity.length)}"`;
-      const known = getKnownUserById(String(user.id)) ?? null;
+      const known = getKnownUserById(String(user.id));
       if (known) {
         mentions.push({
           userId: known.userId,
           visible,
           description: formatKnownMentionDescription(known),
+          isKnown: true,
         });
       } else {
         mentions.push({
           userId: String(user.id),
           visible,
           description: formatSpeakerLabel(user),
+          isKnown: false,
         });
       }
       continue;
@@ -188,6 +232,7 @@ function collectEntityMentions(
           userId: known.userId,
           visible: raw,
           description: formatKnownMentionDescription(known),
+          isKnown: true,
         });
       } else {
         mentions.push({
@@ -195,6 +240,7 @@ function collectEntityMentions(
           visible: raw,
           description:
             "Telegram username (person not in known_users yet — they may not have messaged the bot)",
+          isKnown: false,
         });
       }
     }

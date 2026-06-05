@@ -51,6 +51,7 @@ export interface ChatTurnInput {
   currentSpeaker?: CurrentSpeaker | null;
   currentSpeakerIsOwner?: boolean;
   replyContext?: string | null;
+  mentionedUsersContext?: string | null;
   replyToMessageId?: number;
   messageThreadId?: number;
 }
@@ -176,6 +177,7 @@ export async function runChatTurn(
       {
         body: input.latestBody,
         speakerTag: input.userRole,
+        mentionedUsersContext: input.mentionedUsersContext,
         replyContext: input.replyContext,
         webSearchContext,
         currentSpeaker: input.currentSpeaker,
