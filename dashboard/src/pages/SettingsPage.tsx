@@ -257,10 +257,11 @@ export function SettingsPage() {
             <SettingsNumberField
               id="numPredict"
               label="Max reply tokens (num_predict)"
-                hint="Hard cap on generated length. Use 512+ for structured replies; lower = faster but may truncate."
+              hint="Hard cap on generated length. Use 512+ for structured replies; lower = faster but may truncate."
               value={draft.numPredict}
               min={32}
               max={2048}
+              variant="slider"
               disabled={configBlocked}
               onChange={(numPredict) => setDraft({ ...draft, numPredict })}
             />
@@ -272,6 +273,7 @@ export function SettingsPage() {
               min={2048}
               max={32768}
               step={512}
+              variant="slider"
               disabled={configBlocked}
               onChange={(numCtx) => setDraft({ ...draft, numCtx })}
             />
@@ -282,6 +284,7 @@ export function SettingsPage() {
               min={0}
               max={2}
               step={0.1}
+              variant="slider"
               disabled={configBlocked}
               onChange={(temperature) => setDraft({ ...draft, temperature })}
             />
@@ -291,6 +294,7 @@ export function SettingsPage() {
               value={draft.chatTimeoutSec}
               min={30}
               max={600}
+              variant="slider"
               disabled={configBlocked}
               onChange={(chatTimeoutSec) =>
                 setDraft({ ...draft, chatTimeoutSec })
