@@ -30,12 +30,6 @@ export interface Settings {
   temperature: number;
   /** Ollama request timeout in seconds. */
   chatTimeoutSec: number;
-  /** Chat history: max messages kept per conversation. */
-  historyMaxMessages: number;
-  /** Chat history: max total characters in context. */
-  historyMaxChars: number;
-  /** Max characters stored per bot reply in history. */
-  historyMaxReplyChars: number;
   /** Longest edge for vision images (pixels). */
   visionMaxDimension: number;
   /** Telegram @username of the bot owner (empty = not set). */
@@ -63,9 +57,6 @@ const DEFAULT_SETTINGS: Settings = {
   numCtx: 4096,
   temperature: 0.7,
   chatTimeoutSec: 120,
-  historyMaxMessages: 16,
-  historyMaxChars: 4000,
-  historyMaxReplyChars: 500,
   visionMaxDimension: 768,
   ownerUsername: "",
   ownerUserId: "",
@@ -181,9 +172,6 @@ export function getSettings(): Settings {
     numCtx: getSetting<number>("numCtx"),
     temperature: getSetting<number>("temperature"),
     chatTimeoutSec: getSetting<number>("chatTimeoutSec"),
-    historyMaxMessages: getSetting<number>("historyMaxMessages"),
-    historyMaxChars: getSetting<number>("historyMaxChars"),
-    historyMaxReplyChars: getSetting<number>("historyMaxReplyChars"),
     visionMaxDimension: getSetting<number>("visionMaxDimension"),
     ownerUsername: getSetting<string>("ownerUsername"),
     ownerUserId: getSetting<string>("ownerUserId"),

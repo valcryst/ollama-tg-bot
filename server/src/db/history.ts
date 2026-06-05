@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { ChatMessage } from "../ollama/client.js";
 import type { Settings } from "./database.js";
+import { getHistoryLimits } from "../settings-limits.js";
 
 let readSettings: () => Settings = () => {
   throw new Error("History module not initialized");
@@ -83,7 +84,7 @@ export function threadIdFromChatKey(
 }
 
 export function getHistory(chatKey: string): StoredMessage[] {
-  const { historyMaxMessages } = readSettings();
+  const { historyMaxMessages } = getHistoryLimits(readSettings());
   const rows = db
     .prepare(
       `SELECT role, content FROM chat_messages
@@ -104,7 +105,7 @@ export function appendMessage(
   let trimmed = content.trim();
   if (!trimmed) return;
 
-  const { historyMaxReplyChars } = readSettings();
+  const { historyMaxReplyChars } = getHistoryLimits(readSettings());
   if (role === "assistant" && trimmed.length > historyMaxReplyChars) {
     trimmed = `${trimmed.slice(0, historyMaxReplyChars)}…`;
   }
@@ -149,7 +150,7 @@ export function replaceHistory(
 }
 
 function pruneHistory(chatKey: string): void {
-  const { historyMaxMessages } = readSettings();
+  const { historyMaxMessages } = getHistoryLimits(readSettings());
   db.prepare(
     `DELETE FROM chat_messages
      WHERE chat_key = ? AND id NOT IN (
@@ -165,7 +166,7 @@ function pruneHistory(chatKey: string): void {
 export function trimForContext(
   history: StoredMessage[],
 ): StoredMessage[] {
-  const { historyMaxChars } = readSettings();
+  const { historyMaxChars } = getHistoryLimits(readSettings());
   let total = history.reduce((n, m) => n + m.content.length, 0);
   const kept = [...history];
 

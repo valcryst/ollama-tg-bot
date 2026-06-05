@@ -1,5 +1,33 @@
 import type { Settings } from "./db/database.js";
 
+export interface HistoryLimits {
+  historyMaxMessages: number;
+  historyMaxChars: number;
+  historyMaxReplyChars: number;
+}
+
+/** Derive chat history caps from Ollama context and reply token settings. */
+export function getHistoryLimits(settings: Settings): HistoryLimits {
+  const { numCtx, numPredict } = settings;
+
+  const historyTokenBudget = Math.max(
+    256,
+    Math.floor((numCtx - numPredict) * 0.45),
+  );
+
+  return {
+    historyMaxChars: Math.min(
+      32000,
+      Math.max(500, Math.floor(historyTokenBudget * 3.5)),
+    ),
+    historyMaxMessages: Math.min(50, Math.max(4, Math.floor(numCtx / 512))),
+    historyMaxReplyChars: Math.min(
+      4000,
+      Math.max(100, Math.floor(numPredict * 0.85)),
+    ),
+  };
+}
+
 export function getOllamaChatOptions(
   settings: Settings,
   overrides?: { numPredict?: number },
@@ -27,18 +55,6 @@ export function validateSettingsFields(settings: Settings): void {
     [
       "chatTimeoutSec must be 30–600",
       settings.chatTimeoutSec >= 30 && settings.chatTimeoutSec <= 600,
-    ],
-    [
-      "historyMaxMessages must be 0–50",
-      settings.historyMaxMessages >= 0 && settings.historyMaxMessages <= 50,
-    ],
-    [
-      "historyMaxChars must be 500–32000",
-      settings.historyMaxChars >= 500 && settings.historyMaxChars <= 32000,
-    ],
-    [
-      "historyMaxReplyChars must be 100–4000",
-      settings.historyMaxReplyChars >= 100 && settings.historyMaxReplyChars <= 4000,
     ],
     [
       "visionMaxDimension must be 256–2048",

@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import { useDashboard } from "../context/DashboardContext";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { deriveHistoryLimits } from "../derivedHistoryLimits";
 import { SettingsNumberField } from "../SettingsNumberField";
 
 export function SettingsPage() {
@@ -23,6 +25,14 @@ export function SettingsPage() {
     save,
     load,
   } = useDashboard();
+
+  const derivedHistory = useMemo(
+    () =>
+      draft
+        ? deriveHistoryLimits(draft.numCtx, draft.numPredict)
+        : null,
+    [draft],
+  );
 
   return (
     <div className="page">
@@ -279,7 +289,7 @@ export function SettingsPage() {
             <SettingsNumberField
               id="numCtx"
               label="Context size (num_ctx)"
-              hint="Larger = more history fits but slower prefill."
+              hint="Ollama context window. Chat history limits are derived from this and max reply tokens."
               value={draft.numCtx}
               min={2048}
               max={32768}
@@ -312,43 +322,14 @@ export function SettingsPage() {
               }
             />
 
-            <h3 className="section-title">Chat context</h3>
-
-            <SettingsNumberField
-              id="historyMaxMessages"
-              label="Max messages in history"
-              value={draft.historyMaxMessages}
-              min={0}
-              max={50}
-              disabled={configBlocked}
-              onChange={(historyMaxMessages) =>
-                setDraft({ ...draft, historyMaxMessages })
-              }
-            />
-            <SettingsNumberField
-              id="historyMaxChars"
-              label="Max history characters"
-              value={draft.historyMaxChars}
-              min={500}
-              max={32000}
-              step={500}
-              disabled={configBlocked}
-              onChange={(historyMaxChars) =>
-                setDraft({ ...draft, historyMaxChars })
-              }
-            />
-            <SettingsNumberField
-              id="historyMaxReplyChars"
-              label="Max stored reply length"
-              hint="Older bot replies are truncated in context."
-              value={draft.historyMaxReplyChars}
-              min={100}
-              max={4000}
-              disabled={configBlocked}
-              onChange={(historyMaxReplyChars) =>
-                setDraft({ ...draft, historyMaxReplyChars })
-              }
-            />
+            {derivedHistory ? (
+              <p className="hint section-hint">
+                Derived chat history: up to {derivedHistory.historyMaxMessages}{" "}
+                messages, {derivedHistory.historyMaxChars.toLocaleString()}{" "}
+                characters, replies stored to{" "}
+                {derivedHistory.historyMaxReplyChars.toLocaleString()} chars.
+              </p>
+            ) : null}
 
             <h3 className="section-title">Vision</h3>
 

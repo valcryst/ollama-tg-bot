@@ -10,10 +10,12 @@ export interface Settings {
   numCtx: number;
   temperature: number;
   chatTimeoutSec: number;
-  historyMaxMessages: number;
-  historyMaxChars: number;
-  historyMaxReplyChars: number;
   visionMaxDimension: number;
+  derivedHistoryLimits?: {
+    historyMaxMessages: number;
+    historyMaxChars: number;
+    historyMaxReplyChars: number;
+  };
   ownerUsername: string;
   ownerUserId: string;
 }

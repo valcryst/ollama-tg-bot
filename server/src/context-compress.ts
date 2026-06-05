@@ -1,4 +1,5 @@
 import { getSettings } from "./db/database.js";
+import { getHistoryLimits } from "./settings-limits.js";
 import {
   getGeneralFacts,
   generalMemoryTotalChars,
@@ -59,22 +60,23 @@ fact two
 const inFlight = new Set<string>();
 
 function keepRecentMessageCount(): number {
-  const { historyMaxMessages } = getSettings();
+  const { historyMaxMessages } = getHistoryLimits(getSettings());
   if (historyMaxMessages <= 2) return 2;
   return Math.max(2, Math.min(8, Math.floor(historyMaxMessages / 2)));
 }
 
 export function historyNeedsCompression(chatKey: string): boolean {
   const settings = getSettings();
+  const limits = getHistoryLimits(settings);
   const history = getHistory(chatKey);
   if (history.length < 3) return false;
 
   const total = historyTotalChars(history);
-  if (total > settings.historyMaxChars) return true;
+  if (total > limits.historyMaxChars) return true;
 
   return (
-    history.length >= settings.historyMaxMessages &&
-    total > settings.historyMaxChars * 0.75
+    history.length >= limits.historyMaxMessages &&
+    total > limits.historyMaxChars * 0.75
   );
 }
 
@@ -157,9 +159,10 @@ async function compressHistoryIfNeeded(chatKey: string): Promise<void> {
 
   if (older.length === 0) return;
 
+  const limits = getHistoryLimits(settings);
   const maxSummaryChars = Math.max(
     400,
-    Math.floor(settings.historyMaxChars * 0.45),
+    Math.floor(limits.historyMaxChars * 0.45),
   );
 
   const transcript = formatTranscript(older);

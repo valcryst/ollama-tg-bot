@@ -11,6 +11,7 @@ import {
 import { checkHealth, listModels } from "../ollama/client.js";
 import { isTavilyConfigured } from "../tavily/client.js";
 import { BASE_SYSTEM_PROMPT } from "../prompts.js";
+import { getHistoryLimits } from "../settings-limits.js";
 import {
   clearGroupFactsForGroup,
   createGroupFact,
@@ -51,7 +52,12 @@ export function createApiRouter(): Router {
 
   router.get("/settings", (_req, res) => {
     try {
-      res.json({ ...getSettings(), baseSystemPrompt: BASE_SYSTEM_PROMPT });
+      const settings = getSettings();
+      res.json({
+        ...settings,
+        baseSystemPrompt: BASE_SYSTEM_PROMPT,
+        derivedHistoryLimits: getHistoryLimits(settings),
+      });
     } catch (err) {
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to load settings",
@@ -73,9 +79,6 @@ export function createApiRouter(): Router {
         "numCtx",
         "temperature",
         "chatTimeoutSec",
-        "historyMaxMessages",
-        "historyMaxChars",
-        "historyMaxReplyChars",
         "visionMaxDimension",
         "ownerUsername",
       ];
@@ -96,7 +99,11 @@ export function createApiRouter(): Router {
       }
 
       const updated = updateSettings(patch);
-      res.json({ ...updated, baseSystemPrompt: BASE_SYSTEM_PROMPT });
+      res.json({
+        ...updated,
+        baseSystemPrompt: BASE_SYSTEM_PROMPT,
+        derivedHistoryLimits: getHistoryLimits(updated),
+      });
     } catch (err) {
       res.status(400).json({
         error: err instanceof Error ? err.message : "Invalid settings",
