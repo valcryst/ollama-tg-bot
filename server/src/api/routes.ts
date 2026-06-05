@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getBotUsername, getBot } from "../bot/index.js";
 import {
+  clearErrors,
   getSettings,
   getStats,
   updateSettings,
@@ -446,6 +447,17 @@ export function createApiRouter(): Router {
           err instanceof Error
             ? err.message
             : "Failed to delete general memory",
+      });
+    }
+  });
+
+  router.delete("/errors", (_req, res) => {
+    try {
+      const deleted = clearErrors();
+      res.json({ ok: true, deleted });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to clear errors",
       });
     }
   });

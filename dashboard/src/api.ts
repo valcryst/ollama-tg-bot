@@ -221,6 +221,10 @@ export const api = {
       (r) => r.models,
     ),
   getStats: () => request<Stats>("/api/stats"),
+  clearErrors: () =>
+    request<{ ok: boolean; deleted: number }>("/api/errors", {
+      method: "DELETE",
+    }),
   getMemories: () =>
     request<{ facts: UserMemoryFact[]; total: number }>("/api/memories"),
   createMemory: (userId: string, fact: string) =>

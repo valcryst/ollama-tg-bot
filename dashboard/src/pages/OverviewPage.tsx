@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { api } from "../api";
 import { useDashboard } from "../context/DashboardContext";
 import { ErrorBanner } from "../components/ErrorBanner";
 
@@ -11,7 +13,29 @@ function formatUptime(seconds: number): string {
 }
 
 export function OverviewPage() {
-  const { stats, sectionErrors, load } = useDashboard();
+  const { stats, sectionErrors, load, setSectionError } = useDashboard();
+  const [clearingErrors, setClearingErrors] = useState(false);
+
+  async function handleClearErrors() {
+    if (
+      !confirm(
+        "Clear all stored error logs and reset the error counter? This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+
+    setClearingErrors(true);
+    setSectionError("stats", null);
+    try {
+      await api.clearErrors();
+      await load();
+    } catch (err) {
+      setSectionError("stats", err);
+    } finally {
+      setClearingErrors(false);
+    }
+  }
 
   return (
     <div className="page">
@@ -74,7 +98,17 @@ export function OverviewPage() {
 
         {stats && stats.errors > 0 ? (
           <div className="error-log">
-            <h3>Recent errors</h3>
+            <div className="error-log-header">
+              <h3>Recent errors</h3>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void handleClearErrors()}
+                disabled={clearingErrors}
+              >
+                {clearingErrors ? "Clearing…" : "Clear logs"}
+              </button>
+            </div>
             {stats.recentErrors.length === 0 ? (
               <p className="hint">
                 No error details stored yet (counter includes failures before

@@ -55,6 +55,11 @@ export function appendErrorLog(input: ErrorLogInput): void {
   }
 }
 
+export function clearErrorLog(): number {
+  const result = db.prepare(`DELETE FROM error_log`).run();
+  return Number(result.changes);
+}
+
 export function listRecentErrors(limit = 20): ErrorLogRecord[] {
   const rows = db
     .prepare(

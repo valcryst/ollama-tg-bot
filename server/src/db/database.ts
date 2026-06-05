@@ -6,7 +6,11 @@ import { bindHistoryDatabase, configureHistoryAccess } from "./history.js";
 import { bindGeneralMemoryDatabase } from "./general-memory.js";
 import { bindGroupMemoryDatabase } from "./group-memory.js";
 import { bindUserMemoryDatabase } from "./user-memory.js";
-import { appendErrorLog, bindErrorLogDatabase } from "./error-log.js";
+import {
+  appendErrorLog,
+  bindErrorLogDatabase,
+  clearErrorLog,
+} from "./error-log.js";
 import { bindMessageRefsDatabase } from "./message-refs.js";
 import { validateSettingsFields } from "../settings-limits.js";
 
@@ -237,6 +241,12 @@ export function recordError(detail?: ErrorLogInput): void {
   if (detail) {
     appendErrorLog(detail);
   }
+}
+
+export function clearErrors(): number {
+  const deleted = clearErrorLog();
+  db.prepare("UPDATE stats SET value = 0 WHERE key = 'errors'").run();
+  return deleted;
 }
 
 function touchActivity(): void {

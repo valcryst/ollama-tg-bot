@@ -492,8 +492,16 @@ input[type="range"] {
   border-top: 1px solid var(--border);
 }
 
-.error-log h3 {
-  margin: 0 0 0.75rem;
+.error-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.error-log-header h3 {
+  margin: 0;
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--muted);
