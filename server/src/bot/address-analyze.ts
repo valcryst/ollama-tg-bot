@@ -9,6 +9,7 @@ import {
 import { isMessageForBot } from "./addressed.js";
 import { stripNonBotMentions } from "./mentions.js";
 import { stickerHistoryLabel } from "./stickers.js";
+import { logEvent, logEventError } from "../event-log.js";
 
 const ADDRESS_CHECK_NUM_PREDICT = 96;
 
@@ -80,9 +81,21 @@ function formatBotNamesForAnalyzer(bot: BotIdentity): string {
  * Private chats: always true. Groups: @mention/reply/command, name match, then LLM.
  */
 export async function isMessageAddressedToBot(ctx: Context): Promise<boolean> {
-  if (ctx.chat?.type === "private") return true;
+  const baseLog = {
+    chatId: ctx.chat?.id,
+    userId: ctx.from?.id,
+    chatType: ctx.chat?.type,
+  };
 
-  if (isMessageForBot(ctx)) return true;
+  if (ctx.chat?.type === "private") {
+    logEvent("message_addressed", { ...baseLog, source: "private" });
+    return true;
+  }
+
+  if (isMessageForBot(ctx)) {
+    logEvent("message_addressed", { ...baseLog, source: "mention_or_reply" });
+    return true;
+  }
 
   const bot = getBotIdentity();
   const textForNameCheck = stripNonBotMentions(ctx.message, {
@@ -90,6 +103,7 @@ export async function isMessageAddressedToBot(ctx: Context): Promise<boolean> {
     botUsername: ctx.me?.username,
   });
   if (textForNameCheck && messageReferencesBotByName(textForNameCheck, bot)) {
+    logEvent("message_addressed", { ...baseLog, source: "name" });
     return true;
   }
 
@@ -130,14 +144,20 @@ async function analyzeGroupMessageForBot(
     });
     const yes = parseAddressDecision(raw);
     if (yes) {
-      console.log(
-        `Address analyzer: respond in ${chatType} ${ctx.chat?.id} ` +
-          `(from ${ctx.from?.id ?? "?"}): ${text.slice(0, 80)}`,
-      );
+      logEvent("message_addressed", {
+        chatId: ctx.chat?.id,
+        userId: ctx.from?.id,
+        chatType,
+        source: "analyzer",
+      });
     }
     return yes;
   } catch (err) {
-    console.error("Address analyzer failed:", err);
+    logEventError("address_analyzer_failed", err, {
+      chatId: ctx.chat?.id,
+      userId: ctx.from?.id,
+      chatType,
+    });
     return false;
   }
 }

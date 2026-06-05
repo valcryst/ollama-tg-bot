@@ -23,6 +23,7 @@ export function DataPage() {
   const [payload, setPayload] = useState<DataTablePayload | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [loadingTable, setLoadingTable] = useState(false);
+  const [refreshingTable, setRefreshingTable] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
 
   const loadMeta = useCallback(async () => {
@@ -77,7 +78,32 @@ export function DataPage() {
     void loadTable(activeTable);
   }, [activeTable, loadTable]);
 
+  const refreshTable = useCallback(
+    async (tableId: string) => {
+      if (!apiOnline) return;
+      setRefreshingTable(tableId);
+      setError(null);
+      try {
+        const [meta, data] = await Promise.all([
+          api.getDataTables(),
+          api.getDataTable(tableId),
+        ]);
+        setTables(meta.tables);
+        setActiveTable(tableId);
+        setPayload(data);
+      } catch (err) {
+        setError(err);
+        if (activeTable === tableId) setPayload(null);
+      } finally {
+        setRefreshingTable(null);
+      }
+    },
+    [apiOnline, activeTable],
+  );
+
   const activeSummary = tables.find((t) => t.id === activeTable);
+  const isTableLoading =
+    loadingTable || (activeTable != null && refreshingTable === activeTable);
 
   return (
     <div className="page">
@@ -112,19 +138,37 @@ export function DataPage() {
             aria-label="Database tables"
           >
             {tables.map((table) => (
-              <button
+              <div
                 key={table.id}
-                type="button"
-                role="tab"
-                aria-selected={activeTable === table.id}
                 className={
-                  activeTable === table.id ? "data-tab active" : "data-tab"
+                  activeTable === table.id
+                    ? "data-tab-item active"
+                    : "data-tab-item"
                 }
-                onClick={() => setActiveTable(table.id)}
               >
-                {table.label}
-                <span className="data-tab-count">{table.count}</span>
-              </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTable === table.id}
+                  className={
+                    activeTable === table.id ? "data-tab active" : "data-tab"
+                  }
+                  onClick={() => setActiveTable(table.id)}
+                >
+                  {table.label}
+                  <span className="data-tab-count">{table.count}</span>
+                </button>
+                <button
+                  type="button"
+                  className="secondary data-tab-refresh"
+                  aria-label={`Refresh ${table.label}`}
+                  title={`Refresh ${table.label}`}
+                  disabled={refreshingTable === table.id || !apiOnline}
+                  onClick={() => void refreshTable(table.id)}
+                >
+                  {refreshingTable === table.id ? "…" : "↻"}
+                </button>
+              </div>
             ))}
           </div>
 
@@ -141,13 +185,13 @@ export function DataPage() {
               ) : null}
             </div>
 
-            {loadingTable ? <p className="hint">Loading rows…</p> : null}
+            {isTableLoading ? <p className="hint">Loading rows…</p> : null}
 
-            {!loadingTable && payload && payload.rows.length === 0 ? (
+            {!isTableLoading && payload && payload.rows.length === 0 ? (
               <p className="hint">No rows in this table.</p>
             ) : null}
 
-            {!loadingTable && payload && payload.rows.length > 0 ? (
+            {!isTableLoading && payload && payload.rows.length > 0 ? (
               <div className="data-table-wrap">
                 <table className="data-table">
                   <thead>

@@ -54,13 +54,11 @@ export function resolveReaction(ctx: Context): ResolvedReaction | null {
   const reactor = ctx.from ?? update.user;
 
   const messageThreadId = match
-    ? threadIdFromChatKey(match.chatKey, chatId, { group: inGroup })
+    ? threadIdFromChatKey(match.chatKey, chatId)
     : undefined;
 
   const convKey = conversationKey(chatId, {
     threadId: messageThreadId,
-    userId:
-      inGroup && reactor?.id != null ? String(reactor.id) : undefined,
   });
 
   return {

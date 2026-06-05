@@ -2,6 +2,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type { ChatMessage } from "../ollama/client.js";
 import type { Settings } from "./database.js";
 import { getHistoryLimits } from "../settings-limits.js";
+export const ASSISTANT_ROLE = "assistant";
+export const COMPRESSED_ROLE = "compressed";
 
 let readSettings: () => Settings = () => {
   throw new Error("History module not initialized");
@@ -11,29 +13,37 @@ export function configureHistoryAccess(getSettings: () => Settings): void {
   readSettings = getSettings;
 }
 
-export type HistoryRole = "user" | "assistant";
-
-/** Stored as a user turn; merged into newer summaries when history is compressed. */
-export const HISTORY_SUMMARY_PREFIX = "[Earlier conversation summary]";
-
 export interface StoredMessage {
-  role: HistoryRole;
+  role: string;
   content: string;
 }
 
-export function isHistorySummaryMessage(content: string): boolean {
-  return content.startsWith(HISTORY_SUMMARY_PREFIX);
+export function isCompressedRole(role: string): boolean {
+  return role === COMPRESSED_ROLE;
 }
 
 let db: DatabaseSync;
 
 export function bindHistoryDatabase(database: DatabaseSync): void {
   db = database;
+  const existing = db
+    .prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'chat_messages'`,
+    )
+    .get() as { sql: string } | undefined;
+
+  const needsReset =
+    existing?.sql.includes("CHECK (role IN ('user', 'assistant'))") ?? false;
+
+  if (needsReset) {
+    db.exec(`DROP TABLE IF EXISTS chat_messages`);
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS chat_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       chat_key TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      role TEXT NOT NULL,
       content TEXT NOT NULL,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
@@ -44,43 +54,26 @@ export function bindHistoryDatabase(database: DatabaseSync): void {
 
 export interface ConversationKeyOptions {
   threadId?: number;
-  /** Group chats: keep history separate per member. */
-  userId?: string;
 }
 
+/** Chat id for DM or group (optional forum thread). No per-user suffix. */
 export function conversationKey(
   chatId: number,
   options?: ConversationKeyOptions,
 ): string {
   const parts = [String(chatId)];
   if (options?.threadId != null) parts.push(String(options.threadId));
-  if (options?.userId) parts.push(options.userId);
   return parts.join(":");
 }
 
 export function threadIdFromChatKey(
   chatKey: string,
   chatId: number,
-  options?: { group?: boolean },
 ): number | undefined {
   const parts = chatKey.split(":");
-  if (parts[0] !== String(chatId)) return undefined;
-
-  if (options?.group) {
-    // chat:thread:user (forum topic)
-    if (parts.length >= 3) {
-      const threadId = Number(parts[1]);
-      return Number.isInteger(threadId) && threadId > 0 ? threadId : undefined;
-    }
-    return undefined;
-  }
-
-  // private: chat:thread
-  if (parts.length === 2) {
-    const threadId = Number(parts[1]);
-    return Number.isInteger(threadId) && threadId > 0 ? threadId : undefined;
-  }
-  return undefined;
+  if (parts[0] !== String(chatId) || parts.length < 2) return undefined;
+  const threadId = Number(parts[1]);
+  return Number.isInteger(threadId) && threadId > 0 ? threadId : undefined;
 }
 
 export function getHistory(chatKey: string): StoredMessage[] {
@@ -99,20 +92,23 @@ export function getHistory(chatKey: string): StoredMessage[] {
 
 export function appendMessage(
   chatKey: string,
-  role: HistoryRole,
+  role: string,
   content: string,
 ): void {
-  let trimmed = content.trim();
+  const trimmed = content.trim();
   if (!trimmed) return;
 
-  const { historyMaxReplyChars } = getHistoryLimits(readSettings());
-  if (role === "assistant" && trimmed.length > historyMaxReplyChars) {
-    trimmed = `${trimmed.slice(0, historyMaxReplyChars)}…`;
+  let stored = trimmed;
+  if (role === ASSISTANT_ROLE) {
+    const { historyMaxReplyChars } = getHistoryLimits(readSettings());
+    if (stored.length > historyMaxReplyChars) {
+      stored = `${stored.slice(0, historyMaxReplyChars)}…`;
+    }
   }
 
   db.prepare(
     `INSERT INTO chat_messages (chat_key, role, content) VALUES (?, ?, ?)`,
-  ).run(chatKey, role, trimmed);
+  ).run(chatKey, role, stored);
 
   pruneHistory(chatKey);
 }
@@ -125,7 +121,6 @@ export function historyTotalChars(history: StoredMessage[]): number {
   return history.reduce((n, m) => n + m.content.length, 0);
 }
 
-/** Replace all stored messages for a conversation (used after LLM compression). */
 export function replaceHistory(
   chatKey: string,
   messages: StoredMessage[],
@@ -162,7 +157,6 @@ function pruneHistory(chatKey: string): void {
   ).run(chatKey, chatKey, historyMaxMessages);
 }
 
-/** Trim from the start until total character count fits the context budget. */
 export function trimForContext(
   history: StoredMessage[],
 ): StoredMessage[] {
@@ -180,7 +174,18 @@ export function trimForContext(
 
 export function historyToChatMessages(history: StoredMessage[]): ChatMessage[] {
   return trimForContext(history).map((m) => ({
-    role: m.role,
+    role: m.role === ASSISTANT_ROLE ? "assistant" : "user",
     content: m.content,
   }));
+}
+
+export function appendAssistantMessage(
+  chatKey: string,
+  assistantText: string,
+): void {
+  appendMessage(
+    chatKey,
+    ASSISTANT_ROLE,
+    `[assistant said]: ${assistantText.trim()}`,
+  );
 }

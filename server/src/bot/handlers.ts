@@ -1,5 +1,4 @@
 import type { Bot, Context } from "grammy";
-import type { ChatMessage } from "../ollama/client.js";
 import { config } from "../config.js";
 import { clearHistory } from "../db/history.js";
 import { clearGroupMemory, getGroupFacts } from "../db/group-memory.js";
@@ -19,20 +18,27 @@ import {
 } from "../db/database.js";
 import {
   currentSpeakerFromUser,
-  groupMemoryUserMessage,
-  historyUserLabel,
   isGroupChat,
   resolveConversationKey,
   resolveGroupChatId,
   resolveUserId,
 } from "./conversation.js";
+import {
+  buildMediaHistoryContent,
+  buildTextHistoryContent,
+  mediaKindForMessage,
+  userRoleTag,
+} from "./history-format.js";
+import { stickerPackEmoji } from "./stickers.js";
+import { describeVisionImages } from "./vision-describe.js";
+import { recordPassiveGroupHistory } from "./history-record.js";
 import { runChatTurn } from "./chat-turn.js";
 import {
   findReplyMediaMessage,
   loadVisionFromMessage,
   messageHasUserImage,
+  messageHasVisionMedia,
 } from "./message-media.js";
-import { stickerUserPrompt } from "./stickers.js";
 import { isMessageAddressedToBot } from "./address-analyze.js";
 import { getOwnerUserId, getOwnerUsername, isOwner } from "./owner.js";
 import { tryResolveOwnerFromUser } from "./owner-sync.js";
@@ -50,17 +56,13 @@ import {
   replyParameters,
 } from "./replies.js";
 import {
-  formatGroupActivityContext,
-  recordPassiveGroupActivity,
-  resolveGroupActivityKey,
-} from "./group-activity.js";
-import {
   formatReactionPrompt,
   isReactionAddressed,
   parseReactionChange,
   reactionHistoryLabel,
   resolveReaction,
 } from "./reactions.js";
+import { logEvent, logEventError } from "../event-log.js";
 
 async function replyHtml(
   ctx: Context,
@@ -106,17 +108,36 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
   bot.use(async (ctx, next) => {
     try {
-      recordPassiveGroupActivity(ctx);
+      await recordPassiveGroupHistory(ctx, bot.token);
     } catch (err) {
-      console.error("Failed to record group activity:", err);
+      logEventError("passive_history_failed", err, {
+        chatId: ctx.chat?.id,
+        messageId: ctx.message?.message_id,
+      });
     }
     await next();
   });
 
   bot.on("message", async (ctx) => {
     if (!ctx.message) return;
-    if (ctx.from?.is_bot) return;
-    if (isSlashCommandMessage(ctx)) return;
+
+    const msgLog = {
+      chatId: ctx.chat?.id,
+      userId: ctx.from?.id,
+      messageId: ctx.message.message_id,
+      chatType: ctx.chat?.type,
+    };
+
+    logEvent("message_received", msgLog);
+
+    if (ctx.from?.is_bot) {
+      logEvent("message_ignored", { ...msgLog, reason: "from_bot" });
+      return;
+    }
+    if (isSlashCommandMessage(ctx)) {
+      logEvent("message_ignored", { ...msgLog, reason: "slash_command" });
+      return;
+    }
 
     const text = extractText(ctx);
     const hasMedia =
@@ -124,7 +145,18 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       !!ctx.message.sticker ||
       !!ctx.message.document;
 
-    if (!text && !hasMedia) return;
+    if (!text && !hasMedia) {
+      logEvent("message_ignored", { ...msgLog, reason: "no_content" });
+      return;
+    }
+
+    if (messageHasVisionMedia(ctx.message)) {
+      logEvent("media_detected", {
+        ...msgLog,
+        mediaKind: mediaKindForMessage(ctx.message, !!ctx.message.sticker),
+        onMessage: true,
+      });
+    }
 
     const addressed = await isMessageAddressedToBot(ctx);
     const settings = getSettings();
@@ -141,7 +173,17 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       !randomHit &&
       messageHasUserImage(ctx.message);
 
-    if (!addressed && !randomHit && !imageHit) return;
+    if (!addressed && !randomHit && !imageHit) {
+      logEvent("message_ignored", { ...msgLog, reason: "not_addressed" });
+      return;
+    }
+
+    const trigger = addressed
+      ? "addressed"
+      : randomHit
+        ? "random"
+        : "image";
+    logEvent("message_accepted", { ...msgLog, trigger });
 
     recordMessageReceived();
 
@@ -164,40 +206,11 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     scheduleHistoryCompression(convKey);
 
     try {
-      let visionFromReply = false;
-      let loaded = await loadVisionFromMessage(bot.token, ctx.message);
-
-      if (loaded.unavailableText) {
-        await replyToUser(ctx, loaded.unavailableText);
-        recordReply(false);
-        return;
-      }
-
-      if (loaded.images.length === 0) {
-        const replyMediaMsg = findReplyMediaMessage(ctx.message);
-        if (replyMediaMsg) {
-          const replyLoaded = await loadVisionFromMessage(
-            bot.token,
-            replyMediaMsg,
-          );
-          if (replyLoaded.unavailableText) {
-            await replyToUser(ctx, replyLoaded.unavailableText);
-            recordReply(false);
-            return;
-          }
-          if (replyLoaded.images.length > 0) {
-            loaded = replyLoaded;
-            visionFromReply = true;
-          }
-        }
-      }
-
-      const images = loaded.images;
-      const usedVision = images.length > 0;
-      const sticker = loaded.sourceSticker ?? ctx.message.sticker;
-      const stickerVisionHint = loaded.visionHint;
       const botId = ctx.me?.id;
       const botUsername = ctx.me?.username;
+      const speaker = inGroupChat ? currentSpeakerFromUser(ctx.from) : null;
+      const userRole = userRoleTag(ctx.from);
+
       const promptText = stripBotAddressing(text) || text;
       const messageText = enrichTextWithUserMentions(promptText, ctx.message, {
         botId,
@@ -205,53 +218,133 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         senderId: ctx.from?.id,
         senderUsername: ctx.from?.username,
       });
-      const body = sticker
-        ? stickerUserPrompt(sticker, messageText, stickerVisionHint)
-        : buildUserContent(messageText, usedVision, visionFromReply);
-      const historyBase = historyUserLabel(
-        messageText,
-        usedVision,
-        visionFromReply ? undefined : sticker,
-        visionFromReply,
-      );
-      const speaker = inGroupChat ? currentSpeakerFromUser(ctx.from) : null;
-      let replyContext = formatReplyContext(ctx, botId, speaker);
-      if (visionFromReply && usedVision) {
-        const mediaNote = sticker
-          ? "The sticker image from the replied-to message is attached to this turn — interpret the artwork, not only the pack emoji."
-          : "The photo or image from the replied-to message is attached to this turn for you to view.";
-        replyContext = replyContext
-          ? `${replyContext}\n\n• ${mediaNote}`
-          : `• ${mediaNote}`;
-      }
-      const memoryUserLabel = replyContext
-        ? appendReplyContext(ctx, historyBase, botId, speaker)
-        : historyBase;
 
-      if (!inGroupChat) {
+      let userHistoryContent: string | null = null;
+      let skipUserHistory = inGroupChat;
+      let latestBody = messageText || "(non-text message)";
+      let replyContext = formatReplyContext(ctx, botId, speaker);
+
+      if (inGroupChat) {
+        if (messageHasVisionMedia(ctx.message)) {
+          const loaded = await loadVisionFromMessage(bot.token, ctx.message);
+          if (loaded.unavailableText) {
+            logEvent("vision_unavailable", { ...msgLog, convKey, addressed: true });
+            await replyToUser(ctx, loaded.unavailableText);
+            recordReply(false);
+            return;
+          }
+        }
+        if (!messageText) {
+          latestBody = "Respond to this.";
+        }
+      } else {
+        let visionFromReply = false;
+        let loaded = await loadVisionFromMessage(bot.token, ctx.message);
+
+        if (loaded.unavailableText) {
+          logEvent("vision_unavailable", { ...msgLog, convKey });
+          await replyToUser(ctx, loaded.unavailableText);
+          recordReply(false);
+          return;
+        }
+
+        if (loaded.images.length === 0) {
+          const replyMediaMsg = findReplyMediaMessage(ctx.message);
+          if (replyMediaMsg) {
+            logEvent("media_detected", {
+              ...msgLog,
+              mediaKind: mediaKindForMessage(replyMediaMsg, !!replyMediaMsg.sticker),
+              onMessage: false,
+              fromReply: true,
+            });
+            const replyLoaded = await loadVisionFromMessage(
+              bot.token,
+              replyMediaMsg,
+            );
+            if (replyLoaded.unavailableText) {
+              logEvent("vision_unavailable", { ...msgLog, convKey, fromReply: true });
+              await replyToUser(ctx, replyLoaded.unavailableText);
+              recordReply(false);
+              return;
+            }
+            if (replyLoaded.images.length > 0) {
+              loaded = replyLoaded;
+              visionFromReply = true;
+            }
+          }
+        }
+
+        let visionDescription = "";
+        if (loaded.images.length > 0) {
+          visionDescription = await describeVisionImages(loaded.images, {
+            ...msgLog,
+            convKey,
+            fromReply: visionFromReply,
+          });
+        }
+
+        const sticker = loaded.sourceSticker ?? ctx.message.sticker;
+        const mediaOnCurrentMessage = messageHasVisionMedia(ctx.message);
+        const mediaKind = mediaKindForMessage(
+          ctx.message,
+          !!sticker || !!loaded.sourceSticker,
+        );
+
+        if (visionDescription && mediaOnCurrentMessage) {
+          const mediaHistory = buildMediaHistoryContent(
+            ctx.from,
+            ctx.message,
+            mediaKind,
+            visionDescription,
+            botId,
+            stickerPackEmoji(sticker),
+          );
+          if (mediaHistory) {
+            userHistoryContent = mediaHistory;
+            skipUserHistory = false;
+            logEvent("vision_stored", {
+              ...msgLog,
+              convKey,
+              mediaKind,
+              fromReply: visionFromReply,
+              chars: visionDescription.length,
+            });
+          }
+          latestBody = messageText || "What do you think?";
+        } else if (visionDescription && visionFromReply) {
+          const mediaNote = `The user is asking about an ${mediaKind} they replied to: ${visionDescription}`;
+          latestBody = [messageText, mediaNote].filter(Boolean).join("\n\n");
+          const mediaNoteCtx = `Replied-to ${mediaKind}: ${visionDescription}`;
+          replyContext = replyContext
+            ? `${replyContext}\n\n${mediaNoteCtx}`
+            : mediaNoteCtx;
+        } else {
+          const textHistory = buildTextHistoryContent(
+            ctx.from,
+            ctx.message,
+            messageText,
+            botId,
+          );
+          if (textHistory) {
+            userHistoryContent = textHistory;
+            skipUserHistory = false;
+          }
+          latestBody = messageText || "(non-text message)";
+        }
+      }
+
+      const memoryUserLabel = replyContext
+        ? appendReplyContext(ctx, latestBody, botId, speaker)
+        : latestBody;
+
+      if (!inGroupChat && userHistoryContent) {
         rememberMessageRef(
           convKey,
           ctx.message.message_id,
           "user",
-          historyBase,
+          userHistoryContent,
         );
       }
-
-      const groupActivityKey = inGroupChat
-        ? resolveGroupActivityKey(ctx)
-        : null;
-      const groupActivityContext = groupActivityKey
-        ? formatGroupActivityContext(groupActivityKey, {
-            excludeMessageId: ctx.message.message_id,
-            currentSpeakerLabel: speaker?.label ?? null,
-          })
-        : null;
-
-      const currentUser: ChatMessage = {
-        role: "user",
-        content: body,
-        ...(usedVision ? { images: images.map((i) => i.base64) } : {}),
-      };
 
       await runChatTurn(ctx, {
         convKey,
@@ -259,18 +352,18 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         userId,
         groupChatId,
         inGroup: inGroupChat,
-        currentUser,
-        historyLabel: historyBase,
+        latestBody,
+        userRole,
+        userHistoryContent,
+        skipUserHistory,
         userMemoryFacts,
         groupMemoryFacts,
         generalMemoryFacts,
         currentSpeaker: speaker,
         currentSpeakerIsOwner: inGroupChat ? isOwner(ctx) : false,
         replyContext,
-        groupActivityContext,
-        usedVision,
         memoryInput: {
-          userMessage: groupMemoryUserMessage(memoryUserLabel, speaker),
+          userMessage: memoryUserLabel,
           replyContext,
           existingUserFacts: userMemoryFacts,
           existingGroupFacts: groupMemoryFacts,
@@ -279,7 +372,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         },
       });
     } catch (err) {
-      console.error("Handler error:", err);
+      logEventError("handler_error", err, msgLog);
     }
   });
 
@@ -289,6 +382,14 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
     const resolved = resolveReaction(ctx);
     if (!resolved) return;
+
+    logEvent("reaction_received", {
+      chatId: resolved.chatId,
+      userId: resolved.reactor?.id,
+      messageId: resolved.messageId,
+      chatType: resolved.chatType,
+      targetRole: resolved.targetRole ?? "unknown",
+    });
 
     const settings = getSettings();
     const randomHit =
@@ -303,12 +404,20 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         randomHit,
       )
     ) {
-      console.log(
-        `Ignored reaction in ${resolved.chatType} chat ${resolved.chatId} ` +
-          `(msg ${resolved.messageId}, target=${resolved.targetRole ?? "unknown"})`,
-      );
+      logEvent("reaction_ignored", {
+        chatId: resolved.chatId,
+        messageId: resolved.messageId,
+        targetRole: resolved.targetRole ?? "unknown",
+        randomHit,
+      });
       return;
     }
+
+    logEvent("reaction_accepted", {
+      chatId: resolved.chatId,
+      userId: resolved.reactor?.id,
+      messageId: resolved.messageId,
+    });
 
     recordMessageReceived();
 
@@ -331,10 +440,16 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
     const reactor = resolved.reactor;
     const speaker = inGroup ? currentSpeakerFromUser(reactor) : null;
-    const body = formatReactionPrompt(reactor, change, targetRole, targetContent);
-    const historyLabel = reactionHistoryLabel(reactor, change, targetRole);
-
-    const currentUser: ChatMessage = { role: "user", content: body };
+    const latestBody = formatReactionPrompt(
+      reactor,
+      change,
+      targetRole,
+      targetContent,
+    );
+    const userRole = userRoleTag(reactor);
+    const userHistoryContent = userRole
+      ? `[${userRole} reacted]: ${reactionHistoryLabel(reactor, change, targetRole)}`
+      : null;
 
     await runChatTurn(ctx, {
       convKey,
@@ -342,15 +457,16 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       userId,
       groupChatId,
       inGroup,
-      currentUser,
-      historyLabel,
+      latestBody,
+      userRole,
+      userHistoryContent,
       userMemoryFacts,
       groupMemoryFacts,
       generalMemoryFacts,
       currentSpeaker: speaker,
       currentSpeakerIsOwner: inGroup ? isOwner(ctx) : false,
       memoryInput: {
-        userMessage: groupMemoryUserMessage(historyLabel, speaker),
+        userMessage: latestBody,
         replyContext: targetContent,
         existingUserFacts: userMemoryFacts,
         existingGroupFacts: groupMemoryFacts,
@@ -450,7 +566,7 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
     if (!convKey) return;
     clearHistory(convKey);
     const scope = isGroupChat(ctx)
-      ? "your messages with the bot in this group"
+      ? "this group's shared chat history"
       : "this conversation";
     await replyToUser(ctx, `Chat context cleared for ${scope}.`);
   });
@@ -477,28 +593,6 @@ function extractText(ctx: Context): string {
   const msg = ctx.message;
   if (!msg) return "";
   return (msg.text ?? msg.caption ?? "").trim();
-}
-
-function buildUserContent(
-  text: string,
-  usedVision: boolean,
-  aboutRepliedMedia = false,
-): string {
-  if (text) {
-    if (aboutRepliedMedia && usedVision) {
-      return (
-        `${text}\n\n` +
-        "(They are asking about the image from the message they replied to; it is attached to this turn.)"
-      );
-    }
-    return text;
-  }
-  if (usedVision) {
-    return aboutRepliedMedia
-      ? "Answer about the image from the message they replied to."
-      : "Describe what you see in this image.";
-  }
-  return "Hello!";
 }
 
 function escapeHtml(text: string): string {

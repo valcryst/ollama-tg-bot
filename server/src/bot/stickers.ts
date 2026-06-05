@@ -22,6 +22,10 @@ function stickerEmoji(sticker: Sticker): string | null {
   return emoji || null;
 }
 
+export function stickerPackEmoji(sticker: Sticker | undefined): string | null {
+  return sticker ? stickerEmoji(sticker) : null;
+}
+
 /** Short label for chat history and reply summaries. */
 export function stickerHistoryLabel(sticker: Sticker): string {
   const emoji = stickerEmoji(sticker);

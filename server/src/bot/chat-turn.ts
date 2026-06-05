@@ -25,11 +25,11 @@ import {
 } from "./conversation.js";
 import { scheduleMemoryPersistence } from "../memory-extract.js";
 import type { MemoryExtractInput } from "../memory-extract.js";
-
-export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
 import { getOwnerUserId, getOwnerUsername } from "./owner.js";
 import { replyParameters } from "./replies.js";
-import { resolveGroupActivityKey } from "./group-activity.js";
+import { logEvent, logEventError } from "../event-log.js";
+
+export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
 
 const TYPING_REFRESH_MS = 4000;
 
@@ -39,8 +39,10 @@ export interface ChatTurnInput {
   userId: string | null;
   groupChatId: string | null;
   inGroup: boolean;
-  currentUser: ChatMessage;
-  historyLabel: string;
+  latestBody: string;
+  userRole: string | null;
+  userHistoryContent: string | null;
+  skipUserHistory?: boolean;
   userMemoryFacts: string[];
   groupMemoryFacts: string[];
   generalMemoryFacts: string[];
@@ -48,8 +50,6 @@ export interface ChatTurnInput {
   currentSpeaker?: CurrentSpeaker | null;
   currentSpeakerIsOwner?: boolean;
   replyContext?: string | null;
-  groupActivityContext?: string | null;
-  usedVision?: boolean;
   replyToMessageId?: number;
   messageThreadId?: number;
 }
@@ -121,7 +121,6 @@ function buildReplyExtra(
   return Object.keys(extra).length > 0 ? extra : undefined;
 }
 
-/** Run Ollama, reply in Telegram, update history/memory refs. */
 export async function runChatTurn(
   ctx: Context,
   input: ChatTurnInput,
@@ -133,49 +132,71 @@ export async function runChatTurn(
     input.messageThreadId,
   );
 
+  const turnLog = {
+    chatId: input.chatId,
+    userId: input.userId,
+    groupId: input.groupChatId,
+    convKey: input.convKey,
+    inGroup: input.inGroup,
+  };
+
   try {
+    logEvent("chat_turn_started", turnLog);
+
     let webSearchContext: string | null = null;
     if (isTavilyConfigured()) {
       const decision = await analyzeSearchNeed({
-        userMessage: input.currentUser.content,
+        userMessage: input.latestBody,
         replyContext: input.replyContext,
       });
       if (decision.needsSearch && decision.query) {
+        logEvent("web_search_triggered", { ...turnLog, queryLen: decision.query.length });
         try {
           const payload = await tavilySearch(decision.query);
           webSearchContext = formatTavilyContext(decision.query, payload);
-          console.log(
-            `Tavily: ${payload.results.length} source(s)` +
-              (payload.answer ? ", with summary" : "") +
-              ` for "${decision.query}"`,
-          );
+          logEvent("web_search_done", {
+            ...turnLog,
+            sourceCount: payload.results.length,
+            hasSummary: Boolean(payload.answer),
+          });
         } catch (err) {
-          console.error("Tavily search failed:", err);
+          logEventError("web_search_failed", err, turnLog);
           webSearchContext = formatTavilyFailure(decision.query, err);
         }
+      } else {
+        logEvent("web_search_skipped", turnLog);
       }
     }
 
+    logEvent("ollama_reply_started", turnLog);
     const messages = buildChatMessages(
       settings.customSystemPrompt,
       input.convKey,
-      input.currentUser,
-      input.userMemoryFacts,
-      input.replyContext,
+      {
+        body: input.latestBody,
+        speakerTag: input.userRole,
+        replyContext: input.replyContext,
+        webSearchContext,
+        currentSpeaker: input.currentSpeaker,
+        currentSpeakerIsOwner: input.currentSpeakerIsOwner,
+        isGroupChat: input.inGroup,
+      },
       {
         isGroupChat: input.inGroup,
         groupMemoryFacts: input.groupMemoryFacts,
         generalMemoryFacts: input.generalMemoryFacts,
-        currentSpeaker: input.currentSpeaker,
-        currentSpeakerIsOwner: input.currentSpeakerIsOwner,
-        webSearchContext,
-        groupActivityContext: input.groupActivityContext,
+        currentUserId: input.userId,
         ownerUserId: getOwnerUserId(),
         ownerUsername: getOwnerUsername(),
       },
     );
 
     const modelOutput = await chatComplete(messages);
+    logEvent("ollama_reply_done", {
+      ...turnLog,
+      outputChars: modelOutput.length,
+    });
+
     let { reply: replyBody } = parseStructuredResponse(modelOutput);
 
     if (!replyBody.trim()) {
@@ -186,7 +207,13 @@ export async function runChatTurn(
     }
 
     const reply = prepareTelegramHtml(replyBody);
-    recordExchange(input.convKey, input.historyLabel, replyBody);
+    recordExchange(
+      input.convKey,
+      input.userRole,
+      input.userHistoryContent,
+      replyBody,
+      { skipUser: input.skipUserHistory },
+    );
     const chunks = splitMessage(reply);
 
     const replyExtra = buildReplyExtra(ctx, {
@@ -199,19 +226,22 @@ export async function runChatTurn(
         await ctx.api.sendChatAction(input.chatId, "typing");
       }
       const sent = await replyHtml(ctx, chunks[i], replyExtra);
-      const refKey = input.inGroup
-        ? (resolveGroupActivityKey(ctx) ?? input.convKey)
-        : input.convKey;
       rememberMessageRef(
-        refKey,
+        input.convKey,
         sent.message_id,
         "assistant",
         replyBody,
-        input.inGroup ? "Bot" : null,
+        "Bot",
       );
     }
 
-    recordReply(input.usedVision ?? false);
+    recordReply(false);
+    logEvent("reply_sent", {
+      ...turnLog,
+      chunkCount: chunks.length,
+      replyChars: replyBody.length,
+      skipUserHistory: Boolean(input.skipUserHistory),
+    });
 
     scheduleMemoryPersistence({
       userId: input.userId,
@@ -219,7 +249,7 @@ export async function runChatTurn(
       input: { ...input.memoryInput, assistantReply: replyBody },
     });
   } catch (err) {
-    console.error("Chat turn error:", err);
+    logEventError("reply_failed", err, turnLog);
     const detail: ErrorLogInput = {
       message: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,

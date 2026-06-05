@@ -167,6 +167,35 @@
   margin-bottom: 0.75rem;
 }
 
+.data-tab-item {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 6px;
+}
+
+.data-tab-item.active {
+  box-shadow: 0 0 0 1px var(--accent);
+  border-radius: 6px;
+}
+
+.data-tab-item .data-tab {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+
+.data-tab-item.active .data-tab {
+  border-color: var(--accent);
+}
+
+.data-tab-refresh {
+  padding: 0.4rem 0.55rem;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  line-height: 1;
+  min-width: 2rem;
+}
+
 .data-tab {
   display: inline-flex;
   align-items: center;
@@ -206,7 +235,7 @@
 .data-card-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 0.5rem 1rem;
   margin-bottom: 1rem;

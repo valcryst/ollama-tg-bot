@@ -9,6 +9,7 @@ import { addUserFacts } from "./db/user-memory.js";
 import { chatComplete } from "./ollama/client.js";
 import type { ChatMessage } from "./ollama/client.js";
 import { parseStructuredResponse } from "./response-format.js";
+import { logEvent, logEventError } from "./event-log.js";
 
 const MEMORY_EXTRACT_NUM_PREDICT = 384;
 
@@ -101,7 +102,9 @@ export async function extractMemoriesFromTurn(
       generalFacts: parsed.generalMemoryFacts,
     };
   } catch (err) {
-    console.error("Memory extraction failed:", err);
+    logEventError("memory_extract_failed", err, {
+      isGroupChat: input.isGroupChat,
+    });
     return { userFacts: [], groupFacts: [], generalFacts: [] };
   }
 }
@@ -119,19 +122,40 @@ export interface MemoryPersistContext {
 
 /** Run memory extraction and DB writes without blocking the Telegram reply. */
 export function scheduleMemoryPersistence(ctx: MemoryPersistContext): void {
+  logEvent("memory_extract_scheduled", {
+    userId: ctx.userId,
+    groupId: ctx.groupChatId,
+    isGroupChat: ctx.input.isGroupChat,
+  });
   void persistMemories(ctx).catch((err) => {
-    console.error("Background memory persistence failed:", err);
+    logEventError("memory_persist_failed", err, {
+      userId: ctx.userId,
+      groupId: ctx.groupChatId,
+    });
   });
 }
 
 async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
+  logEvent("memory_extract_started", {
+    userId: ctx.userId,
+    groupId: ctx.groupChatId,
+    isGroupChat: ctx.input.isGroupChat,
+  });
+
   const extracted = await extractMemoriesFromTurn(ctx.input);
+  let anyUpdated = false;
 
   if (ctx.userId) {
     const userNew = newFactsOnly(ctx.input.existingUserFacts, extracted.userFacts);
     if (userNew.length > 0) {
       addUserFacts(ctx.userId, userNew);
       scheduleUserMemoryCompression(ctx.userId);
+      logEvent("memory_updated", {
+        scope: "user",
+        userId: ctx.userId,
+        factCount: userNew.length,
+      });
+      anyUpdated = true;
     }
   }
   if (ctx.groupChatId) {
@@ -142,6 +166,12 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
     if (groupNew.length > 0) {
       addGroupFacts(ctx.groupChatId, groupNew);
       scheduleGroupMemoryCompression(ctx.groupChatId);
+      logEvent("memory_updated", {
+        scope: "group",
+        groupId: ctx.groupChatId,
+        factCount: groupNew.length,
+      });
+      anyUpdated = true;
     }
   }
 
@@ -152,6 +182,18 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
   if (generalNew.length > 0) {
     addGeneralFacts(generalNew);
     scheduleGeneralMemoryCompression();
+    logEvent("memory_updated", {
+      scope: "general",
+      factCount: generalNew.length,
+    });
+    anyUpdated = true;
+  }
+
+  if (!anyUpdated) {
+    logEvent("memory_extract_no_changes", {
+      userId: ctx.userId,
+      groupId: ctx.groupChatId,
+    });
   }
 }
 

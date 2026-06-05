@@ -1,112 +1,150 @@
 import type { Context } from "grammy";
 import type { ChatMessage } from "../ollama/client.js";
 import {
+  appendAssistantMessage,
   appendMessage,
   conversationKey,
   getHistory,
   historyToChatMessages,
 } from "../db/history.js";
+import { getUserFacts } from "../db/user-memory.js";
 import { scheduleHistoryCompression } from "../context-compress.js";
-import { buildSystemPrompt } from "../prompts.js";
-import { stickerHistoryLabel } from "./stickers.js";
-import type { Sticker } from "@grammyjs/types";
+import { logEvent } from "../event-log.js";
+import { buildSystemPrompt, type ParticipantFacts } from "../prompts.js";
 import {
-  currentSpeakerFromUser,
-  wrapCurrentTurnForGroup,
-  type CurrentSpeaker,
-} from "./speaker.js";
+  extractParticipantUserIds,
+  userRoleTag,
+} from "./history-format.js";
+import { currentSpeakerFromUser, type CurrentSpeaker } from "./speaker.js";
 
 export type { CurrentSpeaker } from "./speaker.js";
 
 export function resolveConversationKey(ctx: Context): string | null {
   const chatId = ctx.chat?.id;
   if (chatId == null) return null;
-
-  const inGroup =
-    ctx.chat?.type === "group" || ctx.chat?.type === "supergroup";
   const threadId = ctx.message?.message_thread_id;
-  const userId = ctx.from?.id;
+  return conversationKey(chatId, { threadId });
+}
 
-  return conversationKey(chatId, {
-    threadId,
-    userId: inGroup && userId != null ? String(userId) : undefined,
-  });
+export interface LatestTurnOptions {
+  body: string;
+  speakerTag?: string | null;
+  replyContext?: string | null;
+  webSearchContext?: string | null;
+  currentSpeaker?: CurrentSpeaker | null;
+  currentSpeakerIsOwner?: boolean;
+  isGroupChat?: boolean;
+}
+
+function buildLatestTurnMessage(options: LatestTurnOptions): string {
+  const parts: string[] = [];
+
+  if (options.isGroupChat && options.currentSpeaker) {
+    const ownerLine = options.currentSpeakerIsOwner
+      ? "They are the bot owner — prioritize their intent.\n"
+      : "";
+    parts.push(
+      `[CURRENT SPEAKER — reply to this person only]\n` +
+        `Name: ${options.currentSpeaker.label}\n` +
+        `Tag: ${options.speakerTag ?? options.currentSpeaker.userId}\n` +
+        ownerLine,
+    );
+  }
+
+  if (options.replyContext?.trim()) {
+    parts.push(
+      `[REPLY CONTEXT]\n${options.replyContext.trim()}`,
+    );
+  }
+
+  if (options.webSearchContext?.trim()) {
+    parts.push(
+      `[WEB SEARCH — answer from this for your reply]\n${options.webSearchContext.trim()}`,
+    );
+  }
+
+  parts.push(options.body.trim());
+  return parts.filter(Boolean).join("\n\n");
+}
+
+function loadParticipantFacts(
+  chatKey: string,
+  currentUserId: string | null,
+): ParticipantFacts[] {
+  const history = getHistory(chatKey);
+  const roles = history.map((m) => m.role);
+  const participantIds = extractParticipantUserIds(
+    roles,
+    currentUserId ? [currentUserId] : [],
+  );
+
+  return participantIds.map((userId) => ({
+    userId,
+    label: `User ${userId}`,
+    facts: getUserFacts(userId),
+  }));
 }
 
 export function buildChatMessages(
   customSystemPrompt: string,
   chatKey: string,
-  currentUser: ChatMessage,
-  userMemoryFacts: string[] = [],
-  replyContext?: string | null,
-  memoryOptions: {
+  latestTurn: LatestTurnOptions,
+  options: {
     isGroupChat?: boolean;
     groupMemoryFacts?: string[];
     generalMemoryFacts?: string[];
-    currentSpeaker?: CurrentSpeaker | null;
-    webSearchContext?: string | null;
-    groupActivityContext?: string | null;
+    currentUserId?: string | null;
     ownerUserId?: string | null;
     ownerUsername?: string | null;
-    currentSpeakerIsOwner?: boolean;
   } = {},
 ): ChatMessage[] {
-  const history = historyToChatMessages(getHistory(chatKey));
-  const turns: ChatMessage[] = [...history];
-
-  const { groupActivityContext, isGroupChat = false } = memoryOptions;
-  if (isGroupChat && groupActivityContext?.trim()) {
-    turns.push({
-      role: "user",
-      content: groupActivityContext.trim(),
-    });
-  }
-
-  if (replyContext?.trim()) {
-    const replyIntro = isGroupChat
-      ? `The current speaker is continuing a Telegram reply thread. ` +
-        `Answer ONLY them (marked [CURRENT SPEAKER]). ` +
-        `Other names in the thread may be different group members — do not confuse their words with the speaker's. ` +
-        `Pronouns like "this", "that", or "it" refer to earlier steps in the thread:\n`
-      : `The user is replying in a Telegram thread (if they say "this", "that", or "it", they mean earlier steps below):\n`;
-    turns.push({
-      role: "user",
-      content: replyIntro + replyContext.trim(),
-    });
-  }
-
-  const { webSearchContext } = memoryOptions;
-  if (webSearchContext?.trim()) {
-    turns.push({
-      role: "user",
-      content:
-        `[WEB SEARCH — use for your reply to the next message. ` +
-        `Answer from the Tavily summary and sources below.]\n\n` +
-        webSearchContext.trim(),
-    });
-  }
-
   const {
-    currentSpeaker = null,
+    isGroupChat = false,
+    groupMemoryFacts = [],
+    generalMemoryFacts = [],
+    currentUserId = null,
     ownerUserId = null,
     ownerUsername = null,
-    currentSpeakerIsOwner = false,
-  } = memoryOptions;
-  let userContent = currentUser.content;
-  if (isGroupChat && currentSpeaker) {
-    userContent = wrapCurrentTurnForGroup(userContent, currentSpeaker, {
-      isOwner: currentSpeakerIsOwner,
-    });
+  } = options;
+
+  const participantFacts = loadParticipantFacts(chatKey, currentUserId);
+  for (const p of participantFacts) {
+    const fromHistory = getHistory(chatKey).find(
+      (m) => m.role.endsWith(`:${p.userId}`),
+    );
+    if (fromHistory) {
+      const tag = fromHistory.role;
+      p.label = tag.startsWith("user:") ? tag : p.label;
+    }
+    if (
+      latestTurn.currentSpeaker &&
+      latestTurn.currentSpeaker.userId === p.userId
+    ) {
+      p.label = latestTurn.currentSpeaker.label;
+    }
   }
 
-  turns.push({ ...currentUser, content: userContent });
+  const system = buildSystemPrompt({
+    customPrompt: customSystemPrompt,
+    generalMemoryFacts,
+    groupMemoryFacts,
+    participantFacts,
+    isGroupChat,
+    ownerUserId,
+    ownerUsername,
+  });
+
+  const history = historyToChatMessages(getHistory(chatKey));
+  const latest = buildLatestTurnMessage({
+    ...latestTurn,
+    isGroupChat,
+    speakerTag: latestTurn.speakerTag ?? null,
+  });
 
   return [
-    {
-      role: "system",
-      content: buildSystemPrompt(customSystemPrompt, userMemoryFacts, memoryOptions),
-    },
-    ...turns,
+    { role: "system", content: system },
+    ...history,
+    { role: "user", content: latest },
   ];
 }
 
@@ -129,35 +167,21 @@ export function isGroupChat(ctx: Context): boolean {
 
 export function recordExchange(
   chatKey: string,
-  userText: string,
+  userRole: string | null,
+  userContent: string | null,
   assistantText: string,
+  options?: { skipUser?: boolean },
 ): void {
-  appendMessage(chatKey, "user", userText);
-  appendMessage(chatKey, "assistant", assistantText);
+  if (!options?.skipUser && userRole && userContent?.trim()) {
+    appendMessage(chatKey, userRole, userContent);
+  }
+  appendAssistantMessage(chatKey, assistantText);
   scheduleHistoryCompression(chatKey);
-}
-
-/** Text stored in history (images are not re-sent). */
-export function historyUserLabel(
-  text: string,
-  usedVision: boolean,
-  sticker?: Sticker,
-  visionFromReply = false,
-): string {
-  if (text && sticker) return `${text}\n${stickerHistoryLabel(sticker)}`;
-  if (text) return text;
-  if (sticker) return stickerHistoryLabel(sticker);
-  if (usedVision && visionFromReply) return "[replied to an image]";
-  if (usedVision) return "[sent an image]";
-  return "[message]";
-}
-
-export function groupMemoryUserMessage(
-  baseLabel: string,
-  speaker: CurrentSpeaker | null,
-): string {
-  if (!speaker) return baseLabel;
-  return `[Speaker: ${speaker.label}] ${baseLabel}`;
+  logEvent("history_exchange_stored", {
+    convKey: chatKey,
+    skipUser: Boolean(options?.skipUser),
+    hasUserRow: !options?.skipUser && Boolean(userRole && userContent?.trim()),
+  });
 }
 
 export { currentSpeakerFromUser };

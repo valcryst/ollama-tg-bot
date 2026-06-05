@@ -1,5 +1,6 @@
 import { chatComplete } from "../ollama/client.js";
 import type { ChatMessage } from "../ollama/client.js";
+import { logEventError } from "../event-log.js";
 import { isTavilyConfigured } from "../tavily/client.js";
 
 const SEARCH_CHECK_NUM_PREDICT = 192;
@@ -105,18 +106,9 @@ export async function analyzeSearchNeed(
     const raw = await chatComplete(messages, {
       numPredict: SEARCH_CHECK_NUM_PREDICT,
     });
-    const decision = parseSearchDecision(raw);
-    if (decision.needsSearch && decision.query) {
-      console.log(`Search analyzer (model): "${decision.query}"`);
-      return decision;
-    }
-
-    console.log(
-      `Search analyzer (model): no — ${raw.replace(/\s+/g, " ").slice(0, 80)}`,
-    );
-    return { needsSearch: false, query: null };
+    return parseSearchDecision(raw);
   } catch (err) {
-    console.error("Search analyzer failed:", err);
+    logEventError("search_analyze_failed", err);
     return { needsSearch: false, query: null };
   }
 }

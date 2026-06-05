@@ -11,10 +11,9 @@ import {
   replaceGroupFacts,
 } from "./db/group-memory.js";
 import {
+  COMPRESSED_ROLE,
   getHistory,
-  HISTORY_SUMMARY_PREFIX,
   historyTotalChars,
-  isHistorySummaryMessage,
   replaceHistory,
   type StoredMessage,
 } from "./db/history.js";
@@ -26,6 +25,7 @@ import {
 import { chatComplete } from "./ollama/client.js";
 import type { ChatMessage } from "./ollama/client.js";
 import { normalizeFactText } from "./db/memory-facts.js";
+import { logEvent, logEventError } from "./event-log.js";
 
 const HISTORY_COMPRESS_NUM_PREDICT = 512;
 const MEMORY_COMPRESS_NUM_PREDICT = 512;
@@ -34,12 +34,11 @@ const MEMORY_COMPRESS_MIN_FACTS = 28;
 const MEMORY_COMPRESS_MIN_CHARS = 1800;
 const MEMORY_TARGET_MAX_FACTS = 24;
 
-const HISTORY_COMPRESS_SYSTEM = `You compress older Telegram chat history into a brief summary for future assistant context.
+const HISTORY_COMPRESS_SYSTEM = `You compress Telegram chat history into one short narrative paragraph.
 
-Preserve: who said what (use names if known), decisions, preferences, open questions, running jokes or topics, unresolved tasks.
-Omit: exact wording, greetings, filler, message meta, duplicates.
-
-Output ONLY plain summary text (no markdown, no labels). Stay within the character budget given.`;
+Use participant tags exactly like [user:username:id] and [assistant said] for the bot.
+Mention replies ("replied to"), media ("sent an image which depicts…"), and key topics.
+Output ONLY the summary text — no markdown, no labels.`;
 
 const MEMORY_COMPRESS_SYSTEM = `You merge a list of stored long-term facts into a shorter list without losing durable information.
 
@@ -59,17 +58,14 @@ fact two
 
 const inFlight = new Set<string>();
 
-function keepRecentMessageCount(): number {
-  const { historyMaxMessages } = getHistoryLimits(getSettings());
-  if (historyMaxMessages <= 2) return 2;
-  return Math.max(2, Math.min(8, Math.floor(historyMaxMessages / 2)));
-}
-
 export function historyNeedsCompression(chatKey: string): boolean {
   const settings = getSettings();
   const limits = getHistoryLimits(settings);
   const history = getHistory(chatKey);
-  if (history.length < 3) return false;
+  if (history.length < 2) return false;
+  if (history.length === 1 && history[0].role === COMPRESSED_ROLE) {
+    return historyTotalChars(history) > limits.historyMaxChars;
+  }
 
   const total = historyTotalChars(history);
   if (total > limits.historyMaxChars) return true;
@@ -103,7 +99,7 @@ export function scheduleHistoryCompression(chatKey: string): void {
   if (inFlight.has(key)) return;
   inFlight.add(key);
   void compressHistoryIfNeeded(chatKey)
-    .catch((err) => console.error("History compression failed:", err))
+    .catch((err) => logEventError("history_compression_failed", err, { convKey: chatKey }))
     .finally(() => inFlight.delete(key));
 }
 
@@ -112,7 +108,7 @@ export function scheduleUserMemoryCompression(userId: string): void {
   if (inFlight.has(key)) return;
   inFlight.add(key);
   void compressUserMemoryIfNeeded(userId)
-    .catch((err) => console.error("User memory compression failed:", err))
+    .catch((err) => logEventError("user_memory_compression_failed", err, { userId }))
     .finally(() => inFlight.delete(key));
 }
 
@@ -121,7 +117,7 @@ export function scheduleGroupMemoryCompression(groupId: string): void {
   if (inFlight.has(key)) return;
   inFlight.add(key);
   void compressGroupMemoryIfNeeded(groupId)
-    .catch((err) => console.error("Group memory compression failed:", err))
+    .catch((err) => logEventError("group_memory_compression_failed", err, { groupId }))
     .finally(() => inFlight.delete(key));
 }
 
@@ -130,7 +126,7 @@ export function scheduleGeneralMemoryCompression(): void {
   if (inFlight.has(key)) return;
   inFlight.add(key);
   void compressGeneralMemoryIfNeeded()
-    .catch((err) => console.error("General memory compression failed:", err))
+    .catch((err) => logEventError("general_memory_compression_failed", err))
     .finally(() => inFlight.delete(key));
 }
 
@@ -139,43 +135,23 @@ async function compressHistoryIfNeeded(chatKey: string): Promise<void> {
 
   const settings = getSettings();
   const history = getHistory(chatKey);
-  const keep = keepRecentMessageCount();
-  if (history.length <= keep) return;
-
-  const recent = history.slice(-keep);
-  let older = history.slice(0, -keep);
-
-  const existingSummaryIdx = older.findIndex((m) =>
-    isHistorySummaryMessage(m.content),
-  );
-  let existingSummary: string | null = null;
-  if (existingSummaryIdx >= 0) {
-    const summaryMsg = older[existingSummaryIdx];
-    existingSummary = summaryMsg.content
-      .slice(HISTORY_SUMMARY_PREFIX.length)
-      .trim();
-    older = older.filter((_, i) => i !== existingSummaryIdx);
-  }
-
-  if (older.length === 0) return;
+  if (history.length === 0) return;
 
   const limits = getHistoryLimits(settings);
   const maxSummaryChars = Math.max(
     400,
-    Math.floor(limits.historyMaxChars * 0.45),
+    Math.floor(limits.historyMaxChars * 0.85),
   );
 
-  const transcript = formatTranscript(older);
-  let userContent = `Character budget: about ${maxSummaryChars} characters.\n\n`;
-  if (existingSummary) {
-    userContent +=
-      `Existing summary to merge and shorten:\n${existingSummary}\n\n---\n`;
-  }
-  userContent += `Messages to summarize:\n${transcript}`;
-
+  const transcript = history.map((m) => m.content.trim()).join("\n");
   const messages: ChatMessage[] = [
     { role: "system", content: HISTORY_COMPRESS_SYSTEM },
-    { role: "user", content: userContent },
+    {
+      role: "user",
+      content:
+        `Character budget: about ${maxSummaryChars} characters.\n\n` +
+        `History to compress into one paragraph:\n${transcript}`,
+    },
   ];
 
   const raw = await chatComplete(messages, {
@@ -185,17 +161,15 @@ async function compressHistoryIfNeeded(chatKey: string): Promise<void> {
   if (!summaryBody) return;
 
   const compressed: StoredMessage[] = [
-    {
-      role: "user",
-      content: `${HISTORY_SUMMARY_PREFIX}\n${summaryBody}`,
-    },
-    ...recent,
+    { role: COMPRESSED_ROLE, content: summaryBody },
   ];
 
   replaceHistory(chatKey, compressed);
-  console.log(
-    `Compressed history for ${chatKey}: ${history.length} messages → ${compressed.length}`,
-  );
+  logEvent("history_compressed", {
+    convKey: chatKey,
+    messageCount: history.length,
+    resultCount: 1,
+  });
 }
 
 async function compressUserMemoryIfNeeded(userId: string): Promise<void> {
@@ -204,9 +178,11 @@ async function compressUserMemoryIfNeeded(userId: string): Promise<void> {
   const merged = await compressFactsWithModel(facts, "user");
   if (merged.length === 0) return;
   replaceUserFacts(userId, merged);
-  console.log(
-    `Compressed user memory ${userId}: ${facts.length} facts → ${merged.length}`,
-  );
+  logEvent("user_memory_compressed", {
+    userId,
+    factCountBefore: facts.length,
+    factCountAfter: merged.length,
+  });
 }
 
 async function compressGroupMemoryIfNeeded(groupId: string): Promise<void> {
@@ -215,9 +191,11 @@ async function compressGroupMemoryIfNeeded(groupId: string): Promise<void> {
   const merged = await compressFactsWithModel(facts, "group");
   if (merged.length === 0) return;
   replaceGroupFacts(groupId, merged);
-  console.log(
-    `Compressed group memory ${groupId}: ${facts.length} facts → ${merged.length}`,
-  );
+  logEvent("group_memory_compressed", {
+    groupId,
+    factCountBefore: facts.length,
+    factCountAfter: merged.length,
+  });
 }
 
 async function compressGeneralMemoryIfNeeded(): Promise<void> {
@@ -226,9 +204,10 @@ async function compressGeneralMemoryIfNeeded(): Promise<void> {
   const merged = await compressFactsWithModel(facts, "general");
   if (merged.length === 0) return;
   replaceGeneralFacts(merged);
-  console.log(
-    `Compressed general memory: ${facts.length} facts → ${merged.length}`,
-  );
+  logEvent("general_memory_compressed", {
+    factCountBefore: facts.length,
+    factCountAfter: merged.length,
+  });
 }
 
 async function compressFactsWithModel(
@@ -251,15 +230,6 @@ async function compressFactsWithModel(
     numPredict: MEMORY_COMPRESS_NUM_PREDICT,
   });
   return parseFactsBlock(raw).slice(0, MEMORY_TARGET_MAX_FACTS);
-}
-
-function formatTranscript(messages: StoredMessage[]): string {
-  return messages
-    .map((m) => {
-      const label = m.role === "user" ? "User" : "Assistant";
-      return `${label}: ${m.content.trim()}`;
-    })
-    .join("\n\n");
 }
 
 function clampSummaryText(raw: string, maxChars: number): string {
