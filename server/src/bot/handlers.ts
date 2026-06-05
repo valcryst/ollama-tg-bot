@@ -362,6 +362,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         currentSpeaker: speaker,
         currentSpeakerIsOwner: inGroupChat ? isOwner(ctx) : false,
         replyContext,
+        messageThreadId: ctx.message?.message_thread_id,
         memoryInput: {
           userMessage: memoryUserLabel,
           replyContext,

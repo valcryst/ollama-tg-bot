@@ -32,6 +32,7 @@ export async function describeVisionImages(
 
     const raw = await chatComplete(messages, {
       numPredict: VISION_DESCRIBE_NUM_PREDICT,
+      verboseLabel: "vision describe",
     });
     const description = raw.trim();
     logEvent("vision_done", {

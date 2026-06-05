@@ -22,8 +22,8 @@ export type { CurrentSpeaker } from "./speaker.js";
 export function resolveConversationKey(ctx: Context): string | null {
   const chatId = ctx.chat?.id;
   if (chatId == null) return null;
-  const threadId = ctx.message?.message_thread_id;
-  return conversationKey(chatId, { threadId });
+  // Groups share one history per chat — not per forum topic.
+  return conversationKey(chatId);
 }
 
 export interface LatestTurnOptions {
@@ -85,6 +85,15 @@ function loadParticipantFacts(
   }));
 }
 
+export interface BuiltChatPayload {
+  messages: ChatMessage[];
+  systemContent: string;
+  historyMessages: ChatMessage[];
+  latestContent: string;
+  /** Rows loaded from DB (already capped by historyMaxMessages). */
+  storedHistoryCount: number;
+}
+
 export function buildChatMessages(
   customSystemPrompt: string,
   chatKey: string,
@@ -97,7 +106,7 @@ export function buildChatMessages(
     ownerUserId?: string | null;
     ownerUsername?: string | null;
   } = {},
-): ChatMessage[] {
+): BuiltChatPayload {
   const {
     isGroupChat = false,
     groupMemoryFacts = [],
@@ -134,18 +143,28 @@ export function buildChatMessages(
     ownerUsername,
   });
 
-  const history = historyToChatMessages(getHistory(chatKey));
+  const storedHistory = getHistory(chatKey);
+  const history = historyToChatMessages(storedHistory);
   const latest = buildLatestTurnMessage({
     ...latestTurn,
     isGroupChat,
     speakerTag: latestTurn.speakerTag ?? null,
   });
 
-  return [
-    { role: "system", content: system },
-    ...history,
-    { role: "user", content: latest },
-  ];
+  const historyMessages = history;
+  const latestMessage: ChatMessage = { role: "user", content: latest };
+
+  return {
+    systemContent: system,
+    historyMessages,
+    latestContent: latest,
+    storedHistoryCount: storedHistory.length,
+    messages: [
+      { role: "system", content: system },
+      ...historyMessages,
+      latestMessage,
+    ],
+  };
 }
 
 export function resolveUserId(ctx: Context): string | null {

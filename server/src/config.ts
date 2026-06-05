@@ -19,6 +19,14 @@ function resolveTavilyApiKey(): string {
   return (process.env.TAVILY_API_KEY ?? "").trim();
 }
 
+export type LoggingLevel = "ERROR" | "DEBUG" | "VERBOSE";
+
+function resolveLoggingLevel(): LoggingLevel {
+  const raw = (process.env.LOGGING_LEVEL ?? "ERROR").trim().toUpperCase();
+  if (raw === "DEBUG" || raw === "VERBOSE") return raw;
+  return "ERROR";
+}
+
 export const config = {
   botToken: process.env.BOT_TOKEN ?? "",
   host: "0.0.0.0",
@@ -28,6 +36,8 @@ export const config = {
   dashboardDist: path.join(rootDir, "dashboard", "dist"),
   /** Tavily API key from env (TAVILY_API_KEY). Empty = web search off. */
   tavilyApiKey: resolveTavilyApiKey(),
+  /** ERROR = errors only; DEBUG = lifecycle events; VERBOSE = + Ollama I/O. */
+  loggingLevel: resolveLoggingLevel(),
 };
 
 export function requireBotToken(): string {

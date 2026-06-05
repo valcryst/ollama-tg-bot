@@ -203,15 +203,16 @@ function migrateMessageRefsSchema(): void {
   cleanupLegacyDuplicateRefs();
 }
 
-/** Drop rows superseded by a more specific chat_key for the same Telegram message. */
+/** Drop legacy per-topic duplicates when the group-level ref already exists. */
 function cleanupLegacyDuplicateRefs(): void {
   db.exec(`
-    DELETE FROM message_refs
-    WHERE instr(chat_key, ':') = 0
+    DELETE FROM message_refs AS thread
+    WHERE thread.chat_key LIKE '-%:%'
+      AND thread.chat_key NOT LIKE '%:%:%'
       AND EXISTS (
-        SELECT 1 FROM message_refs AS specific
-        WHERE specific.telegram_message_id = message_refs.telegram_message_id
-          AND specific.chat_key LIKE message_refs.chat_key || ':%'
+        SELECT 1 FROM message_refs AS base
+        WHERE base.telegram_message_id = thread.telegram_message_id
+          AND base.chat_key = substr(thread.chat_key, 1, instr(thread.chat_key, ':') - 1)
       )
   `);
   db.exec(`

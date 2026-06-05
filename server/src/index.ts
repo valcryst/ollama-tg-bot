@@ -3,6 +3,7 @@ import path from "node:path";
 import express from "express";
 import cors from "cors";
 import { config } from "./config.js";
+import { logInfo } from "./logging.js";
 import { initDatabase } from "./db/database.js";
 import { createApiRouter } from "./api/routes.js";
 import { startBot, stopBot } from "./bot/index.js";
@@ -30,19 +31,19 @@ async function main(): Promise<void> {
       if (req.path.startsWith("/api")) return next();
       res.sendFile(indexHtml);
     });
-    console.log(`Dashboard: ${config.dashboardDist}`);
+    logInfo(`Dashboard: ${config.dashboardDist}`);
   } else if (!process.env.NODE_ENV || process.env.NODE_ENV === "development") {
-    console.log("No dashboard build — run npm run dev -w dashboard (Vite)");
+    logInfo("No dashboard build — run npm run dev -w dashboard (Vite)");
   }
 
   await startBot();
 
   const server = app.listen(config.port, config.host, () => {
-    console.log(`Listening on http://${config.host}:${config.port}`);
+    logInfo(`Listening on http://${config.host}:${config.port}`);
   });
 
   const shutdown = async () => {
-    console.log("Shutting down...");
+    logInfo("Shutting down...");
     await stopBot();
     server.close();
     process.exit(0);

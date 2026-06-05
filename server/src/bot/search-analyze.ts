@@ -105,6 +105,7 @@ export async function analyzeSearchNeed(
   try {
     const raw = await chatComplete(messages, {
       numPredict: SEARCH_CHECK_NUM_PREDICT,
+      verboseLabel: "web search decision",
     });
     return parseSearchDecision(raw);
   } catch (err) {

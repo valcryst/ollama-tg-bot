@@ -1,5 +1,6 @@
 import { Bot } from "grammy";
 import { requireBotToken } from "../config.js";
+import { logInfo } from "../logging.js";
 import { setBotIdentity } from "./bot-identity.js";
 import { registerHandlers } from "./handlers.js";
 
@@ -33,8 +34,8 @@ export async function startBot(): Promise<Bot> {
   void bot.start({
     allowed_updates: ["message", "message_reaction", "my_chat_member"],
     onStart: () => {
-      console.log(`Bot @${botUsername} is running`);
-      console.log(
+      logInfo(`Bot @${botUsername} is running`);
+      logInfo(
         "Groups: @mention, reply, name, or react to the bot's messages. " +
           "Other messages are checked by the model for indirect address. " +
           "Emoji reactions in groups require the bot to be an admin. " +

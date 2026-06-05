@@ -57,9 +57,7 @@ export function resolveReaction(ctx: Context): ResolvedReaction | null {
     ? threadIdFromChatKey(match.chatKey, chatId)
     : undefined;
 
-  const convKey = conversationKey(chatId, {
-    threadId: messageThreadId,
-  });
+  const convKey = conversationKey(chatId);
 
   return {
     convKey,

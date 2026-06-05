@@ -1,5 +1,6 @@
 import { getSettings } from "../db/database.js";
 import { normalizeImageForOllama } from "./images.js";
+import { logOllamaExchange } from "./verbose-log.js";
 import { parseStructuredResponse } from "../response-format.js";
 import {
   getChatTimeoutMs,
@@ -127,10 +128,27 @@ async function prepareMessages(
   );
 }
 
+export interface VerbosePromptLayout {
+  system: string;
+  history: ChatMessage[];
+  latest: string;
+}
+
+export interface ChatCompleteOptions {
+  model?: string;
+  numPredict?: number;
+  /** VERBOSE log section label, e.g. "web search decision". */
+  verboseLabel?: string;
+  /** VERBOSE: split main-reply prompt into system / history / latest sections. */
+  verboseLayout?: VerbosePromptLayout;
+}
+
 async function requestChat(
   model: string,
   prepared: ChatMessage[],
   numPredict: number,
+  verboseLabel?: string,
+  verboseLayout?: VerbosePromptLayout,
 ): Promise<OllamaChatResponse> {
   const settings = getSettings();
   const res = await fetch(`${baseUrl()}/api/chat`, {
@@ -157,25 +175,48 @@ async function requestChat(
     throw new Error(`Ollama chat failed (${res.status}): ${body}`);
   }
 
-  return (await res.json()) as OllamaChatResponse;
+  const data = (await res.json()) as OllamaChatResponse;
+  if (verboseLabel) {
+    logOllamaExchange(
+      verboseLabel,
+      model,
+      numPredict,
+      prepared,
+      data,
+      verboseLayout,
+    );
+  }
+  return data;
 }
 
 /** Full model output (includes [MEMORY] / [GROUP_MEMORY] blocks when present). */
 export async function chatComplete(
   messages: ChatMessage[],
-  options?: { model?: string; numPredict?: number },
+  options?: ChatCompleteOptions,
 ): Promise<string> {
   const settings = getSettings();
   const model = options?.model ?? settings.model;
   const prepared = await prepareMessages(messages);
   const cap = options?.numPredict ?? settings.numPredict;
+  const verboseLabel = options?.verboseLabel;
+  const verboseLayout = options?.verboseLayout;
 
   try {
     let numPredict = cap;
     let lastData: OllamaChatResponse | null = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
-      lastData = await requestChat(model, prepared, numPredict);
+      const label =
+        verboseLabel && attempt > 0
+          ? `${verboseLabel} (retry ${attempt + 1})`
+          : verboseLabel;
+      lastData = await requestChat(
+        model,
+        prepared,
+        numPredict,
+        label,
+        verboseLayout,
+      );
       const raw = pickAssistantRaw(lastData);
       if (raw) return raw;
 
@@ -201,7 +242,7 @@ export async function chatComplete(
 
 export async function chat(
   messages: ChatMessage[],
-  options?: { model?: string },
+  options?: ChatCompleteOptions,
 ): Promise<string> {
   const raw = await chatComplete(messages, options);
   const reply = extractReplyText(raw);

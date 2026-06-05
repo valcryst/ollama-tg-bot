@@ -56,14 +56,12 @@ export interface ConversationKeyOptions {
   threadId?: number;
 }
 
-/** Chat id for DM or group (optional forum thread). No per-user suffix. */
+/** Chat id for DM or group. Forum topics share the group key (no thread suffix). */
 export function conversationKey(
   chatId: number,
-  options?: ConversationKeyOptions,
+  _options?: ConversationKeyOptions,
 ): string {
-  const parts = [String(chatId)];
-  if (options?.threadId != null) parts.push(String(options.threadId));
-  return parts.join(":");
+  return String(chatId);
 }
 
 export function threadIdFromChatKey(

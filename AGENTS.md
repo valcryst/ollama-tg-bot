@@ -38,6 +38,7 @@ Docker: `docker compose up -d --build` (see `README.md`).
 | Variable | Purpose |
 |----------|---------|
 | `BOT_TOKEN` | Telegram bot token (required) |
+| `LOGGING_LEVEL` | `ERROR` (default), `DEBUG` (lifecycle events), or `VERBOSE` (+ Ollama I/O) |
 | `TAVILY_API_KEY` | Optional web search via Tavily |
 | `PORT` | Docker/production listen port only — not for local dev |
 | `DATABASE_PATH` | Optional SQLite path (default `data/bot.db`) |

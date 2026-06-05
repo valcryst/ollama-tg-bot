@@ -8,6 +8,7 @@ import {
   recordReply,
   type ErrorLogInput,
 } from "../db/database.js";
+import { getHistoryLimits } from "../settings-limits.js";
 import { parseStructuredResponse } from "../response-format.js";
 import { sanitizeModelOutput } from "../ollama/sanitize.js";
 import { prepareTelegramHtml } from "../telegram/html.js";
@@ -169,7 +170,7 @@ export async function runChatTurn(
     }
 
     logEvent("ollama_reply_started", turnLog);
-    const messages = buildChatMessages(
+    const built = buildChatMessages(
       settings.customSystemPrompt,
       input.convKey,
       {
@@ -191,7 +192,32 @@ export async function runChatTurn(
       },
     );
 
-    const modelOutput = await chatComplete(messages);
+    const historyLimits = getHistoryLimits(settings);
+    const injectedChars = built.historyMessages.reduce(
+      (n, m) => n + m.content.length,
+      0,
+    );
+    logEvent("history_injected", {
+      ...turnLog,
+      injectedMessages: built.historyMessages.length,
+      storedMessages: built.storedHistoryCount,
+      maxMessages: historyLimits.historyMaxMessages,
+      maxChars: historyLimits.historyMaxChars,
+      injectedChars,
+      charTrimmed:
+        built.storedHistoryCount > 0 &&
+        built.historyMessages.length < built.storedHistoryCount,
+      latestChars: built.latestContent.length,
+    });
+
+    const modelOutput = await chatComplete(built.messages, {
+      verboseLabel: "main reply",
+      verboseLayout: {
+        system: built.systemContent,
+        history: built.historyMessages,
+        latest: built.latestContent,
+      },
+    });
     logEvent("ollama_reply_done", {
       ...turnLog,
       outputChars: modelOutput.length,
