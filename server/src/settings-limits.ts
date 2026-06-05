@@ -6,6 +6,30 @@ export interface HistoryLimits {
   historyMaxReplyChars: number;
 }
 
+export interface ReplyLengthGuidance {
+  maxTokens: number;
+  maxChars: number;
+  systemHint: string;
+  formatHint: string;
+}
+
+/** Reply brevity instructions derived from num_predict and historyMaxReplyChars. */
+export function getReplyLengthGuidance(settings: Settings): ReplyLengthGuidance {
+  const maxTokens = settings.numPredict;
+  const { historyMaxReplyChars } = getHistoryLimits(settings);
+  const maxChars = historyMaxReplyChars;
+
+  const systemHint =
+    `Keep every [REPLY] within your output budget (~${maxTokens} tokens, ` +
+    `about ${maxChars} characters). Be shorter when a brief answer is enough.`;
+
+  const formatHint =
+    `Up to ~${maxChars} characters (~${maxTokens} tokens), ` +
+    `Telegram HTML (<b> <i> <code> only).`;
+
+  return { maxTokens, maxChars, systemHint, formatHint };
+}
+
 /** Derive chat history caps from Ollama context and reply token settings. */
 export function getHistoryLimits(settings: Settings): HistoryLimits {
   const { numCtx, numPredict } = settings;

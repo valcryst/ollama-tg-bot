@@ -2,13 +2,15 @@
  * Structured assistant output. Only [REPLY] is sent to Telegram.
  * Memory blocks are parsed from the full model output or a dedicated extract pass.
  */
-export const REPLY_FORMAT_SPEC = `Reply ONLY using this block (no text outside it):
+export function buildReplyFormatSpec(formatHint: string): string {
+  return `Reply ONLY using this block (no text outside it):
 
 [REPLY]
-1–2 short sentences, Telegram HTML (<b> <i> <code> only).
+${formatHint}
 [/REPLY]
 
 Rules: always include [REPLY]. Do not output [MEMORY], [GROUP_MEMORY], or [GENERAL_MEMORY] in your reply — memory is handled separately.`;
+}
 
 /** Used by the dedicated memory extraction pass. */
 export const MEMORY_EXTRACT_FORMAT_SPEC = `Output ONLY [MEMORY], [GROUP_MEMORY], and [GENERAL_MEMORY] blocks as specified.`;

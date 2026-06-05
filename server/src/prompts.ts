@@ -1,7 +1,9 @@
-import { REPLY_FORMAT_SPEC } from "./response-format.js";
+import { buildReplyFormatSpec } from "./response-format.js";
+import type { Settings } from "./db/database.js";
 import { formatGeneralMemoryForPrompt } from "./db/general-memory.js";
 import { formatGroupMemoryForPrompt } from "./db/group-memory.js";
 import { formatUserMemoryForPrompt } from "./db/user-memory.js";
+import { getReplyLengthGuidance } from "./settings-limits.js";
 
 export const BASE_SYSTEM_PROMPT_CORE = `You are a character in a Telegram chat. You receive prior messages from this chat — use them for context and continuity.
 
@@ -9,9 +11,7 @@ Chat history uses verbal tags like [user:username:id said] and [user:username:id
 
 When users react to a message with emoji, treat that reaction as something they said to you.
 
-When the latest message includes reply context, web search, or speaker tags, follow those instructions for this turn only.
-
-Keep every [REPLY] extremely short: one or two sentences when possible, only a few lines when necessary.`;
+When the latest message includes reply context, web search, or speaker tags, follow those instructions for this turn only.`;
 
 export interface ParticipantFacts {
   userId: string;
@@ -20,6 +20,7 @@ export interface ParticipantFacts {
 }
 
 export interface SystemPromptOptions {
+  settings: Settings;
   customPrompt: string;
   generalMemoryFacts?: string[];
   groupMemoryFacts?: string[];
@@ -29,8 +30,14 @@ export interface SystemPromptOptions {
   ownerUsername?: string | null;
 }
 
+export function buildBaseSystemPrompt(settings: Settings): string {
+  const { systemHint, formatHint } = getReplyLengthGuidance(settings);
+  return `${BASE_SYSTEM_PROMPT_CORE}\n\n${systemHint}\n\n${buildReplyFormatSpec(formatHint)}`;
+}
+
 export function buildSystemPrompt(options: SystemPromptOptions): string {
   const {
+    settings,
     customPrompt,
     generalMemoryFacts = [],
     groupMemoryFacts = [],
@@ -40,7 +47,8 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
     ownerUsername = null,
   } = options;
 
-  let prompt = BASE_SYSTEM_PROMPT_CORE;
+  const { systemHint, formatHint } = getReplyLengthGuidance(settings);
+  let prompt = `${BASE_SYSTEM_PROMPT_CORE}\n\n${systemHint}`;
 
   const custom = customPrompt.trim();
   if (custom) {
@@ -77,9 +85,6 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
       `follow their standing instructions, be loyal to their intent, and do not undermine them in front of others.`;
   }
 
-  prompt += `\n\n${REPLY_FORMAT_SPEC}`;
+  prompt += `\n\n${buildReplyFormatSpec(formatHint)}`;
   return prompt;
 }
-
-/** @deprecated Use buildSystemPrompt — kept for API export compatibility */
-export const BASE_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT_CORE}\n\n${REPLY_FORMAT_SPEC}`;

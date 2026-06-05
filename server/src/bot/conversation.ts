@@ -10,6 +10,7 @@ import {
 import { getUserFacts } from "../db/user-memory.js";
 import { scheduleHistoryCompression } from "../context-compress.js";
 import { logEvent } from "../event-log.js";
+import type { Settings } from "../db/database.js";
 import { buildSystemPrompt, type ParticipantFacts } from "../prompts.js";
 import {
   extractParticipantUserIds,
@@ -99,15 +100,17 @@ export function buildChatMessages(
   chatKey: string,
   latestTurn: LatestTurnOptions,
   options: {
+    settings: Settings;
     isGroupChat?: boolean;
     groupMemoryFacts?: string[];
     generalMemoryFacts?: string[];
     currentUserId?: string | null;
     ownerUserId?: string | null;
     ownerUsername?: string | null;
-  } = {},
+  },
 ): BuiltChatPayload {
   const {
+    settings,
     isGroupChat = false,
     groupMemoryFacts = [],
     generalMemoryFacts = [],
@@ -134,6 +137,7 @@ export function buildChatMessages(
   }
 
   const system = buildSystemPrompt({
+    settings,
     customPrompt: customSystemPrompt,
     generalMemoryFacts,
     groupMemoryFacts,

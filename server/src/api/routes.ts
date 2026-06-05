@@ -10,7 +10,7 @@ import {
 } from "../db/database.js";
 import { checkHealth, listModels } from "../ollama/client.js";
 import { isTavilyConfigured } from "../tavily/client.js";
-import { BASE_SYSTEM_PROMPT } from "../prompts.js";
+import { buildBaseSystemPrompt } from "../prompts.js";
 import { getHistoryLimits } from "../settings-limits.js";
 import {
   clearGroupFactsForGroup,
@@ -56,7 +56,7 @@ export function createApiRouter(): Router {
       const settings = getSettings();
       res.json({
         ...settings,
-        baseSystemPrompt: BASE_SYSTEM_PROMPT,
+        baseSystemPrompt: buildBaseSystemPrompt(settings),
         derivedHistoryLimits: getHistoryLimits(settings),
       });
     } catch (err) {
@@ -102,7 +102,7 @@ export function createApiRouter(): Router {
       const updated = updateSettings(patch);
       res.json({
         ...updated,
-        baseSystemPrompt: BASE_SYSTEM_PROMPT,
+        baseSystemPrompt: buildBaseSystemPrompt(updated),
         derivedHistoryLimits: getHistoryLimits(updated),
       });
     } catch (err) {

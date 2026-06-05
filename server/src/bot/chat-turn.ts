@@ -183,6 +183,7 @@ export async function runChatTurn(
         isGroupChat: input.inGroup,
       },
       {
+        settings,
         isGroupChat: input.inGroup,
         groupMemoryFacts: input.groupMemoryFacts,
         generalMemoryFacts: input.generalMemoryFacts,
