@@ -1,11 +1,11 @@
 import type { Context } from "grammy";
 import type { Message } from "grammy/types";
-import {
-  getRecentGroupActivity,
-  recordGroupActivity,
-  type GroupActivityEntry,
-} from "../db/group-activity.js";
 import { conversationKey } from "../db/history.js";
+import {
+  getRecentMessageRefs,
+  rememberMessageRef,
+  type MessageRefEntry,
+} from "../db/message-refs.js";
 import { isSlashCommandMessage } from "./addressed.js";
 import { summarizeMessageContent } from "./replies.js";
 import { currentSpeakerFromUser } from "./speaker.js";
@@ -34,26 +34,12 @@ export function recordPassiveGroupActivity(ctx: Context): void {
   const content = summarizeGroupMessage(msg);
   if (!content) return;
 
-  recordGroupActivity(
+  rememberMessageRef(
     chatKey,
     msg.message_id,
-    "member",
+    "user",
+    content,
     senderLabel,
-    content,
-  );
-}
-
-export function recordBotGroupActivity(
-  chatKey: string,
-  telegramMessageId: number,
-  content: string,
-): void {
-  recordGroupActivity(
-    chatKey,
-    telegramMessageId,
-    "assistant",
-    "Bot",
-    content,
   );
 }
 
@@ -65,7 +51,7 @@ export function formatGroupActivityContext(
     currentSpeakerLabel?: string | null;
   },
 ): string | null {
-  const entries = getRecentGroupActivity(
+  const entries = getRecentMessageRefs(
     chatKey,
     options?.limit ?? 18,
     options?.excludeMessageId,
@@ -85,9 +71,11 @@ export function formatGroupActivityContext(
   );
 }
 
-function formatActivityLine(entry: GroupActivityEntry): string {
+function formatActivityLine(entry: MessageRefEntry): string {
   const who =
-    entry.role === "assistant" ? "Bot" : entry.senderLabel;
+    entry.role === "assistant"
+      ? "Bot"
+      : (entry.senderLabel ?? "Someone");
   return `• ${who}: ${entry.content}`;
 }
 

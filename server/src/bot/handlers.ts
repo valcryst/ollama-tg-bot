@@ -224,20 +224,18 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
           ? `${replyContext}\n\n• ${mediaNote}`
           : `• ${mediaNote}`;
       }
-      const historyLabel = replyContext
-        ? appendReplyContext(ctx, historyBase, botId, speaker)
-        : historyBase;
-
-      rememberMessageRef(
-        convKey,
-        ctx.message.message_id,
-        "user",
-        historyLabel,
-      );
-
       const memoryUserLabel = replyContext
         ? appendReplyContext(ctx, historyBase, botId, speaker)
         : historyBase;
+
+      if (!inGroupChat) {
+        rememberMessageRef(
+          convKey,
+          ctx.message.message_id,
+          "user",
+          historyBase,
+        );
+      }
 
       const groupActivityKey = inGroupChat
         ? resolveGroupActivityKey(ctx)
@@ -262,7 +260,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         groupChatId,
         inGroup: inGroupChat,
         currentUser,
-        historyLabel,
+        historyLabel: historyBase,
         userMemoryFacts,
         groupMemoryFacts,
         generalMemoryFacts,

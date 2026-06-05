@@ -29,10 +29,7 @@ import type { MemoryExtractInput } from "../memory-extract.js";
 export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
 import { getOwnerUserId, getOwnerUsername } from "./owner.js";
 import { replyParameters } from "./replies.js";
-import {
-  recordBotGroupActivity,
-  resolveGroupActivityKey,
-} from "./group-activity.js";
+import { resolveGroupActivityKey } from "./group-activity.js";
 
 const TYPING_REFRESH_MS = 4000;
 
@@ -202,18 +199,16 @@ export async function runChatTurn(
         await ctx.api.sendChatAction(input.chatId, "typing");
       }
       const sent = await replyHtml(ctx, chunks[i], replyExtra);
+      const refKey = input.inGroup
+        ? (resolveGroupActivityKey(ctx) ?? input.convKey)
+        : input.convKey;
       rememberMessageRef(
-        input.convKey,
+        refKey,
         sent.message_id,
         "assistant",
         replyBody,
+        input.inGroup ? "Bot" : null,
       );
-      if (input.inGroup) {
-        const groupKey = resolveGroupActivityKey(ctx);
-        if (groupKey) {
-          recordBotGroupActivity(groupKey, sent.message_id, replyBody);
-        }
-      }
     }
 
     recordReply(input.usedVision ?? false);

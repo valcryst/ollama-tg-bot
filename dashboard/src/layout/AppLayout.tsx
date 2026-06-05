@@ -8,6 +8,7 @@ const navItems = [
   { to: "/character", label: "Character", end: false },
   { to: "/settings", label: "Settings", end: false },
   { to: "/memories", label: "Memories", end: false },
+  { to: "/data", label: "Data", end: false },
 ] as const;
 
 export function AppLayout() {

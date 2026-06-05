@@ -160,6 +160,111 @@
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.data-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.data-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.data-tab:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.data-tab.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.data-tab-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--surface-2, color-mix(in srgb, var(--border) 40%, transparent));
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+}
+
+.data-tab.active .data-tab-count {
+  color: var(--text);
+}
+
+.data-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.data-card-header h3 {
+  margin: 0;
+}
+
+.data-card-meta {
+  margin: 0;
+}
+
+.data-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.data-table td.cell-long {
+  min-width: 12rem;
+  max-width: 28rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+}
+
 @media (max-width: 768px) {
   .app-shell {
     flex-direction: column;

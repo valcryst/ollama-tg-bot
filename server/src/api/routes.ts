@@ -40,6 +40,7 @@ import {
   updateUserFactById,
 } from "../db/user-memory.js";
 import { listRecentErrors } from "../db/error-log.js";
+import { getDataTable, listDataTables } from "../db/data-browser.js";
 
 const startedAt = new Date();
 
@@ -468,6 +469,31 @@ export function createApiRouter(): Router {
           err instanceof Error
             ? err.message
             : "Failed to delete general memory",
+      });
+    }
+  });
+
+  router.get("/data", (_req, res) => {
+    try {
+      res.json({ tables: listDataTables() });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to list data tables",
+      });
+    }
+  });
+
+  router.get("/data/:tableId", (req, res) => {
+    try {
+      const table = getDataTable(req.params.tableId);
+      if (!table) {
+        res.status(404).json({ error: "Unknown table" });
+        return;
+      }
+      res.json(table);
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to load table data",
       });
     }
   });

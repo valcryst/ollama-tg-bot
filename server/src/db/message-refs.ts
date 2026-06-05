@@ -1,12 +1,21 @@
 import type { DatabaseSync } from "node:sqlite";
 
 const MAX_REFS_PER_CHAT = 80;
+const MAX_CONTENT_CHARS = 1000;
 
 export type MessageRefRole = "user" | "assistant";
 
 export interface MessageRef {
   role: MessageRefRole;
   content: string;
+  senderLabel: string | null;
+}
+
+export interface MessageRefEntry {
+  role: MessageRefRole;
+  senderLabel: string | null;
+  content: string;
+  telegramMessageId: number;
 }
 
 let db: DatabaseSync;
@@ -18,6 +27,7 @@ export function bindMessageRefsDatabase(database: DatabaseSync): void {
       chat_key TEXT NOT NULL,
       telegram_message_id INTEGER NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      sender_label TEXT,
       content TEXT NOT NULL,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
       PRIMARY KEY (chat_key, telegram_message_id)
@@ -27,11 +37,7 @@ export function bindMessageRefsDatabase(database: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_message_refs_message_id
       ON message_refs (telegram_message_id);
   `);
-}
-
-function baseChatKey(chatKey: string): string | null {
-  const colon = chatKey.indexOf(":");
-  return colon > 0 ? chatKey.slice(0, colon) : null;
+  migrateMessageRefsSchema();
 }
 
 export function rememberMessageRef(
@@ -39,29 +45,33 @@ export function rememberMessageRef(
   telegramMessageId: number,
   role: MessageRefRole,
   content: string,
+  senderLabel?: string | null,
 ): void {
   const trimmed = content.trim();
   if (!trimmed || telegramMessageId < 1) return;
 
   const stored =
-    trimmed.length > 1200 ? `${trimmed.slice(0, 1200)}…` : trimmed;
+    trimmed.length > MAX_CONTENT_CHARS
+      ? `${trimmed.slice(0, MAX_CONTENT_CHARS)}…`
+      : trimmed;
 
-  const insert = db.prepare(
-    `INSERT INTO message_refs (chat_key, telegram_message_id, role, content)
-     VALUES (?, ?, ?, ?)
+  db.prepare(
+    `INSERT INTO message_refs
+       (chat_key, telegram_message_id, role, sender_label, content)
+     VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(chat_key, telegram_message_id) DO UPDATE SET
        role = excluded.role,
+       sender_label = excluded.sender_label,
        content = excluded.content,
        created_at = unixepoch()`,
+  ).run(
+    chatKey,
+    telegramMessageId,
+    role,
+    senderLabel?.trim() || null,
+    stored,
   );
-  insert.run(chatKey, telegramMessageId, role, stored);
   pruneMessageRefs(chatKey);
-
-  const baseKey = baseChatKey(chatKey);
-  if (baseKey && baseKey !== chatKey) {
-    insert.run(baseKey, telegramMessageId, role, stored);
-    pruneMessageRefs(baseKey);
-  }
 }
 
 export function getMessageRef(
@@ -70,20 +80,26 @@ export function getMessageRef(
 ): MessageRef | null {
   const row = db
     .prepare(
-      `SELECT role, content FROM message_refs
+      `SELECT role, sender_label, content FROM message_refs
        WHERE chat_key = ? AND telegram_message_id = ?`,
     )
     .get(chatKey, telegramMessageId) as
-    | { role: MessageRefRole; content: string }
+    | { role: MessageRefRole; sender_label: string | null; content: string }
     | undefined;
 
-  return row ?? null;
+  if (!row) return null;
+  return {
+    role: row.role,
+    senderLabel: row.sender_label,
+    content: row.content,
+  };
 }
 
 export interface MessageRefMatch {
   chatKey: string;
   role: MessageRefRole;
   content: string;
+  senderLabel: string | null;
 }
 
 /** Find a stored ref by chat id (includes forum topic keys). */
@@ -94,14 +110,19 @@ export function findMessageRefInChat(
   const chatKey = String(chatId);
   const row = db
     .prepare(
-      `SELECT chat_key, role, content FROM message_refs
+      `SELECT chat_key, role, sender_label, content FROM message_refs
        WHERE telegram_message_id = ?
          AND (chat_key = ? OR chat_key LIKE ?)
        ORDER BY created_at DESC
        LIMIT 1`,
     )
     .get(telegramMessageId, chatKey, `${chatId}:%`) as
-    | { chat_key: string; role: MessageRefRole; content: string }
+    | {
+        chat_key: string;
+        role: MessageRefRole;
+        sender_label: string | null;
+        content: string;
+      }
     | undefined;
 
   if (!row) return null;
@@ -109,7 +130,113 @@ export function findMessageRefInChat(
     chatKey: row.chat_key,
     role: row.role,
     content: row.content,
+    senderLabel: row.sender_label,
   };
+}
+
+/** Recent messages for a chat key (group feed or private). */
+export function getRecentMessageRefs(
+  chatKey: string,
+  limit = 20,
+  excludeMessageId?: number,
+): MessageRefEntry[] {
+  const capped = Math.min(Math.max(1, limit), 40);
+  const rows = db
+    .prepare(
+      `SELECT role, sender_label, content, telegram_message_id
+       FROM message_refs
+       WHERE chat_key = ?
+         AND (? IS NULL OR telegram_message_id != ?)
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(
+      chatKey,
+      excludeMessageId ?? null,
+      excludeMessageId ?? null,
+      capped,
+    ) as Array<{
+      role: MessageRefRole;
+      sender_label: string | null;
+      content: string;
+      telegram_message_id: number;
+    }>;
+
+  return rows.reverse().map((row) => ({
+    role: row.role,
+    senderLabel: row.sender_label,
+    content: row.content,
+    telegramMessageId: row.telegram_message_id,
+  }));
+}
+
+function migrateMessageRefsSchema(): void {
+  const columns = db
+    .prepare(`PRAGMA table_info(message_refs)`)
+    .all() as Array<{ name: string }>;
+  const names = new Set(columns.map((c) => c.name));
+
+  if (!names.has("sender_label")) {
+    db.exec(`ALTER TABLE message_refs ADD COLUMN sender_label TEXT`);
+  }
+
+  const hasGroupActivity = db
+    .prepare(
+      `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'group_activity'`,
+    )
+    .get();
+  if (!hasGroupActivity) return;
+
+  db.exec(`
+    INSERT OR IGNORE INTO message_refs
+      (chat_key, telegram_message_id, role, sender_label, content, created_at)
+    SELECT
+      chat_key,
+      telegram_message_id,
+      CASE role WHEN 'assistant' THEN 'assistant' ELSE 'user' END,
+      sender_label,
+      content,
+      created_at
+    FROM group_activity
+  `);
+  db.exec(`DROP TABLE group_activity`);
+  cleanupLegacyDuplicateRefs();
+}
+
+/** Drop rows superseded by a more specific chat_key for the same Telegram message. */
+function cleanupLegacyDuplicateRefs(): void {
+  db.exec(`
+    DELETE FROM message_refs
+    WHERE instr(chat_key, ':') = 0
+      AND EXISTS (
+        SELECT 1 FROM message_refs AS specific
+        WHERE specific.telegram_message_id = message_refs.telegram_message_id
+          AND specific.chat_key LIKE message_refs.chat_key || ':%'
+      )
+  `);
+  db.exec(`
+    DELETE FROM message_refs AS per_user
+    WHERE per_user.chat_key GLOB '-*:*'
+      AND per_user.chat_key NOT GLOB '-*:*:*'
+      AND EXISTS (
+        SELECT 1 FROM message_refs AS feed
+        WHERE feed.telegram_message_id = per_user.telegram_message_id
+          AND feed.chat_key = substr(per_user.chat_key, 1, instr(per_user.chat_key, ':') - 1)
+      )
+  `);
+  db.exec(`
+    DELETE FROM message_refs AS per_user
+    WHERE per_user.chat_key GLOB '-*:*:*'
+      AND EXISTS (
+        SELECT 1 FROM message_refs AS feed
+        WHERE feed.telegram_message_id = per_user.telegram_message_id
+          AND feed.chat_key = substr(
+            per_user.chat_key,
+            1,
+            instr(per_user.chat_key, ':', instr(per_user.chat_key, ':') + 1) - 1
+          )
+      )
+  `);
 }
 
 function pruneMessageRefs(chatKey: string): void {

@@ -61,6 +61,21 @@ export interface GeneralMemoryFact {
   createdAt: string;
 }
 
+export interface DataTableSummary {
+  id: string;
+  label: string;
+  count: number;
+}
+
+export interface DataTablePayload {
+  id: string;
+  label: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total: number;
+  truncated: boolean;
+}
+
 export interface OllamaModel {
   name: string;
   size?: number;
@@ -295,4 +310,10 @@ export const api = {
     ),
   tavilyStatus: () =>
     request<{ configured: boolean; ok: boolean }>("/api/tavily/status"),
+  getDataTables: () =>
+    request<{ tables: DataTableSummary[] }>("/api/data"),
+  getDataTable: (tableId: string) =>
+    request<DataTablePayload>(
+      `/api/data/${encodeURIComponent(tableId)}`,
+    ),
 };
