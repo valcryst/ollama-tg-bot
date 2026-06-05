@@ -1,16 +1,36 @@
 import type { Message, User } from "@grammyjs/types";
+import type { KnownUserRecord } from "../db/known-users.js";
+
 export const ASSISTANT_ROLE = "assistant";
 export const COMPRESSED_ROLE = "compressed";
 
 /** Role key stored in DB: user:username:userId */
 export function userRoleTag(user: User | undefined): string | null {
   if (!user?.id) return null;
-  const username = sanitizeTagPart(
-    user.username?.toLowerCase() ??
-      user.first_name?.toLowerCase() ??
-      "unknown",
+  return userRoleTagFromParts(
+    String(user.id),
+    user.username,
+    user.first_name,
   );
-  return `user:${username}:${user.id}`;
+}
+
+export function userRoleTagFromKnown(record: KnownUserRecord): string {
+  return userRoleTagFromParts(
+    record.userId,
+    record.username,
+    record.firstName,
+  );
+}
+
+export function userRoleTagFromParts(
+  userId: string,
+  username?: string | null,
+  firstName?: string | null,
+): string {
+  const tagName = sanitizeTagPart(
+    username?.toLowerCase() ?? firstName?.toLowerCase() ?? "unknown",
+  );
+  return `user:${tagName}:${userId}`;
 }
 
 export function parseUserRole(role: string): { username: string; userId: string } | null {
@@ -117,11 +137,12 @@ export function buildMediaHistoryContent(
 export function buildPassiveHistoryContent(
   message: Message,
   user: User | undefined,
+  text: string,
   botId?: number,
 ): string | null {
-  const text = (message.text ?? message.caption ?? "").trim();
-  if (!text) return null;
-  return buildTextHistoryContent(user, message, text, botId);
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  return buildTextHistoryContent(user, message, trimmed, botId);
 }
 
 function sanitizeTagPart(value: string): string {

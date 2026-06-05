@@ -2,8 +2,13 @@ import { buildReplyFormatSpec } from "./response-format.js";
 import type { Settings } from "./db/database.js";
 import { formatGeneralMemoryForPrompt } from "./db/general-memory.js";
 import { formatGroupMemoryForPrompt } from "./db/group-memory.js";
+import {
+  formatKnownUserLabel,
+  type KnownUserRecord,
+} from "./db/known-users.js";
 import { formatUserMemoryForPrompt } from "./db/user-memory.js";
 import { getReplyLengthGuidance } from "./settings-limits.js";
+import { userRoleTagFromKnown } from "./bot/history-format.js";
 
 export const BASE_SYSTEM_PROMPT_CORE = `You are a character in a Telegram chat. You receive prior messages from this chat — use them for context and continuity.
 
@@ -25,6 +30,7 @@ export interface SystemPromptOptions {
   generalMemoryFacts?: string[];
   groupMemoryFacts?: string[];
   participantFacts?: ParticipantFacts[];
+  knownChatUsers?: KnownUserRecord[];
   isGroupChat?: boolean;
   ownerUserId?: string | null;
   ownerUsername?: string | null;
@@ -42,6 +48,7 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
     generalMemoryFacts = [],
     groupMemoryFacts = [],
     participantFacts = [],
+    knownChatUsers = [],
     isGroupChat = false,
     ownerUserId = null,
     ownerUsername = null,
@@ -61,6 +68,15 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
   if (isGroupChat) {
     const groupSection = formatGroupMemoryForPrompt(groupMemoryFacts);
     prompt += `\n\n## Known facts about this group (shared)\n${groupSection}`;
+  }
+
+  if (knownChatUsers.length > 0) {
+    prompt +=
+      `\n\n## Known Telegram users in this chat\n` +
+      `When a message mentions their @username or name, it refers to this person:\n`;
+    for (const known of knownChatUsers) {
+      prompt += `\n- ${formatKnownUserLabel(known)} — tag ${userRoleTagFromKnown(known)}`;
+    }
   }
 
   if (participantFacts.length > 0) {

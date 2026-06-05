@@ -7,6 +7,11 @@ import {
   getHistory,
   historyToChatMessages,
 } from "../db/history.js";
+import {
+  formatKnownUserLabel,
+  getKnownUserById,
+  getKnownUsersByIds,
+} from "../db/known-users.js";
 import { getUserFacts } from "../db/user-memory.js";
 import { scheduleHistoryCompression } from "../context-compress.js";
 import { logEvent } from "../event-log.js";
@@ -68,6 +73,19 @@ function buildLatestTurnMessage(options: LatestTurnOptions): string {
   return parts.filter(Boolean).join("\n\n");
 }
 
+function loadKnownChatUsers(
+  chatKey: string,
+  currentUserId: string | null,
+): ReturnType<typeof getKnownUsersByIds> {
+  const history = getHistory(chatKey);
+  const roles = history.map((m) => m.role);
+  const participantIds = extractParticipantUserIds(
+    roles,
+    currentUserId ? [currentUserId] : [],
+  );
+  return getKnownUsersByIds(participantIds);
+}
+
 function loadParticipantFacts(
   chatKey: string,
   currentUserId: string | null,
@@ -120,7 +138,13 @@ export function buildChatMessages(
   } = options;
 
   const participantFacts = loadParticipantFacts(chatKey, currentUserId);
+  const knownChatUsers = loadKnownChatUsers(chatKey, currentUserId);
   for (const p of participantFacts) {
+    const known = getKnownUserById(p.userId);
+    if (known) {
+      p.label = formatKnownUserLabel(known);
+      continue;
+    }
     const fromHistory = getHistory(chatKey).find(
       (m) => m.role.endsWith(`:${p.userId}`),
     );
@@ -142,6 +166,7 @@ export function buildChatMessages(
     generalMemoryFacts,
     groupMemoryFacts,
     participantFacts,
+    knownChatUsers: isGroupChat ? knownChatUsers : [],
     isGroupChat,
     ownerUserId,
     ownerUsername,

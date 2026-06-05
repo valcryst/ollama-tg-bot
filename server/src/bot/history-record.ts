@@ -15,6 +15,7 @@ import {
   messageHasVisionMedia,
 } from "./message-media.js";
 import { stickerPackEmoji } from "./stickers.js";
+import { enrichTextWithUserMentions } from "./mentions.js";
 import { describeVisionImages } from "./vision-describe.js";
 
 /**
@@ -44,7 +45,21 @@ export async function recordPassiveGroupHistory(
   const botId = ctx.me?.id;
   let stored = false;
 
-  const textContent = buildPassiveHistoryContent(msg, ctx.from, botId);
+  const rawText = (msg.text ?? msg.caption ?? "").trim();
+  const enrichedText = rawText
+    ? enrichTextWithUserMentions(rawText, msg, {
+        botId,
+        botUsername: ctx.me?.username,
+        senderId: ctx.from?.id,
+        senderUsername: ctx.from?.username,
+      })
+    : "";
+  const textContent = buildPassiveHistoryContent(
+    msg,
+    ctx.from,
+    enrichedText,
+    botId,
+  );
   if (textContent) {
     appendMessage(chatKey, role, textContent);
     stored = true;
