@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getBotUsername, getBot } from "../bot/index.js";
+import { resolveOwnerUsername } from "../bot/resolve-owner.js";
 import {
   clearErrors,
   getSettings,
@@ -58,7 +59,7 @@ export function createApiRouter(): Router {
     }
   });
 
-  router.patch("/settings", (req, res) => {
+  router.patch("/settings", async (req, res) => {
     try {
       const body = req.body as Partial<Settings>;
       const allowed: (keyof Settings)[] = [
@@ -76,11 +77,24 @@ export function createApiRouter(): Router {
         "historyMaxChars",
         "historyMaxReplyChars",
         "visionMaxDimension",
+        "ownerUsername",
       ];
       const patch: Partial<Settings> = {};
       for (const key of allowed) {
         if (body[key] !== undefined) patch[key] = body[key] as never;
       }
+
+      if (body.ownerUsername !== undefined) {
+        const raw = String(body.ownerUsername).trim();
+        if (raw === "") {
+          patch.ownerUsername = "";
+          patch.ownerUserId = "";
+        } else {
+          const bot = getBot();
+          patch.ownerUserId = await resolveOwnerUsername(bot.api, raw);
+        }
+      }
+
       const updated = updateSettings(patch);
       res.json({ ...updated, baseSystemPrompt: BASE_SYSTEM_PROMPT });
     } catch (err) {

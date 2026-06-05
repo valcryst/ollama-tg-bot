@@ -38,6 +38,8 @@ export function buildSystemPrompt(
     groupMemoryFacts?: string[];
     generalMemoryFacts?: string[];
     currentSpeaker?: { label: string; userId: string } | null;
+    ownerUserId?: string | null;
+    ownerUsername?: string | null;
   } = {},
 ): string {
   const userSection = formatUserMemoryForPrompt(userMemoryFacts);
@@ -46,10 +48,26 @@ export function buildSystemPrompt(
     groupMemoryFacts = [],
     generalMemoryFacts = [],
     currentSpeaker,
+    ownerUserId = null,
+    ownerUsername = null,
   } = options;
 
   let prompt = BASE_SYSTEM_PROMPT_CORE;
   if (isGroupChat) prompt += `\n\n${GROUP_SYSTEM_ADDENDUM}`;
+
+  if (ownerUserId || ownerUsername) {
+    const who = [
+      ownerUsername ? `@${ownerUsername}` : null,
+      ownerUserId ? `id ${ownerUserId}` : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    prompt +=
+      `\n\n## Bot owner\n` +
+      `${who}\n` +
+      `This person deployed and runs the bot. When they speak, treat them as the owner — ` +
+      `follow their standing instructions, be loyal to their intent, and do not undermine them in front of others.`;
+  }
 
   const generalSection = formatGeneralMemoryForPrompt(generalMemoryFacts);
   prompt += `\n\n## General knowledge (all chats)\n${generalSection}`;

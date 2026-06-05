@@ -29,7 +29,7 @@ export function SettingsPage() {
       <header className="page-header">
         <h2>Settings</h2>
         <p className="page-desc">
-          Ollama connection, model, and performance limits.
+          Ollama connection, model, owner account, and performance limits.
         </p>
       </header>
 
@@ -164,6 +164,44 @@ export function SettingsPage() {
                 </p>
               </>
             ) : null}
+
+            <h3 className="section-title">Owner account</h3>
+            <div className="field">
+              <label htmlFor="ownerUsername">Telegram username</label>
+              <input
+                id="ownerUsername"
+                type="text"
+                value={draft.ownerUsername}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    ownerUsername: e.target.value.replace(/^@+/, ""),
+                  })
+                }
+                placeholder="username (without @)"
+              />
+              <p className="hint">
+                The person who runs this bot. Their numeric id is resolved via
+                the Telegram API when you save — they must message the bot at
+                least once first (e.g. <code>/start</code> or <code>/id</code>).
+                Leave empty to disable.
+              </p>
+            </div>
+            <div className="field">
+              <label htmlFor="ownerUserId">Resolved user id</label>
+              <input
+                id="ownerUserId"
+                className="input-readonly"
+                type="text"
+                readOnly
+                tabIndex={-1}
+                value={draft.ownerUserId}
+                placeholder="Not resolved yet"
+              />
+              <p className="hint">
+                Set automatically when you save a username. Read-only.
+              </p>
+            </div>
 
             <div className="field toggle-row">
               <label className="checkbox">

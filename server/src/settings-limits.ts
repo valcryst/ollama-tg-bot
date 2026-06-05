@@ -48,6 +48,20 @@ export function validateSettingsFields(settings: Settings): void {
       "randomReplyChance must be 0–100",
       settings.randomReplyChance >= 0 && settings.randomReplyChance <= 100,
     ],
+    [
+      "ownerUsername must be empty or a valid Telegram username",
+      settings.ownerUsername.trim() === "" ||
+        /^[a-z0-9_]{5,32}$/i.test(settings.ownerUsername.trim()),
+    ],
+    [
+      "ownerUserId must be empty or a numeric Telegram user id",
+      settings.ownerUserId.trim() === "" ||
+        /^\d{1,20}$/.test(settings.ownerUserId.trim()),
+    ],
+    [
+      "ownerUserId is required when ownerUsername is set",
+      settings.ownerUsername.trim() === "" || settings.ownerUserId.trim() !== "",
+    ],
   ];
 
   const failed = checks.find(([, ok]) => !ok);

@@ -27,6 +27,7 @@ import { scheduleMemoryPersistence } from "../memory-extract.js";
 import type { MemoryExtractInput } from "../memory-extract.js";
 
 export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
+import { getOwnerUserId, getOwnerUsername } from "./owner.js";
 import { replyParameters } from "./replies.js";
 
 const TYPING_REFRESH_MS = 4000;
@@ -44,6 +45,7 @@ export interface ChatTurnInput {
   generalMemoryFacts: string[];
   memoryInput: ChatTurnMemoryInput;
   currentSpeaker?: CurrentSpeaker | null;
+  currentSpeakerIsOwner?: boolean;
   replyContext?: string | null;
   usedVision?: boolean;
   replyToMessageId?: number;
@@ -163,7 +165,10 @@ export async function runChatTurn(
         groupMemoryFacts: input.groupMemoryFacts,
         generalMemoryFacts: input.generalMemoryFacts,
         currentSpeaker: input.currentSpeaker,
+        currentSpeakerIsOwner: input.currentSpeakerIsOwner,
         webSearchContext,
+        ownerUserId: getOwnerUserId(),
+        ownerUsername: getOwnerUsername(),
       },
     );
 

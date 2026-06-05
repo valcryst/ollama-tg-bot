@@ -21,12 +21,17 @@ export function currentSpeakerFromUser(
 export function wrapCurrentTurnForGroup(
   content: string,
   speaker: CurrentSpeaker,
+  options?: { isOwner?: boolean },
 ): string {
+  const roleLine = options?.isOwner
+    ? `Role: bot owner (primary user; prioritize their intent)\n`
+    : "";
   return (
     `[CURRENT SPEAKER — you must reply ONLY to this person; ` +
     `do not treat other group members' history as if they wrote this message]\n` +
     `Name: ${speaker.label}\n` +
     `Telegram user id: ${speaker.userId}\n` +
+    roleLine +
     `---\n` +
     content.trim()
   );

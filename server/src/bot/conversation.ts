@@ -45,6 +45,9 @@ export function buildChatMessages(
     generalMemoryFacts?: string[];
     currentSpeaker?: CurrentSpeaker | null;
     webSearchContext?: string | null;
+    ownerUserId?: string | null;
+    ownerUsername?: string | null;
+    currentSpeakerIsOwner?: boolean;
   } = {},
 ): ChatMessage[] {
   const history = historyToChatMessages(getHistory(chatKey));
@@ -70,10 +73,18 @@ export function buildChatMessages(
     });
   }
 
-  const { isGroupChat = false, currentSpeaker = null } = memoryOptions;
+  const {
+    isGroupChat = false,
+    currentSpeaker = null,
+    ownerUserId = null,
+    ownerUsername = null,
+    currentSpeakerIsOwner = false,
+  } = memoryOptions;
   let userContent = currentUser.content;
   if (isGroupChat && currentSpeaker) {
-    userContent = wrapCurrentTurnForGroup(userContent, currentSpeaker);
+    userContent = wrapCurrentTurnForGroup(userContent, currentSpeaker, {
+      isOwner: currentSpeakerIsOwner,
+    });
   }
 
   turns.push({ ...currentUser, content: userContent });

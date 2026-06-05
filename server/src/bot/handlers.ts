@@ -34,6 +34,9 @@ import {
 } from "./message-media.js";
 import { stickerUserPrompt } from "./stickers.js";
 import { isMessageAddressedToBot } from "./address-analyze.js";
+import { getOwnerUserId, getOwnerUsername, isOwner } from "./owner.js";
+import { tryResolveOwnerFromUser } from "./owner-sync.js";
+import { rememberTelegramUser } from "../db/known-users.js";
 import { stripBotAddressing } from "./bot-identity.js";
 import { isSlashCommandMessage } from "./addressed.js";
 import { enrichTextWithUserMentions } from "./mentions.js";
@@ -79,7 +82,23 @@ async function replyToUser(
   );
 }
 
+function trackTelegramUser(ctx: Context): void {
+  rememberTelegramUser(ctx.from);
+  tryResolveOwnerFromUser(ctx.from);
+}
+
 export function registerHandlers(bot: Bot, botUsername: string): void {
+  bot.use((ctx, next) => {
+    try {
+      trackTelegramUser(ctx);
+    } catch (err) {
+      console.error("Failed to track Telegram user:", err);
+    }
+    return next();
+  });
+
+  registerBotCommands(bot, botUsername);
+
   bot.on("message", async (ctx) => {
     if (!ctx.message) return;
     if (ctx.from?.is_bot) return;
@@ -224,6 +243,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         groupMemoryFacts,
         generalMemoryFacts,
         currentSpeaker: speaker,
+        currentSpeakerIsOwner: inGroupChat ? isOwner(ctx) : false,
         replyContext,
         usedVision,
         memoryInput: {
@@ -305,6 +325,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       groupMemoryFacts,
       generalMemoryFacts,
       currentSpeaker: speaker,
+      currentSpeakerIsOwner: inGroup ? isOwner(ctx) : false,
       memoryInput: {
         userMessage: groupMemoryUserMessage(historyLabel, speaker),
         replyContext: targetContent,
@@ -339,7 +360,9 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       console.error("Failed to send group setup message:", err);
     }
   });
+}
 
+function registerBotCommands(bot: Bot, botUsername: string): void {
   bot.command("start", async (ctx) => {
     const settings = getSettings();
     const inGroup = isGroupChat(ctx);
@@ -364,8 +387,39 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         `Clear chat context: /reset@${botUsername} · Clear your memory: /forget@${botUsername}` +
         (inGroup
           ? ` · Clear group memory: /forgetgroup@${botUsername}`
+          : "") +
+        (isOwner(ctx) ? `\n\nYou are the configured bot owner.` : "") +
+        (!inGroup && !getOwnerUserId() && !getOwnerUsername()
+          ? `\n\nSet owner: enter your @username in the dashboard Settings page (message the bot once first).`
           : ""),
     );
+  });
+
+  bot.command("id", async (ctx) => {
+    try {
+      const userId = resolveUserId(ctx);
+      if (!userId) return;
+      const username = ctx.from?.username;
+      let text = `Your Telegram user id: <code>${escapeHtml(userId)}</code>`;
+      if (username) {
+        text += `\nYour username: @${escapeHtml(username)}`;
+      }
+      if (isOwner(ctx)) {
+        text += "\n\nYou are the configured bot owner.";
+      } else if (!getOwnerUserId() && !getOwnerUsername()) {
+        text +=
+          "\n\nSet owner in the dashboard Settings page using your @username (send /start here first so it can be resolved).";
+      }
+      if (isGroupChat(ctx)) {
+        text += `\n\nIn groups use <code>/id@${botUsername}</code> so Telegram delivers the command.`;
+      }
+      await replyToUser(ctx, text);
+    } catch (err) {
+      console.error("/id command error:", err);
+      await replyToUser(ctx, "Sorry, I could not look up your id.").catch(
+        (e) => console.error("Failed to send /id error reply:", e),
+      );
+    }
   });
 
   bot.command("reset", async (ctx) => {

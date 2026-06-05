@@ -11,6 +11,7 @@ import {
   bindErrorLogDatabase,
   clearErrorLog,
 } from "./error-log.js";
+import { bindKnownUsersDatabase } from "./known-users.js";
 import { bindMessageRefsDatabase } from "./message-refs.js";
 import { validateSettingsFields } from "../settings-limits.js";
 
@@ -37,6 +38,10 @@ export interface Settings {
   historyMaxReplyChars: number;
   /** Longest edge for vision images (pixels). */
   visionMaxDimension: number;
+  /** Telegram @username of the bot owner (empty = not set). */
+  ownerUsername: string;
+  /** Resolved numeric user id for ownerUsername (set by the server). */
+  ownerUserId: string;
 }
 
 export interface Stats {
@@ -62,6 +67,8 @@ const DEFAULT_SETTINGS: Settings = {
   historyMaxChars: 4000,
   historyMaxReplyChars: 500,
   visionMaxDimension: 768,
+  ownerUsername: "",
+  ownerUserId: "",
 };
 
 let db: DatabaseSync;
@@ -123,6 +130,7 @@ export function initDatabase(): void {
   bindGroupMemoryDatabase(db);
   bindGeneralMemoryDatabase(db);
   bindErrorLogDatabase(db);
+  bindKnownUsersDatabase(db);
   bindMessageRefsDatabase(db);
   configureHistoryAccess(getSettings);
 }
@@ -177,12 +185,22 @@ export function getSettings(): Settings {
     historyMaxChars: getSetting<number>("historyMaxChars"),
     historyMaxReplyChars: getSetting<number>("historyMaxReplyChars"),
     visionMaxDimension: getSetting<number>("visionMaxDimension"),
+    ownerUsername: getSetting<string>("ownerUsername"),
+    ownerUserId: getSetting<string>("ownerUserId"),
   };
 }
 
 export function updateSettings(partial: Partial<Settings>): Settings {
   const current = getSettings();
   const next = { ...current, ...partial };
+  if (partial.ownerUsername !== undefined) {
+    const raw = partial.ownerUsername.trim();
+    next.ownerUsername =
+      raw === "" ? "" : raw.replace(/^@/, "").toLowerCase();
+  }
+  if (partial.ownerUserId !== undefined) {
+    next.ownerUserId = partial.ownerUserId.trim();
+  }
 
   validateSettingsFields(next);
 

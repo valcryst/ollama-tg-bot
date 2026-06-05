@@ -19,8 +19,7 @@ export function CharacterPage() {
       <header className="page-header">
         <h2>Character</h2>
         <p className="page-desc">
-          How the bot speaks and behaves — system prompts applied to every
-          reply.
+          How the bot speaks and behaves — system prompts applied to every reply.
         </p>
       </header>
 

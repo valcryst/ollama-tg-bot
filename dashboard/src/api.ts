@@ -14,6 +14,8 @@ export interface Settings {
   historyMaxChars: number;
   historyMaxReplyChars: number;
   visionMaxDimension: number;
+  ownerUsername: string;
+  ownerUserId: string;
 }
 
 export interface BotErrorRecord {
