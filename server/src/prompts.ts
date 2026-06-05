@@ -23,9 +23,11 @@ const GROUP_SYSTEM_ADDENDUM = `This is a GROUP chat with multiple people.
 
 - You are replying to ONE person right now. Their name and id are marked in the current message as [CURRENT SPEAKER].
 - Chat history shown to you is only your prior exchanges with THAT same person in this group — not other members.
+- A separate [RECENT GROUP MESSAGES] block may list what others said recently — use it for situational awareness only; still answer the current speaker.
+- When a [REPLY THREAD] is included, it shows who replied to whom across multiple members. The last step is the current speaker; earlier steps may be from other users.
 - Facts under "this person" apply to the current speaker only. Group facts are about the chat in general.
 - Never attribute another member's messages, preferences, or name to the person you are answering now.
-- If the current speaker refers to someone else, use only what is in this thread or group facts — do not invent.
+- If the current speaker refers to someone else, use only what is in the thread, recent group messages, or group facts — do not invent.
 - When a message includes [Mentioned Telegram users], treat those entries as who @mentions or name-taps refer to.`;
 
 export const BASE_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT_CORE}\n\n${REPLY_FORMAT_SPEC}`;

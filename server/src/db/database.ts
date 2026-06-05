@@ -13,6 +13,7 @@ import {
 } from "./error-log.js";
 import { bindKnownUsersDatabase } from "./known-users.js";
 import { bindMessageRefsDatabase } from "./message-refs.js";
+import { bindGroupActivityDatabase } from "./group-activity.js";
 import { validateSettingsFields } from "../settings-limits.js";
 
 export interface Settings {
@@ -123,6 +124,7 @@ export function initDatabase(): void {
   bindErrorLogDatabase(db);
   bindKnownUsersDatabase(db);
   bindMessageRefsDatabase(db);
+  bindGroupActivityDatabase(db);
   configureHistoryAccess(getSettings);
 }
 

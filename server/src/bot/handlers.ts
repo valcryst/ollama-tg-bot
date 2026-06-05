@@ -50,6 +50,11 @@ import {
   replyParameters,
 } from "./replies.js";
 import {
+  formatGroupActivityContext,
+  recordPassiveGroupActivity,
+  resolveGroupActivityKey,
+} from "./group-activity.js";
+import {
   formatReactionPrompt,
   isReactionAddressed,
   parseReactionChange,
@@ -98,6 +103,15 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
   });
 
   registerBotCommands(bot, botUsername);
+
+  bot.use(async (ctx, next) => {
+    try {
+      recordPassiveGroupActivity(ctx);
+    } catch (err) {
+      console.error("Failed to record group activity:", err);
+    }
+    await next();
+  });
 
   bot.on("message", async (ctx) => {
     if (!ctx.message) return;
@@ -200,17 +214,18 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         visionFromReply ? undefined : sticker,
         visionFromReply,
       );
-      let replyContext = formatReplyContext(ctx, botId);
+      const speaker = inGroupChat ? currentSpeakerFromUser(ctx.from) : null;
+      let replyContext = formatReplyContext(ctx, botId, speaker);
       if (visionFromReply && usedVision) {
         const mediaNote = sticker
           ? "The sticker image from the replied-to message is attached to this turn — interpret the artwork, not only the pack emoji."
           : "The photo or image from the replied-to message is attached to this turn for you to view.";
         replyContext = replyContext
-          ? `${replyContext}\n• ${mediaNote}`
+          ? `${replyContext}\n\n• ${mediaNote}`
           : `• ${mediaNote}`;
       }
       const historyLabel = replyContext
-        ? appendReplyContext(ctx, historyBase, botId)
+        ? appendReplyContext(ctx, historyBase, botId, speaker)
         : historyBase;
 
       rememberMessageRef(
@@ -221,9 +236,18 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       );
 
       const memoryUserLabel = replyContext
-        ? appendReplyContext(ctx, historyBase, botId)
+        ? appendReplyContext(ctx, historyBase, botId, speaker)
         : historyBase;
-      const speaker = inGroupChat ? currentSpeakerFromUser(ctx.from) : null;
+
+      const groupActivityKey = inGroupChat
+        ? resolveGroupActivityKey(ctx)
+        : null;
+      const groupActivityContext = groupActivityKey
+        ? formatGroupActivityContext(groupActivityKey, {
+            excludeMessageId: ctx.message.message_id,
+            currentSpeakerLabel: speaker?.label ?? null,
+          })
+        : null;
 
       const currentUser: ChatMessage = {
         role: "user",
@@ -245,6 +269,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         currentSpeaker: speaker,
         currentSpeakerIsOwner: inGroupChat ? isOwner(ctx) : false,
         replyContext,
+        groupActivityContext,
         usedVision,
         memoryInput: {
           userMessage: groupMemoryUserMessage(memoryUserLabel, speaker),

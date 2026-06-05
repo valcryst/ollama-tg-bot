@@ -45,6 +45,7 @@ export function buildChatMessages(
     generalMemoryFacts?: string[];
     currentSpeaker?: CurrentSpeaker | null;
     webSearchContext?: string | null;
+    groupActivityContext?: string | null;
     ownerUserId?: string | null;
     ownerUsername?: string | null;
     currentSpeakerIsOwner?: boolean;
@@ -53,12 +54,24 @@ export function buildChatMessages(
   const history = historyToChatMessages(getHistory(chatKey));
   const turns: ChatMessage[] = [...history];
 
-  if (replyContext?.trim()) {
+  const { groupActivityContext, isGroupChat = false } = memoryOptions;
+  if (isGroupChat && groupActivityContext?.trim()) {
     turns.push({
       role: "user",
-      content:
-        `The user is replying to this earlier Telegram message (if they say "this", "that", or "it", they mean this):\n` +
-        replyContext.trim(),
+      content: groupActivityContext.trim(),
+    });
+  }
+
+  if (replyContext?.trim()) {
+    const replyIntro = isGroupChat
+      ? `The current speaker is continuing a Telegram reply thread. ` +
+        `Answer ONLY them (marked [CURRENT SPEAKER]). ` +
+        `Other names in the thread may be different group members — do not confuse their words with the speaker's. ` +
+        `Pronouns like "this", "that", or "it" refer to earlier steps in the thread:\n`
+      : `The user is replying in a Telegram thread (if they say "this", "that", or "it", they mean earlier steps below):\n`;
+    turns.push({
+      role: "user",
+      content: replyIntro + replyContext.trim(),
     });
   }
 
@@ -74,7 +87,6 @@ export function buildChatMessages(
   }
 
   const {
-    isGroupChat = false,
     currentSpeaker = null,
     ownerUserId = null,
     ownerUsername = null,

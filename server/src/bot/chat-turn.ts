@@ -29,6 +29,10 @@ import type { MemoryExtractInput } from "../memory-extract.js";
 export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
 import { getOwnerUserId, getOwnerUsername } from "./owner.js";
 import { replyParameters } from "./replies.js";
+import {
+  recordBotGroupActivity,
+  resolveGroupActivityKey,
+} from "./group-activity.js";
 
 const TYPING_REFRESH_MS = 4000;
 
@@ -47,6 +51,7 @@ export interface ChatTurnInput {
   currentSpeaker?: CurrentSpeaker | null;
   currentSpeakerIsOwner?: boolean;
   replyContext?: string | null;
+  groupActivityContext?: string | null;
   usedVision?: boolean;
   replyToMessageId?: number;
   messageThreadId?: number;
@@ -167,6 +172,7 @@ export async function runChatTurn(
         currentSpeaker: input.currentSpeaker,
         currentSpeakerIsOwner: input.currentSpeakerIsOwner,
         webSearchContext,
+        groupActivityContext: input.groupActivityContext,
         ownerUserId: getOwnerUserId(),
         ownerUsername: getOwnerUsername(),
       },
@@ -202,6 +208,12 @@ export async function runChatTurn(
         "assistant",
         replyBody,
       );
+      if (input.inGroup) {
+        const groupKey = resolveGroupActivityKey(ctx);
+        if (groupKey) {
+          recordBotGroupActivity(groupKey, sent.message_id, replyBody);
+        }
+      }
     }
 
     recordReply(input.usedVision ?? false);
