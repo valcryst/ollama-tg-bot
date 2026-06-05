@@ -5,6 +5,7 @@ import "../App.css";
 
 const navItems = [
   { to: "/", label: "Overview", end: true },
+  { to: "/character", label: "Character", end: false },
   { to: "/settings", label: "Settings", end: false },
   { to: "/memories", label: "Memories", end: false },
 ] as const;
@@ -111,7 +112,7 @@ export function AppLayout() {
         ) : null}
 
         {saveOk ? (
-          <div className="alert success page-alert">Settings saved</div>
+          <div className="alert success page-alert">Saved</div>
         ) : null}
 
         <main className="page-content">

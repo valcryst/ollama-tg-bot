@@ -29,7 +29,7 @@ export function SettingsPage() {
       <header className="page-header">
         <h2>Settings</h2>
         <p className="page-desc">
-          Ollama connection, model, prompts, and performance limits.
+          Ollama connection, model, and performance limits.
         </p>
       </header>
 
@@ -164,33 +164,6 @@ export function SettingsPage() {
                 </p>
               </>
             ) : null}
-
-            <div className="field">
-              <label>Default system prompt</label>
-              <pre className="prompt-preview">
-                {draft.baseSystemPrompt ?? settings?.baseSystemPrompt ?? "…"}
-              </pre>
-              <p className="hint">
-                Always applied. Edit the custom prompt below to add your own
-                rules on top.
-              </p>
-            </div>
-
-            <div className="field">
-              <label htmlFor="prompt">Custom system prompt</label>
-              <textarea
-                id="prompt"
-                rows={4}
-                value={draft.customSystemPrompt}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    customSystemPrompt: e.target.value,
-                  })
-                }
-                placeholder="Optional: personality, topics, extra rules…"
-              />
-            </div>
 
             <div className="field toggle-row">
               <label className="checkbox">

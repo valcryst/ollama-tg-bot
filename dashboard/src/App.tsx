@@ -4,6 +4,7 @@ import { AppLayout } from "./layout/AppLayout";
 import { MemoriesPage } from "./pages/MemoriesPage";
 import { OfflinePage } from "./pages/OfflinePage";
 import { OverviewPage } from "./pages/OverviewPage";
+import { CharacterPage } from "./pages/CharacterPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import "./App.css";
 
@@ -38,6 +39,7 @@ function DashboardRoutes() {
     <Routes>
       <Route element={<AppLayout />}>
         <Route index element={<OverviewPage />} />
+        <Route path="character" element={<CharacterPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="memories" element={<MemoriesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
