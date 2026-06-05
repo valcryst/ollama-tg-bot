@@ -6,6 +6,7 @@ services:
     environment:
       BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-}
       NODE_ENV: production
       PORT: ${PORT:-3000}
     volumes:
