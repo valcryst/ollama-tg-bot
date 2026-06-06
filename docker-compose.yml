@@ -26,7 +26,7 @@ services:
       - "traefik.http.services.ollama-tg-bot.loadbalancer.server.port=${TRAEFIK_SERVICE_PORT:-3000}"
 
       - "homepage.group=${HOMEPAGE_GROUP:-AI}"
-      - "homepage.name=Ollama Dashboard"
+      - "homepage.name=Ollama TG Bot"
       - "homepage.icon="
       - "homepage.href=https://${TRAEFIK_HOST:-ollama-tg-bot.example.com}"
 
