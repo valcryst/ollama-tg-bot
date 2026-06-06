@@ -104,6 +104,7 @@ export function createApiRouter(): Router {
         "ownerUsername",
         "stickersEnabled",
         "stickerPackName",
+        "stickerReplyChance",
       ];
       const patch: Partial<Settings> = {};
       for (const key of allowed) {

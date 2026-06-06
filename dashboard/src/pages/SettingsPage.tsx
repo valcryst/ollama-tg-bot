@@ -325,6 +325,29 @@ export function SettingsPage() {
             {draft.stickersEnabled ? (
               <>
                 <div className="field">
+                  <label htmlFor="stickerReplyChance">
+                    Sticker frequency ({draft.stickerReplyChance}%)
+                  </label>
+                  <input
+                    id="stickerReplyChance"
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={draft.stickerReplyChance}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        stickerReplyChance: Number(e.target.value),
+                      })
+                    }
+                  />
+                  <p className="hint">
+                    How often the bot should add a sticker after replying.
+                    Higher = stickers on most messages.
+                  </p>
+                </div>
+
+                <div className="field">
                   <label htmlFor="stickerPackName">Sticker pack name</label>
                   <div className="field row">
                     <input

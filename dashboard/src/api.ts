@@ -20,6 +20,7 @@ export interface Settings {
   ownerUserId: string;
   stickersEnabled: boolean;
   stickerPackName: string;
+  stickerReplyChance: number;
 }
 
 export interface BotErrorRecord {

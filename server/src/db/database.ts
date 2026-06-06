@@ -41,6 +41,8 @@ export interface Settings {
   stickersEnabled: boolean;
   /** Telegram sticker set name (e.g. HotCherry or MyPack_by_botname). */
   stickerPackName: string;
+  /** How often the model should include a sticker (0–100). */
+  stickerReplyChance: number;
 }
 
 export interface Stats {
@@ -67,6 +69,7 @@ const DEFAULT_SETTINGS: Settings = {
   ownerUserId: "",
   stickersEnabled: false,
   stickerPackName: "",
+  stickerReplyChance: 70,
 };
 
 let db: DatabaseSync;
@@ -185,6 +188,7 @@ export function getSettings(): Settings {
     ownerUserId: getSetting<string>("ownerUserId"),
     stickersEnabled: getSetting<boolean>("stickersEnabled"),
     stickerPackName: getSetting<string>("stickerPackName"),
+    stickerReplyChance: getSetting<number>("stickerReplyChance"),
   };
 }
 

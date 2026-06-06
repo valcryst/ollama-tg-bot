@@ -156,16 +156,39 @@ export function resolveStickerFileId(raw: string): string | null {
 
 export function formatStickersForPrompt(): string | null {
   if (!catalog || catalog.stickers.length === 0) return null;
+  const chance = getSettings().stickerReplyChance;
   const lines = catalog.stickers.map(
     (s) => `${s.index + 1}: ${stickerPromptLabel(s.index)}`,
   );
+
+  let frequencyHint: string;
+  if (chance >= 80) {
+    frequencyHint =
+      "Include [STICKER] on nearly every reply — it is expected, not a rare extra. " +
+      "A sticker-only reply (empty [REPLY]) is fine when it says enough.";
+  } else if (chance >= 55) {
+    frequencyHint =
+      "Include [STICKER] on most replies when any sticker fits the mood, joke, or reaction. " +
+      "Skip only when no sticker fits at all.";
+  } else if (chance >= 30) {
+    frequencyHint =
+      "Include [STICKER] on about half of replies when a sticker clearly fits.";
+  } else if (chance >= 1) {
+    frequencyHint =
+      "Include [STICKER] sometimes when a sticker strongly matches the moment.";
+  } else {
+    frequencyHint =
+      "Include [STICKER] only when a sticker is the best possible response.";
+  }
+
   return (
     `You may send Telegram stickers from pack "${catalog.packName}". ` +
     `Put [STICKER] after [/REPLY], never inside [REPLY]:\n\n` +
     `[REPLY]\n...\n[/REPLY]\n[STICKER]\n<emoji or number>\n[/STICKER]\n\n` +
     `Available stickers (number: pack emoji):\n${lines.join("\n")}\n\n` +
+    `${frequencyHint} ` +
     `Use the pack emoji exactly, or the sticker number (1–${catalog.stickers.length}). ` +
-    `[REPLY] may be empty when you only send a sticker. Omit [STICKER] when none fits.`
+    `[REPLY] may be empty when you only send a sticker.`
   );
 }
 

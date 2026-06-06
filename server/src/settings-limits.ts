@@ -111,6 +111,10 @@ export function validateSettingsFields(settings: Settings): void {
       "stickerPackName is required when stickers are enabled",
       !settings.stickersEnabled || settings.stickerPackName.trim() !== "",
     ],
+    [
+      "stickerReplyChance must be 0–100",
+      settings.stickerReplyChance >= 0 && settings.stickerReplyChance <= 100,
+    ],
   ];
 
   const failed = checks.find(([, ok]) => !ok);
