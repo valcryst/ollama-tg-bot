@@ -249,6 +249,41 @@
   margin: 0;
 }
 
+.data-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.85rem;
+}
+
+.data-search {
+  flex: 1 1 14rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.data-search input {
+  padding: 0.5rem 0.75rem;
+}
+
+.data-toolbar .secondary.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .data-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
@@ -275,6 +310,53 @@
   background: var(--surface);
   font-weight: 600;
   white-space: nowrap;
+}
+
+.data-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.data-sort-button:hover {
+  color: var(--accent);
+}
+
+.data-sort-button.active {
+  color: var(--accent);
+}
+
+.data-sort-indicator {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.data-sort-button.active .data-sort-indicator {
+  color: var(--accent);
+}
+
+.data-filter-row th {
+  top: 2.25rem;
+  padding-top: 0.35rem;
+  padding-bottom: 0.5rem;
+  font-weight: 400;
+}
+
+.data-col-filter {
+  width: 100%;
+  min-width: 4.5rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
 }
 
 .data-table tbody tr:last-child td {
