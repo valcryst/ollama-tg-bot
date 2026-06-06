@@ -102,6 +102,15 @@ export function validateSettingsFields(settings: Settings): void {
       "ownerUserId is required when ownerUsername is set",
       settings.ownerUsername.trim() === "" || settings.ownerUserId.trim() !== "",
     ],
+    [
+      "stickerPackName must be empty or a valid sticker set name",
+      settings.stickerPackName.trim() === "" ||
+        /^[a-zA-Z0-9_]{1,64}$/.test(settings.stickerPackName.trim()),
+    ],
+    [
+      "stickerPackName is required when stickers are enabled",
+      !settings.stickersEnabled || settings.stickerPackName.trim() !== "",
+    ],
   ];
 
   const failed = checks.find(([, ok]) => !ok);

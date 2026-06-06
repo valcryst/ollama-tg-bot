@@ -37,6 +37,10 @@ export interface Settings {
   ownerUsername: string;
   /** Resolved numeric user id for ownerUsername (set by the server). */
   ownerUserId: string;
+  /** Send stickers from a configured Telegram sticker set. */
+  stickersEnabled: boolean;
+  /** Telegram sticker set name (e.g. HotCherry or MyPack_by_botname). */
+  stickerPackName: string;
 }
 
 export interface Stats {
@@ -61,6 +65,8 @@ const DEFAULT_SETTINGS: Settings = {
   visionMaxDimension: 768,
   ownerUsername: "",
   ownerUserId: "",
+  stickersEnabled: false,
+  stickerPackName: "",
 };
 
 let db: DatabaseSync;
@@ -177,6 +183,8 @@ export function getSettings(): Settings {
     visionMaxDimension: getSetting<number>("visionMaxDimension"),
     ownerUsername: getSetting<string>("ownerUsername"),
     ownerUserId: getSetting<string>("ownerUserId"),
+    stickersEnabled: getSetting<boolean>("stickersEnabled"),
+    stickerPackName: getSetting<string>("stickerPackName"),
   };
 }
 
@@ -190,6 +198,9 @@ export function updateSettings(partial: Partial<Settings>): Settings {
   }
   if (partial.ownerUserId !== undefined) {
     next.ownerUserId = partial.ownerUserId.trim();
+  }
+  if (partial.stickerPackName !== undefined) {
+    next.stickerPackName = partial.stickerPackName.trim().replace(/^@/, "");
   }
 
   validateSettingsFields(next);

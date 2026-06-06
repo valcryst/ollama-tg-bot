@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useDashboard } from "../context/DashboardContext";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { deriveHistoryLimits } from "../derivedHistoryLimits";
 import { SettingsNumberField } from "../SettingsNumberField";
+import { api, type StickerCatalog } from "../api";
 
 export function SettingsPage() {
   const {
@@ -33,6 +34,36 @@ export function SettingsPage() {
         : null,
     [draft],
   );
+
+  const [stickerCatalog, setStickerCatalog] = useState<StickerCatalog | null>(
+    null,
+  );
+  const [stickersLoading, setStickersLoading] = useState(false);
+  const [stickersError, setStickersError] = useState<unknown | null>(null);
+
+  async function loadStickers() {
+    setStickersLoading(true);
+    setStickersError(null);
+    try {
+      setStickerCatalog(await api.getStickers());
+    } catch (err) {
+      setStickersError(err);
+    } finally {
+      setStickersLoading(false);
+    }
+  }
+
+  async function refreshStickers() {
+    setStickersLoading(true);
+    setStickersError(null);
+    try {
+      setStickerCatalog(await api.refreshStickers());
+    } catch (err) {
+      setStickersError(err);
+    } finally {
+      setStickersLoading(false);
+    }
+  }
 
   return (
     <div className="page">
@@ -269,6 +300,126 @@ export function SettingsPage() {
                 they are not addressed to the bot (requires a vision model).
               </p>
             </div>
+
+            <h3 className="section-title">Outgoing stickers</h3>
+            <div className="field toggle-row">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={draft.stickersEnabled}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      stickersEnabled: e.target.checked,
+                    })
+                  }
+                />
+                Let the bot send stickers from a pack
+              </label>
+              <p className="hint">
+                The model sends a sticker by its pack emoji (from Telegram) or
+                by number — after its reply or on its own without text.
+              </p>
+            </div>
+
+            {draft.stickersEnabled ? (
+              <>
+                <div className="field">
+                  <label htmlFor="stickerPackName">Sticker pack name</label>
+                  <div className="field row">
+                    <input
+                      id="stickerPackName"
+                      className="grow"
+                      value={draft.stickerPackName}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          stickerPackName: e.target.value.replace(/^@/, ""),
+                        })
+                      }
+                      placeholder="HotCherry or MyPack_by_botname"
+                    />
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => void refreshStickers()}
+                      disabled={
+                        stickersLoading ||
+                        configBlocked ||
+                        !draft.stickerPackName.trim()
+                      }
+                    >
+                      {stickersLoading ? "Loading…" : "Load pack"}
+                    </button>
+                  </div>
+                  <p className="hint">
+                    Public set name from Telegram (the part after{" "}
+                    <code>t.me/addstickers/</code>). Save settings after
+                    changing the name, then load the pack to preview stickers.
+                  </p>
+                </div>
+
+                {stickersError != null ? (
+                  <ErrorBanner
+                    error={stickersError}
+                    compact
+                    onRetry={() => void refreshStickers()}
+                    onDismiss={() => setStickersError(null)}
+                  />
+                ) : null}
+
+                {stickerCatalog?.loaded && stickerCatalog.stickers.length > 0 ? (
+                  <div className="field">
+                    <label>
+                      Stickers in pack ({stickerCatalog.stickers.length})
+                    </label>
+                    <p className="hint">
+                      Emojis are loaded from your sticker pack in Telegram.
+                      Reload the pack after you change them in @Stickers.
+                    </p>
+                    <div className="sticker-preview-grid">
+                      {stickerCatalog.stickers.map((s) => (
+                        <div
+                          key={s.index}
+                          className="sticker-preview-card"
+                          title={`Sticker ${s.index + 1}: ${s.emoji}`}
+                        >
+                          <span className="sticker-preview-index">
+                            #{s.index + 1}
+                          </span>
+                          <img
+                            src={api.stickerPreviewUrl(s.index)}
+                            alt={`Sticker ${s.index + 1}`}
+                            className="sticker-preview-image"
+                            loading="lazy"
+                          />
+                          <span className="sticker-pack-emoji">{s.emoji}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : stickerCatalog && !stickersLoading ? (
+                  <p className="hint">
+                    {stickerCatalog.error
+                      ? `Could not load pack: ${stickerCatalog.error}`
+                      : "Load the pack to preview stickers."}
+                  </p>
+                ) : null}
+
+                {!stickerCatalog && !stickersLoading ? (
+                  <div className="actions compact-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => void loadStickers()}
+                      disabled={configBlocked || stickersLoading}
+                    >
+                      Check loaded stickers
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
 
             <h3 className="section-title">Ollama performance</h3>
             <p className="hint section-hint">

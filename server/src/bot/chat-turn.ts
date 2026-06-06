@@ -29,6 +29,9 @@ import type { MemoryExtractInput } from "../memory-extract.js";
 import { getOwnerUserId, getOwnerUsername } from "./owner.js";
 import { replyParameters } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
+import {
+  resolveStickerFileId,
+} from "./sticker-catalog.js";
 
 export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
 
@@ -226,24 +229,42 @@ export async function runChatTurn(
       outputChars: modelOutput.length,
     });
 
-    let { reply: replyBody } = parseStructuredResponse(modelOutput);
+    let { reply: replyBody, stickerEmoji } = parseStructuredResponse(modelOutput);
 
-    if (!replyBody.trim()) {
+    if (!replyBody.trim() && !stickerEmoji) {
       replyBody = sanitizeModelOutput(modelOutput) || modelOutput.trim();
     }
-    if (!replyBody.trim()) {
-      throw new Error("Model response had no [REPLY] content");
+    if (!replyBody.trim() && !stickerEmoji) {
+      throw new Error("Model response had no [REPLY] or [STICKER] content");
     }
 
-    const reply = prepareTelegramHtml(replyBody);
+    const stickerFileId =
+      stickerEmoji && settings.stickersEnabled
+        ? resolveStickerFileId(stickerEmoji)
+        : null;
+    if (stickerEmoji && settings.stickersEnabled && !stickerFileId) {
+      logEvent("sticker_resolve_failed", {
+        ...turnLog,
+        emoji: stickerEmoji,
+      });
+    }
+
+    const historyText =
+      stickerEmoji && replyBody.trim()
+        ? `${replyBody}\n[sticker: ${stickerEmoji}]`
+        : stickerEmoji
+          ? `[sticker: ${stickerEmoji}]`
+          : replyBody;
+
+    const reply = replyBody.trim() ? prepareTelegramHtml(replyBody) : "";
     recordExchange(
       input.convKey,
       input.userRole,
       input.userHistoryContent,
-      replyBody,
+      historyText,
       { skipUser: input.skipUserHistory },
     );
-    const chunks = splitMessage(reply);
+    const chunks = reply ? splitMessage(reply) : [];
 
     const replyExtra = buildReplyExtra(ctx, {
       replyToMessageId: input.replyToMessageId,
@@ -259,7 +280,29 @@ export async function runChatTurn(
         input.convKey,
         sent.message_id,
         "assistant",
-        replyBody,
+        historyText,
+        "Bot",
+      );
+    }
+
+    if (stickerFileId) {
+      const stickerExtra: Parameters<Context["reply"]>[1] = {};
+      if (input.messageThreadId) {
+        stickerExtra.message_thread_id = input.messageThreadId;
+      }
+      if (chunks.length === 0 && replyExtra?.reply_parameters) {
+        stickerExtra.reply_parameters = replyExtra.reply_parameters;
+      }
+      const sentSticker = await ctx.api.sendSticker(
+        input.chatId,
+        stickerFileId,
+        Object.keys(stickerExtra).length > 0 ? stickerExtra : undefined,
+      );
+      rememberMessageRef(
+        input.convKey,
+        sentSticker.message_id,
+        "assistant",
+        `[sticker: ${stickerEmoji}]`,
         "Bot",
       );
     }
@@ -269,13 +312,14 @@ export async function runChatTurn(
       ...turnLog,
       chunkCount: chunks.length,
       replyChars: replyBody.length,
+      sticker: stickerEmoji ?? undefined,
       skipUserHistory: Boolean(input.skipUserHistory),
     });
 
     scheduleMemoryPersistence({
       userId: input.userId,
       groupChatId: input.groupChatId,
-      input: { ...input.memoryInput, assistantReply: replyBody },
+      input: { ...input.memoryInput, assistantReply: historyText },
     });
   } catch (err) {
     logEventError("reply_failed", err, turnLog);

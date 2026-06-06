@@ -18,6 +18,8 @@ export interface Settings {
   };
   ownerUsername: string;
   ownerUserId: string;
+  stickersEnabled: boolean;
+  stickerPackName: string;
 }
 
 export interface BotErrorRecord {
@@ -74,6 +76,19 @@ export interface DataTablePayload {
   rows: Record<string, unknown>[];
   total: number;
   truncated: boolean;
+}
+
+export interface StickerCatalogEntry {
+  index: number;
+  emoji: string;
+}
+
+export interface StickerCatalog {
+  enabled: boolean;
+  packName: string;
+  stickers: StickerCatalogEntry[];
+  loaded: boolean;
+  error: string | null;
 }
 
 export interface OllamaModel {
@@ -310,6 +325,11 @@ export const api = {
     ),
   tavilyStatus: () =>
     request<{ configured: boolean; ok: boolean }>("/api/tavily/status"),
+  getStickers: () => request<StickerCatalog>("/api/stickers"),
+  refreshStickers: () =>
+    request<StickerCatalog>("/api/stickers/refresh", { method: "POST" }),
+  stickerPreviewUrl: (index: number) =>
+    `/api/stickers/${index}/preview`,
   getDataTables: () =>
     request<{ tables: DataTableSummary[] }>("/api/data"),
   getDataTable: (tableId: string) =>

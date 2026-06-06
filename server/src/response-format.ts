@@ -1,5 +1,5 @@
 /**
- * Structured assistant output. Only [REPLY] is sent to Telegram.
+ * Structured assistant output. Only [REPLY] text and optional [STICKER] are sent to Telegram.
  * Memory blocks are parsed from the full model output or a dedicated extract pass.
  */
 export function buildReplyFormatSpec(formatHint: string): string {
@@ -20,13 +20,59 @@ export interface ParsedAssistantResponse {
   groupMemoryFacts: string[];
   generalMemoryFacts: string[];
   reply: string;
+  stickerEmoji: string | null;
 }
 
-const MEMORY_BLOCK = /\[MEMORY\]\s*([\s\S]*?)\s*\[\/MEMORY\]/i;
-const GROUP_MEMORY_BLOCK = /\[GROUP_MEMORY\]\s*([\s\S]*?)\s*\[\/GROUP_MEMORY\]/i;
-const GENERAL_MEMORY_BLOCK =
-  /\[GENERAL_MEMORY\]\s*([\s\S]*?)\s*\[\/GENERAL_MEMORY\]/i;
-const REPLY_BLOCK = /\[REPLY\]\s*([\s\S]*?)\s*\[\/REPLY\]/i;
+const BLOCK_NAME = "[A-Za-z_][A-Za-z0-9_]*";
+const CLOSED_BLOCK = new RegExp(
+  `\\[(${BLOCK_NAME})\\]\\s*[\\s\\S]*?\\s*\\[\\/\\1\\]`,
+  "gi",
+);
+const UNCLOSED_BLOCK = new RegExp(
+  `\\[(${BLOCK_NAME})\\][\\s\\S]*$`,
+);
+const STRAY_BLOCK_TAG = new RegExp(`\\[\\/?(${BLOCK_NAME})\\]`, "g");
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Remove any [TAG]…[/TAG] blocks and stray [TAG] tags from user-facing text. */
+export function stripStructuredMarkup(text: string): string {
+  let result = text;
+  let prev = "";
+  while (result !== prev) {
+    prev = result;
+    result = result
+      .replace(CLOSED_BLOCK, "")
+      .replace(UNCLOSED_BLOCK, "")
+      .replace(STRAY_BLOCK_TAG, "");
+  }
+  return result.trim();
+}
+
+function extractFirstBlock(text: string, tag: string): string | null {
+  const closed = new RegExp(
+    `\\[${escapeRegExp(tag)}\\]\\s*([\\s\\S]*?)\\s*\\[\\/${escapeRegExp(tag)}\\]`,
+    "i",
+  );
+  const match = closed.exec(text);
+  if (match?.[1]) return match[1].trim();
+
+  const partial = new RegExp(
+    `\\[${escapeRegExp(tag)}\\]\\s*([\\s\\S]+)`,
+    "i",
+  );
+  const partialMatch = partial.exec(text);
+  if (!partialMatch?.[1]) return null;
+
+  return stripStructuredMarkup(
+    partialMatch[1].replace(
+      new RegExp(`\\[\\/?${escapeRegExp(tag)}\\]`, "gi"),
+      "",
+    ),
+  );
+}
 
 function parseMemoryLines(block: string): string[] {
   const trimmed = block.trim();
@@ -39,33 +85,30 @@ function parseMemoryLines(block: string): string[] {
 }
 
 export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
-  const memoryMatch = raw.match(MEMORY_BLOCK);
-  const groupMemoryMatch = raw.match(GROUP_MEMORY_BLOCK);
-  const generalMemoryMatch = raw.match(GENERAL_MEMORY_BLOCK);
-  const replyMatch = raw.match(REPLY_BLOCK);
+  const memoryFacts = parseMemoryLines(extractFirstBlock(raw, "MEMORY") ?? "");
+  const groupMemoryFacts = parseMemoryLines(
+    extractFirstBlock(raw, "GROUP_MEMORY") ?? "",
+  );
+  const generalMemoryFacts = parseMemoryLines(
+    extractFirstBlock(raw, "GENERAL_MEMORY") ?? "",
+  );
 
-  const memoryFacts = memoryMatch ? parseMemoryLines(memoryMatch[1]) : [];
-  const groupMemoryFacts = groupMemoryMatch
-    ? parseMemoryLines(groupMemoryMatch[1])
-    : [];
-  const generalMemoryFacts = generalMemoryMatch
-    ? parseMemoryLines(generalMemoryMatch[1])
-    : [];
-
-  let reply = replyMatch?.[1]?.trim() ?? "";
+  let reply = extractFirstBlock(raw, "REPLY") ?? "";
   if (!reply) {
     const partial = raw.match(/\[REPLY\]\s*([\s\S]+)/i);
-    reply = partial?.[1]?.replace(/\[\/?REPLY\]/gi, "").trim() ?? "";
+    reply = partial?.[1] ? stripStructuredMarkup(partial[1]) : "";
   }
-  if (!reply) {
-    reply = raw
-      .replace(MEMORY_BLOCK, "")
-      .replace(GROUP_MEMORY_BLOCK, "")
-      .replace(GENERAL_MEMORY_BLOCK, "")
-      .replace(/\[\/?REPLY\]/gi, "")
-      .trim();
-  }
-  if (!reply) reply = raw.trim();
+  if (!reply) reply = stripStructuredMarkup(raw);
 
-  return { memoryFacts, groupMemoryFacts, generalMemoryFacts, reply };
+  let stickerEmoji = extractFirstBlock(raw, "STICKER");
+  if (!stickerEmoji) stickerEmoji = extractFirstBlock(reply, "STICKER");
+  reply = stripStructuredMarkup(reply);
+
+  return {
+    memoryFacts,
+    groupMemoryFacts,
+    generalMemoryFacts,
+    reply,
+    stickerEmoji: stickerEmoji || null,
+  };
 }

@@ -2,6 +2,14 @@ import { Router } from "express";
 import { getBotUsername, getBot } from "../bot/index.js";
 import { resolveOwnerUsername } from "../bot/resolve-owner.js";
 import {
+  getStickerCatalogState,
+  getStickerPreviewFileId,
+  refreshStickerCatalog,
+  syncStickerCatalogFromSettings,
+} from "../bot/sticker-catalog.js";
+import { getTelegramFilePath } from "../bot/files.js";
+import { requireBotToken } from "../config.js";
+import {
   clearErrors,
   getSettings,
   getStats,
@@ -44,6 +52,18 @@ import { getDataTable, listDataTables } from "../db/data-browser.js";
 
 const startedAt = new Date();
 
+function stickerCatalogResponse() {
+  const settings = getSettings();
+  const catalog = getStickerCatalogState();
+  return {
+    enabled: settings.stickersEnabled,
+    packName: catalog.packName || settings.stickerPackName,
+    stickers: catalog.stickers,
+    loaded: catalog.loaded,
+    error: catalog.error,
+  };
+}
+
 export function createApiRouter(): Router {
   const router = Router();
 
@@ -82,6 +102,8 @@ export function createApiRouter(): Router {
         "chatTimeoutSec",
         "visionMaxDimension",
         "ownerUsername",
+        "stickersEnabled",
+        "stickerPackName",
       ];
       const patch: Partial<Settings> = {};
       for (const key of allowed) {
@@ -100,6 +122,19 @@ export function createApiRouter(): Router {
       }
 
       const updated = updateSettings(patch);
+
+      if (
+        body.stickersEnabled !== undefined ||
+        body.stickerPackName !== undefined
+      ) {
+        try {
+          const bot = getBot();
+          await syncStickerCatalogFromSettings(bot.api);
+        } catch {
+          // Bot may not be running during early setup; catalog syncs on startup.
+        }
+      }
+
       res.json({
         ...updated,
         baseSystemPrompt: buildBaseSystemPrompt(updated),
@@ -127,6 +162,93 @@ export function createApiRouter(): Router {
 
   router.get("/tavily/status", (_req, res) => {
     res.json({ configured: isTavilyConfigured(), ok: isTavilyConfigured() });
+  });
+
+  router.get("/stickers", (_req, res) => {
+    try {
+      res.json(stickerCatalogResponse());
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to load stickers",
+      });
+    }
+  });
+
+  router.get("/stickers/:index/preview", async (req, res) => {
+    try {
+      const index = Number.parseInt(req.params.index, 10);
+      if (!Number.isInteger(index) || index < 0) {
+        res.status(400).json({ error: "Invalid sticker index" });
+        return;
+      }
+
+      const fileId = getStickerPreviewFileId(index);
+      if (!fileId) {
+        res.status(404).json({ error: "Sticker not found" });
+        return;
+      }
+
+      const token = requireBotToken();
+      const filePath = await getTelegramFilePath(token, fileId);
+      if (!filePath) {
+        res.status(404).json({ error: "Sticker file not available" });
+        return;
+      }
+
+      const ext = filePath.split(".").pop()?.toLowerCase() ?? "webp";
+      const contentType =
+        ext === "png"
+          ? "image/png"
+          : ext === "jpg" || ext === "jpeg"
+            ? "image/jpeg"
+            : ext === "gif"
+              ? "image/gif"
+              : "image/webp";
+
+      const fileRes = await fetch(
+        `https://api.telegram.org/file/bot${token}/${filePath}`,
+      );
+      if (!fileRes.ok) {
+        res.status(502).json({ error: "Failed to fetch sticker from Telegram" });
+        return;
+      }
+
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.send(Buffer.from(await fileRes.arrayBuffer()));
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to load preview",
+      });
+    }
+  });
+
+  router.post("/stickers/refresh", async (_req, res) => {
+    try {
+      const settings = getSettings();
+      if (!settings.stickerPackName.trim()) {
+        res.status(400).json({ error: "Sticker pack name is not configured" });
+        return;
+      }
+      const bot = getBot();
+      const result = await refreshStickerCatalog(
+        bot.api,
+        settings.stickerPackName,
+      );
+      const payload = stickerCatalogResponse();
+      if (!result.ok) {
+        res.status(400).json({
+          ...payload,
+          error: result.error ?? payload.error ?? "Failed to load sticker set",
+        });
+        return;
+      }
+      res.json(payload);
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Failed to refresh stickers",
+      });
+    }
   });
 
   router.get("/ollama/health", async (req, res) => {

@@ -3,6 +3,7 @@ import { requireBotToken } from "../config.js";
 import { logInfo } from "../logging.js";
 import { setBotIdentity } from "./bot-identity.js";
 import { registerHandlers } from "./handlers.js";
+import { syncStickerCatalogFromSettings } from "./sticker-catalog.js";
 
 let botInstance: Bot | null = null;
 let botUsername = "";
@@ -26,6 +27,10 @@ export async function startBot(): Promise<Bot> {
   setBotIdentity(me, botUsername);
 
   registerHandlers(bot, botUsername);
+
+  void syncStickerCatalogFromSettings(bot.api).catch((err) => {
+    console.error("Sticker catalog sync failed:", err);
+  });
 
   bot.catch((err) => {
     console.error("Bot error:", err);
