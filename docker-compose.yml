@@ -3,6 +3,8 @@ services:
     build: .
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
+    networks:
+      - traefik
     environment:
       BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
@@ -14,6 +16,24 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_DOCKER_NETWORK:-proxy}"
+      - "traefik.http.routers.ollama-tg-bot.rule=Host(`${TRAEFIK_HOST:-ollama-tg-bot.example.com}`)"
+      - "traefik.http.routers.ollama-tg-bot.entrypoints=websecure"
+      - "traefik.http.routers.ollama-tg-bot.tls=true"
+      - "traefik.http.routers.ollama-tg-bot.tls.certresolver=cloudflare"
+      - "traefik.http.services.ollama-tg-bot.loadbalancer.server.port=${TRAEFIK_SERVICE_PORT:-3000}"
+
+      - "homepage.group=${HOMEPAGE_GROUP:-AI}"
+      - "homepage.name=Ollama Dashboard"
+      - "homepage.icon="
+      - "homepage.href=https://${TRAEFIK_HOST:-ollama-tg-bot.example.com}"
 
 volumes:
   bot-data:
+
+networks:
+  traefik:
+    external: true
+    name: "${TRAEFIK_DOCKER_NETWORK:-proxy}"
