@@ -1,9 +1,24 @@
 import type { Bot, Context } from "grammy";
 import { config } from "../config.js";
 import { clearHistory } from "../db/history.js";
-import { clearGroupMemory, getGroupFacts } from "../db/group-memory.js";
-import { getGeneralFacts } from "../db/general-memory.js";
-import { clearUserMemory, getUserFacts } from "../db/user-memory.js";
+import {
+  clearGroupMemory,
+  createGroupFact,
+  getGroupFacts,
+} from "../db/group-memory.js";
+import {
+  createGeneralFact,
+  getGeneralFacts,
+} from "../db/general-memory.js";
+import {
+  MAX_FACT_LENGTH,
+  MIN_FACT_LENGTH,
+} from "../db/memory-facts.js";
+import {
+  clearUserMemory,
+  createUserFact,
+  getUserFacts,
+} from "../db/user-memory.js";
 import { rememberMessageRef } from "../db/message-refs.js";
 import {
   scheduleGeneralMemoryCompression,
@@ -537,7 +552,7 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
           ? ` · Clear group memory: /forgetgroup@${botUsername}`
           : "") +
         (isOwner(ctx)
-          ? `\nMeta explanation (owner only): /explain@${botUsername} or reply with it`
+          ? `\nOwner tools: /explain@${botUsername} · /remember@${botUsername} (or reply with either)`
           : "") +
         (isOwner(ctx) ? `\n\nYou are the configured bot owner.` : "") +
         (!inGroup && !getOwnerUserId() && !getOwnerUsername()
@@ -606,7 +621,7 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
       return;
     }
 
-    const question = resolveExplainQuestion(ctx);
+    const question = resolveCommandInlineOrReplyText(ctx, String(ctx.match ?? ""));
     if (!question) {
       await replyToUser(
         ctx,
@@ -651,18 +666,125 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
       });
     }
   });
+
+  bot.command("remember", async (ctx) => {
+    if (!isOwner(ctx)) {
+      await replyToUser(ctx, "Only the bot owner can use /remember.");
+      return;
+    }
+
+    const fact = resolveCommandInlineOrReplyText(ctx, String(ctx.match ?? ""));
+    if (!fact) {
+      await replyToUser(
+        ctx,
+        `Usage: <code>/remember@${botUsername} fact to store</code>\n` +
+          `Or reply to a message with <code>/remember@${botUsername}</code>\n` +
+          `Example: <code>/remember be very aggressive</code>\n\n` +
+          `Private chat → general memory · Group → group memory · Reply → that user's memory`,
+      );
+      return;
+    }
+
+    const target = resolveRememberTarget(ctx);
+    if (!target) {
+      await replyToUser(ctx, "Could not determine where to store this memory.");
+      return;
+    }
+
+    let saved = false;
+    let targetLabel = "";
+
+    if (target.kind === "user") {
+      const record = createUserFact(target.userId, fact);
+      saved = record != null;
+      targetLabel = `user memory for ${target.label}`;
+      if (saved) scheduleUserMemoryCompression(target.userId);
+    } else if (target.kind === "group") {
+      const record = createGroupFact(target.groupId, fact);
+      saved = record != null;
+      targetLabel = "group memory";
+      if (saved) scheduleGroupMemoryCompression(target.groupId);
+    } else {
+      const record = createGeneralFact(fact);
+      saved = record != null;
+      targetLabel = "general memory";
+      if (saved) scheduleGeneralMemoryCompression();
+    }
+
+    if (!saved) {
+      await replyToUser(
+        ctx,
+        `Could not save memory. Facts must be ${MIN_FACT_LENGTH}–${MAX_FACT_LENGTH} characters.`,
+      );
+      return;
+    }
+
+    logEvent("remember_saved", {
+      chatId: ctx.chat?.id,
+      userId: resolveUserId(ctx),
+      target: target.kind,
+      targetUserId: target.kind === "user" ? target.userId : undefined,
+      targetGroupId: target.kind === "group" ? target.groupId : undefined,
+      factChars: fact.length,
+    });
+
+    await replyToUser(
+      ctx,
+      `Saved to <b>${escapeHtml(targetLabel)}</b>:\n<code>${escapeHtml(fact)}</code>`,
+    );
+  });
 }
 
-function resolveExplainQuestion(ctx: Context): string | null {
-  const inline = String(ctx.match ?? "").trim();
-  if (inline) return inline;
+type RememberTarget =
+  | { kind: "user"; userId: string; label: string }
+  | { kind: "group"; groupId: string }
+  | { kind: "general" };
+
+function resolveRememberTarget(ctx: Context): RememberTarget | null {
+  const replied = ctx.message?.reply_to_message;
+  const botId = ctx.me?.id;
+  const replyAuthor = replied?.from;
+
+  if (
+    replyAuthor &&
+    !replyAuthor.is_bot &&
+    (botId == null || replyAuthor.id !== botId)
+  ) {
+    const userId = String(replyAuthor.id);
+    const name = [replyAuthor.first_name, replyAuthor.last_name]
+      .filter(Boolean)
+      .join(" ");
+    const label = replyAuthor.username
+      ? `${name} (@${replyAuthor.username})`
+      : name || `user ${userId}`;
+    return { kind: "user", userId, label };
+  }
+
+  if (ctx.chat?.type === "private") {
+    return { kind: "general" };
+  }
+
+  const groupId = resolveGroupChatId(ctx);
+  if (groupId) {
+    return { kind: "group", groupId };
+  }
+
+  return null;
+}
+
+function resolveCommandInlineOrReplyText(
+  ctx: Context,
+  inline: string,
+): string | null {
+  const text = inline.trim();
+  if (text) return text;
 
   const replied = ctx.message?.reply_to_message;
   if (!replied) return null;
 
-  const text = summarizeMessageContent(replied).trim();
-  if (!text || text === "[message]") return null;
-  return text;
+  const summary = summarizeMessageContent(replied).trim();
+  if (!summary || summary === "[message]") return null;
+  return summary;
 }
 
 function extractText(ctx: Context): string {
