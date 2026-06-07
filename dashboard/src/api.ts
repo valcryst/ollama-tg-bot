@@ -1,7 +1,7 @@
 export interface Settings {
   ollamaHost: string;
   model: string;
-  customSystemPrompt: string;
+  activePersonalityId: number;
   baseSystemPrompt?: string;
   randomReplyEnabled: boolean;
   randomReplyChance: number;
@@ -56,6 +56,19 @@ export interface GroupMemoryFact {
   groupId: string;
   fact: string;
   createdAt: string;
+}
+
+export interface Personality {
+  id: number;
+  name: string;
+  prompt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PersonalitiesPayload {
+  personalities: Personality[];
+  activePersonalityId: number;
 }
 
 export interface GeneralMemoryFact {
@@ -326,6 +339,25 @@ export const api = {
     ),
   tavilyStatus: () =>
     request<{ configured: boolean; ok: boolean }>("/api/tavily/status"),
+  getPersonalities: () => request<PersonalitiesPayload>("/api/personalities"),
+  createPersonality: (name: string, prompt: string) =>
+    request<{ personality: Personality }>("/api/personalities", {
+      method: "POST",
+      body: JSON.stringify({ name, prompt }),
+    }),
+  updatePersonality: (
+    id: number,
+    patch: { name?: string; prompt?: string },
+  ) =>
+    request<{ personality: Personality }>(`/api/personalities/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deletePersonality: (id: number) =>
+    request<{ ok: boolean; activePersonalityId: number }>(
+      `/api/personalities/${id}`,
+      { method: "DELETE" },
+    ),
   getStickers: () => request<StickerCatalog>("/api/stickers"),
   refreshStickers: () =>
     request<StickerCatalog>("/api/stickers/refresh", { method: "POST" }),

@@ -115,6 +115,11 @@ export function validateSettingsFields(settings: Settings): void {
       "stickerReplyChance must be 0–100",
       settings.stickerReplyChance >= 0 && settings.stickerReplyChance <= 100,
     ],
+    [
+      "activePersonalityId must be a non-negative integer",
+      Number.isInteger(settings.activePersonalityId) &&
+        settings.activePersonalityId >= 0,
+    ],
   ];
 
   const failed = checks.find(([, ok]) => !ok);

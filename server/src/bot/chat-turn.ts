@@ -8,6 +8,7 @@ import {
   recordReply,
   type ErrorLogInput,
 } from "../db/database.js";
+import { getActivePersonalityPrompt } from "../db/personalities.js";
 import { getHistoryLimits } from "../settings-limits.js";
 import { parseStructuredResponse } from "../response-format.js";
 import { sanitizeModelOutput } from "../ollama/sanitize.js";
@@ -177,7 +178,7 @@ export async function runChatTurn(
 
     logEvent("ollama_reply_started", turnLog);
     const built = buildChatMessages(
-      settings.customSystemPrompt,
+      getActivePersonalityPrompt(),
       input.convKey,
       {
         body: input.latestBody,

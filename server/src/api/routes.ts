@@ -49,6 +49,15 @@ import {
 } from "../db/user-memory.js";
 import { listRecentErrors } from "../db/error-log.js";
 import { getDataTable, listDataTables } from "../db/data-browser.js";
+import {
+  createPersonality,
+  deletePersonalityById,
+  listPersonalities,
+  resolveActivePersonalityId,
+  normalizePersonalityName,
+  normalizePersonalityPrompt,
+  updatePersonalityById,
+} from "../db/personalities.js";
 
 const startedAt = new Date();
 
@@ -92,7 +101,7 @@ export function createApiRouter(): Router {
       const allowed: (keyof Settings)[] = [
         "ollamaHost",
         "model",
-        "customSystemPrompt",
+        "activePersonalityId",
         "randomReplyEnabled",
         "randomReplyChance",
         "reactToEveryImage",
@@ -248,6 +257,109 @@ export function createApiRouter(): Router {
     } catch (err) {
       res.status(400).json({
         error: err instanceof Error ? err.message : "Failed to refresh stickers",
+      });
+    }
+  });
+
+  router.get("/personalities", (_req, res) => {
+    try {
+      const settings = getSettings();
+      res.json({
+        personalities: listPersonalities(),
+        activePersonalityId: resolveActivePersonalityId(
+          settings.activePersonalityId,
+        ),
+      });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to load personalities",
+      });
+    }
+  });
+
+  router.post("/personalities", (req, res) => {
+    try {
+      const body = req.body as { name?: string; prompt?: string };
+      const name = normalizePersonalityName(body.name);
+      const prompt = normalizePersonalityPrompt(body.prompt);
+      const created = createPersonality(name, prompt);
+      if (!created) {
+        res.status(400).json({
+          error: "Could not create personality (duplicate name or limit reached)",
+        });
+        return;
+      }
+      res.status(201).json({ personality: created });
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Failed to create personality",
+      });
+    }
+  });
+
+  router.patch("/personalities/:id", (req, res) => {
+    try {
+      const id = Number.parseInt(req.params.id, 10);
+      if (!Number.isInteger(id) || id < 1) {
+        res.status(400).json({ error: "Invalid personality id" });
+        return;
+      }
+
+      const body = req.body as { name?: string; prompt?: string };
+      const patch: { name?: string; prompt?: string } = {};
+      if (body.name !== undefined) {
+        patch.name = normalizePersonalityName(body.name);
+      }
+      if (body.prompt !== undefined) {
+        patch.prompt = normalizePersonalityPrompt(body.prompt);
+      }
+      if (Object.keys(patch).length === 0) {
+        res.status(400).json({ error: "No fields to update" });
+        return;
+      }
+
+      const updated = updatePersonalityById(id, patch);
+      if (updated === "duplicate") {
+        res.status(409).json({ error: "A personality with that name already exists" });
+        return;
+      }
+      if (!updated) {
+        res.status(404).json({ error: "Personality not found" });
+        return;
+      }
+      res.json({ personality: updated });
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Failed to update personality",
+      });
+    }
+  });
+
+  router.delete("/personalities/:id", (req, res) => {
+    try {
+      const id = Number.parseInt(req.params.id, 10);
+      if (!Number.isInteger(id) || id < 1) {
+        res.status(400).json({ error: "Invalid personality id" });
+        return;
+      }
+
+      const settings = getSettings();
+      if (!deletePersonalityById(id)) {
+        res.status(404).json({ error: "Personality not found" });
+        return;
+      }
+
+      let activePersonalityId = settings.activePersonalityId;
+      if (activePersonalityId === id) {
+        const remaining = listPersonalities();
+        activePersonalityId = remaining[0]?.id ?? 0;
+        updateSettings({ activePersonalityId });
+      }
+
+      res.json({ ok: true, activePersonalityId });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to delete personality",
       });
     }
   });

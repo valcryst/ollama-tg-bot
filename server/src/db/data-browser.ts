@@ -76,6 +76,14 @@ const TABLE_CONFIGS: Record<string, TableConfig> = {
     countQuery: "SELECT COUNT(*) AS n FROM general_facts",
     timeColumns: ["created_at"],
   },
+  personalities: {
+    label: "Personalities",
+    columns: ["id", "name", "prompt", "created_at", "updated_at"],
+    query: `SELECT id, name, prompt, created_at, updated_at
+            FROM personalities ORDER BY id ASC LIMIT ?`,
+    countQuery: "SELECT COUNT(*) AS n FROM personalities",
+    timeColumns: ["created_at", "updated_at"],
+  },
   known_users: {
     label: "Known users",
     columns: ["user_id", "username", "first_name", "last_name", "updated_at"],

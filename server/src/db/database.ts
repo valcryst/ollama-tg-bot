@@ -14,12 +14,18 @@ import {
 import { bindKnownUsersDatabase } from "./known-users.js";
 import { bindMessageRefsDatabase } from "./message-refs.js";
 import { bindDataBrowserDatabase } from "./data-browser.js";
+import {
+  bindPersonalitiesDatabase,
+  configurePersonalityAccess,
+  getPersonalityById,
+} from "./personalities.js";
 import { validateSettingsFields } from "../settings-limits.js";
 
 export interface Settings {
   ollamaHost: string;
   model: string;
-  customSystemPrompt: string;
+  /** Id of the personality whose prompt is layered on the base system prompt (0 = none). */
+  activePersonalityId: number;
   randomReplyEnabled: boolean;
   randomReplyChance: number;
   /** In groups, comment on photos/image files even when not addressed to the bot. */
@@ -56,7 +62,7 @@ export interface Stats {
 const DEFAULT_SETTINGS: Settings = {
   ollamaHost: "http://host.docker.internal:11434",
   model: "llama3.2",
-  customSystemPrompt: "",
+  activePersonalityId: 0,
   randomReplyEnabled: false,
   randomReplyChance: 5,
   reactToEveryImage: false,
@@ -125,7 +131,8 @@ export function initDatabase(): void {
     }
   }
 
-  migrateLegacySystemPrompt();
+  bindPersonalitiesDatabase(db);
+  configurePersonalityAccess(getSettings);
   bindHistoryDatabase(db);
   bindUserMemoryDatabase(db);
   bindGroupMemoryDatabase(db);
@@ -135,26 +142,6 @@ export function initDatabase(): void {
   bindMessageRefsDatabase(db);
   bindDataBrowserDatabase(db);
   configureHistoryAccess(getSettings);
-}
-
-function migrateLegacySystemPrompt(): void {
-  const hasCustom = db
-    .prepare("SELECT 1 FROM settings WHERE key = 'customSystemPrompt'")
-    .get();
-  if (hasCustom) return;
-
-  const legacy = db
-    .prepare("SELECT value FROM settings WHERE key = 'systemPrompt'")
-    .get() as { value: string } | undefined;
-
-  const value = legacy
-    ? (JSON.parse(legacy.value) as string)
-    : DEFAULT_SETTINGS.customSystemPrompt;
-
-  db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(
-    "customSystemPrompt",
-    JSON.stringify(value),
-  );
 }
 
 function getSetting<T>(key: keyof Settings): T {
@@ -175,7 +162,7 @@ export function getSettings(): Settings {
   return {
     ollamaHost: getSetting<string>("ollamaHost"),
     model: getSetting<string>("model"),
-    customSystemPrompt: getSetting<string>("customSystemPrompt"),
+    activePersonalityId: getSetting<number>("activePersonalityId"),
     randomReplyEnabled: getSetting<boolean>("randomReplyEnabled"),
     randomReplyChance: getSetting<number>("randomReplyChance"),
     reactToEveryImage: getSetting<boolean>("reactToEveryImage"),
@@ -208,6 +195,10 @@ export function updateSettings(partial: Partial<Settings>): Settings {
   }
 
   validateSettingsFields(next);
+
+  if (next.activePersonalityId > 0 && !getPersonalityById(next.activePersonalityId)) {
+    throw new Error("activePersonalityId does not match a saved personality");
+  }
 
   for (const key of Object.keys(next) as (keyof Settings)[]) {
     setSetting(key, next[key]);
