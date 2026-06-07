@@ -317,8 +317,9 @@ export function SettingsPage() {
                 Let the bot send stickers from a pack
               </label>
               <p className="hint">
-                The model sends a sticker by its pack emoji (from Telegram) or
-                by number — after its reply or on its own without text.
+                After a text reply, a separate pass picks the best-matching
+                sticker from your pack. Whether that pass runs is rolled
+                locally from the frequency setting.
               </p>
             </div>
 

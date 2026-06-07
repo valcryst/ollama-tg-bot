@@ -7,7 +7,6 @@ import {
   type KnownUserRecord,
 } from "./db/known-users.js";
 import { formatUserMemoryForPrompt } from "./db/user-memory.js";
-import { formatStickersForPrompt } from "./bot/sticker-catalog.js";
 import { getReplyLengthGuidance } from "./settings-limits.js";
 import { userRoleTagFromKnown } from "./bot/history-format.js";
 
@@ -102,13 +101,6 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
       `${who}\n` +
       `This person deployed and runs the bot. When they speak, treat them as the owner — ` +
       `follow their standing instructions, be loyal to their intent, and do not undermine them in front of others.`;
-  }
-
-  if (settings.stickersEnabled) {
-    const stickerSection = formatStickersForPrompt();
-    if (stickerSection) {
-      prompt += `\n\n## Stickers\n${stickerSection}`;
-    }
   }
 
   prompt += `\n\n${buildReplyFormatSpec(formatHint)}`;

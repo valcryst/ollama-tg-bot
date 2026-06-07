@@ -1,6 +1,6 @@
 /**
- * Structured assistant output. Only [REPLY] text and optional [STICKER] are sent to Telegram.
- * Memory blocks are parsed from the full model output or a dedicated extract pass.
+ * Structured assistant output. Only [REPLY] text is sent to Telegram.
+ * Stickers are chosen in a separate model pass; memory blocks come from a dedicated extract pass.
  */
 export function buildReplyFormatSpec(formatHint: string): string {
   return `Reply ONLY using this block (no text outside it):
@@ -20,7 +20,6 @@ export interface ParsedAssistantResponse {
   groupMemoryFacts: string[];
   generalMemoryFacts: string[];
   reply: string;
-  stickerEmoji: string | null;
 }
 
 const BLOCK_NAME = "[A-Za-z_][A-Za-z0-9_]*";
@@ -100,8 +99,6 @@ export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
   }
   if (!reply) reply = stripStructuredMarkup(raw);
 
-  let stickerEmoji = extractFirstBlock(raw, "STICKER");
-  if (!stickerEmoji) stickerEmoji = extractFirstBlock(reply, "STICKER");
   reply = stripStructuredMarkup(reply);
 
   return {
@@ -109,6 +106,5 @@ export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
     groupMemoryFacts,
     generalMemoryFacts,
     reply,
-    stickerEmoji: stickerEmoji || null,
   };
 }

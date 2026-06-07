@@ -30,8 +30,10 @@ import { getOwnerUserId, getOwnerUsername } from "./owner.js";
 import { replyParameters } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
 import {
-  resolveStickerFileId,
-} from "./sticker-catalog.js";
+  analyzeStickerForReply,
+  shouldTryStickerReply,
+} from "./sticker-analyze.js";
+import { resolveStickerFileId } from "./sticker-catalog.js";
 
 export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
 
@@ -229,19 +231,35 @@ export async function runChatTurn(
       outputChars: modelOutput.length,
     });
 
-    let { reply: replyBody, stickerEmoji } = parseStructuredResponse(modelOutput);
+    let { reply: replyBody } = parseStructuredResponse(modelOutput);
 
-    if (!replyBody.trim() && !stickerEmoji) {
+    if (!replyBody.trim()) {
       replyBody = sanitizeModelOutput(modelOutput) || modelOutput.trim();
     }
-    if (!replyBody.trim() && !stickerEmoji) {
-      throw new Error("Model response had no [REPLY] or [STICKER] content");
+    if (!replyBody.trim()) {
+      throw new Error("Model response had no [REPLY] content");
     }
 
-    const stickerFileId =
-      stickerEmoji && settings.stickersEnabled
-        ? resolveStickerFileId(stickerEmoji)
-        : null;
+    let stickerEmoji: string | null = null;
+    if (
+      settings.stickersEnabled &&
+      shouldTryStickerReply(settings.stickerReplyChance)
+    ) {
+      logEvent("sticker_analyze_started", turnLog);
+      stickerEmoji = await analyzeStickerForReply({
+        userMessage: input.latestBody,
+        botReply: replyBody,
+        replyContext: input.replyContext,
+      });
+      logEvent("sticker_analyze_done", {
+        ...turnLog,
+        picked: stickerEmoji ?? undefined,
+      });
+    }
+
+    const stickerFileId = stickerEmoji
+      ? resolveStickerFileId(stickerEmoji)
+      : null;
     if (stickerEmoji && settings.stickersEnabled && !stickerFileId) {
       logEvent("sticker_resolve_failed", {
         ...turnLog,
