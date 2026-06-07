@@ -1,6 +1,7 @@
 import { chatComplete } from "../ollama/client.js";
 import type { ChatMessage } from "../ollama/client.js";
 import { logEventError } from "../event-log.js";
+import { isReplyThreadContext } from "./replies.js";
 import {
   formatStickerCatalogForAnalyze,
   getStickerCatalogState,
@@ -59,12 +60,17 @@ export async function analyzeStickerForReply(
   const botReply = input.botReply.trim();
   if (!botReply) return null;
 
+  const replyContext = input.replyContext?.trim() ?? "";
   let content = `Bot reply to evaluate:\n${botReply}`;
-  if (input.userMessage.trim()) {
-    content += `\n\nUser message that prompted this reply:\n${input.userMessage.trim()}`;
-  }
-  if (input.replyContext?.trim()) {
-    content += `\n\nQuoted reply context:\n${input.replyContext.trim()}`;
+  if (isReplyThreadContext(replyContext)) {
+    content += `\n\nConversation context:\n${replyContext}`;
+  } else {
+    if (input.userMessage.trim()) {
+      content += `\n\nUser message that prompted this reply:\n${input.userMessage.trim()}`;
+    }
+    if (replyContext) {
+      content += `\n\nQuoted reply context:\n${replyContext}`;
+    }
   }
 
   const messages: ChatMessage[] = [

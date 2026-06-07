@@ -73,9 +73,17 @@ export async function extractMemoriesFromTurn(
     : "Not a group chat — always write none in [GROUP_MEMORY].";
   const generalBlock = formatStored("general", input.existingGeneralFacts);
 
-  let turn = `User message:\n${input.userMessage.trim() || "(non-text message)"}`;
-  if (input.replyContext?.trim()) {
-    turn += `\n\nReplied-to context:\n${input.replyContext.trim()}`;
+  const replyContext = input.replyContext?.trim() ?? "";
+  const hasReplyThread = replyContext.includes("[REPLY THREAD");
+
+  let turn: string;
+  if (hasReplyThread) {
+    turn = `Message context:\n${replyContext}`;
+  } else {
+    turn = `User message:\n${input.userMessage.trim() || "(non-text message)"}`;
+    if (replyContext) {
+      turn += `\n\nReplied-to context:\n${replyContext}`;
+    }
   }
   turn += `\n\nAssistant reply (for context only, do not store its jokes as facts):\n${input.assistantReply.trim()}`;
 

@@ -54,7 +54,6 @@ import {
   wasBotAddedToChat,
 } from "./group-setup.js";
 import {
-  appendReplyContext,
   formatReplyContext,
   replyParameters,
 } from "./replies.js";
@@ -343,10 +342,6 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         }
       }
 
-      const memoryUserLabel = replyContext
-        ? appendReplyContext(ctx, latestBody, botId, speaker)
-        : latestBody;
-
       if (!inGroupChat && userHistoryContent) {
         rememberMessageRef(
           convKey,
@@ -375,7 +370,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         mentionedUsersContext,
         messageThreadId: ctx.message?.message_thread_id,
         memoryInput: {
-          userMessage: memoryUserLabel,
+          userMessage: latestBody,
           replyContext,
           existingUserFacts: userMemoryFacts,
           existingGroupFacts: groupMemoryFacts,

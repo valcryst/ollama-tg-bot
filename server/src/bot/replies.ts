@@ -90,15 +90,10 @@ export function formatReplyContext(
   return thread;
 }
 
-export function appendReplyContext(
-  ctx: Context,
-  body: string,
-  botId?: number,
-  currentSpeaker?: CurrentSpeaker | null,
-): string {
-  const context = formatReplyContext(ctx, botId, currentSpeaker);
-  if (!context) return body;
-  return `Reply thread context:\n${context}\n\nCurrent message: ${body}`;
+export function isReplyThreadContext(
+  context: string | null | undefined,
+): boolean {
+  return Boolean(context?.includes("[REPLY THREAD"));
 }
 
 export function replyParameters(
@@ -145,7 +140,7 @@ function buildReplyThread(
   options: ReplyThreadOptions,
 ): string | null {
   const chain = collectReplyChain(message, options.maxDepth ?? 8);
-  if (chain.length === 0) return null;
+  if (chain.length <= 1) return null;
 
   const steps: ThreadStep[] = chain.map((msg, index) => {
     const sender = formatSenderLabel(msg, options.botId) || "Unknown";

@@ -21,6 +21,7 @@ import {
   extractParticipantUserIds,
   userRoleTag,
 } from "./history-format.js";
+import { isReplyThreadContext } from "./replies.js";
 import { currentSpeakerFromUser, type CurrentSpeaker } from "./speaker.js";
 
 export type { CurrentSpeaker } from "./speaker.js";
@@ -46,16 +47,26 @@ export interface LatestTurnOptions {
 function buildLatestTurnMessage(options: LatestTurnOptions): string {
   const parts: string[] = [];
 
+  const hasReplyThread = isReplyThreadContext(options.replyContext);
+
   if (options.isGroupChat && options.currentSpeaker) {
-    const ownerLine = options.currentSpeakerIsOwner
-      ? "They are the bot owner — prioritize their intent.\n"
-      : "";
-    parts.push(
-      `[CURRENT SPEAKER — reply to this person only]\n` +
-        `Name: ${options.currentSpeaker.label}\n` +
-        `Tag: ${options.speakerTag ?? options.currentSpeaker.userId}\n` +
-        ownerLine,
-    );
+    if (hasReplyThread) {
+      if (options.currentSpeakerIsOwner) {
+        parts.push(
+          "[CURRENT SPEAKER — bot owner — prioritize their intent]",
+        );
+      }
+    } else {
+      const ownerLine = options.currentSpeakerIsOwner
+        ? "They are the bot owner — prioritize their intent.\n"
+        : "";
+      parts.push(
+        `[CURRENT SPEAKER — reply to this person only]\n` +
+          `Name: ${options.currentSpeaker.label}\n` +
+          `Tag: ${options.speakerTag ?? options.currentSpeaker.userId}\n` +
+          ownerLine,
+      );
+    }
   }
 
   if (options.mentionedUsersContext?.trim()) {
@@ -74,7 +85,10 @@ function buildLatestTurnMessage(options: LatestTurnOptions): string {
     );
   }
 
-  parts.push(options.body.trim());
+  if (!hasReplyThread) {
+    parts.push(options.body.trim());
+  }
+
   return parts.filter(Boolean).join("\n\n");
 }
 

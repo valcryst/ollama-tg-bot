@@ -1,6 +1,7 @@
 import { chatComplete } from "../ollama/client.js";
 import type { ChatMessage } from "../ollama/client.js";
 import { logEventError } from "../event-log.js";
+import { isReplyThreadContext } from "./replies.js";
 import { isTavilyConfigured } from "../tavily/client.js";
 
 const SEARCH_CHECK_NUM_PREDICT = 192;
@@ -92,9 +93,15 @@ export async function analyzeSearchNeed(
   const userText = input.userMessage.trim();
   if (!userText) return { needsSearch: false, query: null };
 
-  let content = `User message:\n${userText}`;
-  if (input.replyContext?.trim()) {
-    content += `\n\nQuoted reply context:\n${input.replyContext.trim()}`;
+  const replyContext = input.replyContext?.trim() ?? "";
+  let content: string;
+  if (isReplyThreadContext(replyContext)) {
+    content = replyContext;
+  } else {
+    content = `User message:\n${userText}`;
+    if (replyContext) {
+      content += `\n\nQuoted reply context:\n${replyContext}`;
+    }
   }
 
   const messages: ChatMessage[] = [
