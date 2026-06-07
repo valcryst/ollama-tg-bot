@@ -7,6 +7,7 @@ import { logInfo } from "./logging.js";
 import { initDatabase } from "./db/database.js";
 import { createApiRouter } from "./api/routes.js";
 import { startBot, stopBot } from "./bot/index.js";
+import { closePlaywrightBrowser } from "./playwright/client.js";
 
 async function main(): Promise<void> {
   initDatabase();
@@ -45,6 +46,7 @@ async function main(): Promise<void> {
   const shutdown = async () => {
     logInfo("Shutting down...");
     await stopBot();
+    await closePlaywrightBrowser();
     server.close();
     process.exit(0);
   };

@@ -540,6 +540,7 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
             `• Send photos or stickers (animated/video use a preview frame)\n` +
             `• React to my messages with emoji — I'll respond\n`) +
         `• I remember recent messages in this chat\n` +
+        `• I open links in your messages and read the page content\n` +
         (config.tavilyApiKey
           ? `• I can search the web via Tavily when needed\n`
           : "") +

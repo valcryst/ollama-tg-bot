@@ -58,7 +58,7 @@ Telegram → Grammy handlers → chat-turn → Ollama
 ### Message flow
 
 1. **`server/src/bot/handlers.ts`** — Register **commands before** the catch-all `bot.on("message")`. Generic message handlers must not block command handlers (Grammy middleware order).
-2. **`server/src/bot/chat-turn.ts`** — One user turn: optional Tavily search, build messages, Ollama chat, Telegram reply, history + memory scheduling.
+2. **`server/src/bot/chat-turn.ts`** — One user turn: optional link fetch (Playwright), optional Tavily search, build messages, Ollama chat, Telegram reply, history + memory scheduling.
 3. **`server/src/bot/conversation.ts`** — Assembles system prompt, history, reply context, group speaker wrapping.
 4. **`server/src/prompts.ts`** — Base system prompt; custom prompt from settings appended.
 
@@ -119,6 +119,7 @@ State: `dashboard/src/context/DashboardContext.tsx`. API client: `dashboard/src/
 | History | `server/src/db/history.ts` |
 | Vision | `server/src/bot/message-media.ts`, `server/src/ollama/images.ts` |
 | Search | `server/src/bot/search-analyze.ts`, `server/src/tavily/client.ts` |
+| Link fetch | `server/src/bot/link-extract.ts`, `server/src/bot/link-fetch.ts`, `server/src/playwright/client.ts` |
 | HTML replies | `server/src/telegram/html.ts` |
 
 ## Testing

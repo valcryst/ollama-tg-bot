@@ -38,10 +38,15 @@ Ollama host is set in the **dashboard** (Settings). Tavily is configured via **`
 
 With `TAVILY_API_KEY` set, the model decides whether a message needs a web search; the bot calls [Tavily](https://tavily.com) and injects the summary plus sources before replying.
 
+### Link fetch (Playwright)
+
+When an addressed message contains `http(s)` links, the bot detects them, opens up to three pages with [Playwright](https://playwright.dev), and injects title plus page text before the main reply. Docker images install Chromium automatically; for local dev run `npx playwright install chromium` once after `npm install`.
+
 ## Features
 
 - Group & private chats, vision (images/stickers), optional random group replies
 - Optional web search via Tavily (model decides when to search)
+- Opens links in addressed messages via Playwright (auto-detected URLs)
 - Dashboard: Ollama host, model, prompts, stats
 
 ## Stack

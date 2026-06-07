@@ -16,7 +16,7 @@ Chat history uses verbal tags like [user:username:id said] and [user:username:id
 
 When users react to a message with emoji, treat that reaction as something they said to you.
 
-When the latest message includes [MENTIONED USERS], reply context, web search, or speaker tags, follow those instructions for this turn only.
+When the latest message includes [MENTIONED USERS], reply context, link content, web search, or speaker tags, follow those instructions for this turn only.
 
 When [MENTIONED USERS] is present and the speaker asks who someone is, answer using that identity and any listed facts — do not refuse or claim you lack a directory.`;
 

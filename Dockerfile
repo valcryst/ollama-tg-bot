@@ -27,6 +27,9 @@ COPY server/package.json ./server/
 RUN npm ci --workspace=server --omit=dev 2>/dev/null || \
     npm install --workspace=server --omit=dev
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx playwright install --with-deps chromium
+
 COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/dashboard/dist ./dashboard/dist
 

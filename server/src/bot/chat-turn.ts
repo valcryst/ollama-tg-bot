@@ -19,6 +19,7 @@ import {
   isTavilyConfigured,
   tavilySearch,
 } from "../tavily/client.js";
+import { resolveLinkFetchContext } from "./link-fetch.js";
 import { analyzeSearchNeed } from "./search-analyze.js";
 import {
   buildChatMessages,
@@ -151,8 +152,23 @@ export async function runChatTurn(
   try {
     logEvent("chat_turn_started", turnLog);
 
+    let linkFetchContext: string | null = null;
+    const linkFetch = await resolveLinkFetchContext({
+      userMessage: input.latestBody,
+      replyContext: input.replyContext,
+    });
+    if (linkFetch.urlCount > 0) {
+      logEvent("link_fetch_triggered", {
+        ...turnLog,
+        urlCount: linkFetch.urlCount,
+      });
+      linkFetchContext = linkFetch.context;
+    } else {
+      logEvent("link_fetch_skipped", turnLog);
+    }
+
     let webSearchContext: string | null = null;
-    if (isTavilyConfigured()) {
+    if (isTavilyConfigured() && !linkFetch.resolved) {
       const decision = await analyzeSearchNeed({
         userMessage: input.latestBody,
         replyContext: input.replyContext,
@@ -174,6 +190,8 @@ export async function runChatTurn(
       } else {
         logEvent("web_search_skipped", turnLog);
       }
+    } else if (isTavilyConfigured() && linkFetch.resolved) {
+      logEvent("web_search_skipped", { ...turnLog, reason: "link_fetch_resolved" });
     }
 
     logEvent("ollama_reply_started", turnLog);
@@ -185,6 +203,7 @@ export async function runChatTurn(
         speakerTag: input.userRole,
         mentionedUsersContext: input.mentionedUsersContext,
         replyContext: input.replyContext,
+        linkFetchContext,
         webSearchContext,
         currentSpeaker: input.currentSpeaker,
         currentSpeakerIsOwner: input.currentSpeakerIsOwner,
