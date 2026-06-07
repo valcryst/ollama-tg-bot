@@ -43,6 +43,65 @@ export function buildBaseSystemPrompt(settings: Settings): string {
   return `${BASE_SYSTEM_PROMPT_CORE}\n\n${systemHint}\n\n${buildReplyFormatSpec(formatHint)}`;
 }
 
+export interface ExplainPromptOptions {
+  settings: Settings;
+  activePersonalityName: string | null;
+  activePersonalityPrompt: string | null;
+  generalMemoryFacts: string[];
+  groupMemoryFacts: string[];
+  userMemoryFacts: string[];
+  isGroupChat: boolean;
+}
+
+export function buildExplainSystemPrompt(options: ExplainPromptOptions): string {
+  const {
+    settings,
+    activePersonalityName,
+    activePersonalityPrompt,
+    generalMemoryFacts,
+    groupMemoryFacts,
+    userMemoryFacts,
+    isGroupChat,
+  } = options;
+
+  const { formatHint } = getReplyLengthGuidance(settings);
+  const baseSystemPrompt = buildBaseSystemPrompt(settings);
+
+  let activeSection: string;
+  if (activePersonalityName && activePersonalityPrompt?.trim()) {
+    activeSection =
+      `Name: ${activePersonalityName}\n` +
+      `Custom instructions:\n${activePersonalityPrompt.trim()}`;
+  } else if (activePersonalityName) {
+    activeSection =
+      `Name: ${activePersonalityName}\n` +
+      `(no custom instructions — base prompt only)`;
+  } else {
+    activeSection = "None — only the base system prompt is applied.";
+  }
+
+  const groupSection = isGroupChat
+    ? formatGroupMemoryForPrompt(groupMemoryFacts)
+    : "Not applicable (private chat).";
+
+  return (
+    `You are a meta assistant for a Telegram Ollama bot. The user asks why the bot would behave or reply a certain way.\n\n` +
+    `Rules:\n` +
+    `- Do NOT roleplay. Do NOT speak as the bot's character.\n` +
+    `- Give a direct, honest explanation grounded in the configuration below.\n` +
+    `- Cite specific sources: active personality, base prompt, general/group/user memories, or recent chat history.\n` +
+    `- Quote or paraphrase the exact instruction or memory when it explains the behavior.\n` +
+    `- If nothing in the configuration explains it, say so plainly.\n\n` +
+    `## What drives normal (in-character) replies\n\n` +
+    `### Active personality\n${activeSection}\n\n` +
+    `### Base system prompt (always applied)\n${baseSystemPrompt}\n\n` +
+    `### General memories (all chats)\n${formatGeneralMemoryForPrompt(generalMemoryFacts)}\n\n` +
+    `### Group memories\n${groupSection}\n\n` +
+    `### Memories about the asking user\n${formatUserMemoryForPrompt(userMemoryFacts)}\n\n` +
+    buildReplyFormatSpec(formatHint)
+  );
+}
+
 export function buildSystemPrompt(options: SystemPromptOptions): string {
   const {
     settings,

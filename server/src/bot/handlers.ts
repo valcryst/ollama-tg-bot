@@ -33,6 +33,7 @@ import { stickerPackEmoji } from "./stickers.js";
 import { describeVisionImages } from "./vision-describe.js";
 import { recordPassiveGroupHistory } from "./history-record.js";
 import { runChatTurn } from "./chat-turn.js";
+import { runExplainTurn } from "./explain-turn.js";
 import {
   findReplyMediaMessage,
   loadVisionFromMessage,
@@ -56,6 +57,7 @@ import {
 import {
   formatReplyContext,
   replyParameters,
+  summarizeMessageContent,
 } from "./replies.js";
 import {
   formatReactionPrompt,
@@ -534,6 +536,9 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
         (inGroup
           ? ` · Clear group memory: /forgetgroup@${botUsername}`
           : "") +
+        (isOwner(ctx)
+          ? `\nMeta explanation (owner only): /explain@${botUsername} or reply with it`
+          : "") +
         (isOwner(ctx) ? `\n\nYou are the configured bot owner.` : "") +
         (!inGroup && !getOwnerUserId() && !getOwnerUsername()
           ? `\n\nSet owner: enter your @username in the dashboard Settings page (message the bot once first).`
@@ -594,6 +599,70 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
     clearGroupMemory(groupChatId);
     await replyToUser(ctx, "Stored memory for this group has been cleared.");
   });
+
+  bot.command("explain", async (ctx) => {
+    if (!isOwner(ctx)) {
+      await replyToUser(ctx, "Only the bot owner can use /explain.");
+      return;
+    }
+
+    const question = resolveExplainQuestion(ctx);
+    if (!question) {
+      await replyToUser(
+        ctx,
+        `Usage: <code>/explain@${botUsername} your question</code>\n` +
+          `Or reply to a message with <code>/explain@${botUsername}</code>\n` +
+          `Example: <code>/explain why are you so aggressive?</code>\n\n` +
+          `Answers honestly about configuration and memories — not in character.`,
+      );
+      return;
+    }
+
+    recordMessageReceived();
+
+    const chatId = ctx.chat?.id;
+    if (!chatId) return;
+
+    const convKey = resolveConversationKey(ctx);
+    if (!convKey) return;
+
+    const userId = resolveUserId(ctx);
+    const groupChatId = resolveGroupChatId(ctx);
+    const inGroupChat = isGroupChat(ctx);
+
+    try {
+      await runExplainTurn(ctx, {
+        convKey,
+        chatId,
+        userId,
+        groupChatId,
+        inGroup: inGroupChat,
+        question,
+        userRole: userRoleTag(ctx.from),
+        userMemoryFacts: userId ? getUserFacts(userId) : [],
+        groupMemoryFacts: groupChatId ? getGroupFacts(groupChatId) : [],
+        generalMemoryFacts: getGeneralFacts(),
+        messageThreadId: ctx.message?.message_thread_id,
+      });
+    } catch (err) {
+      logEventError("explain_command_failed", err, {
+        chatId,
+        userId,
+      });
+    }
+  });
+}
+
+function resolveExplainQuestion(ctx: Context): string | null {
+  const inline = String(ctx.match ?? "").trim();
+  if (inline) return inline;
+
+  const replied = ctx.message?.reply_to_message;
+  if (!replied) return null;
+
+  const text = summarizeMessageContent(replied).trim();
+  if (!text || text === "[message]") return null;
+  return text;
 }
 
 function extractText(ctx: Context): string {
