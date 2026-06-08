@@ -120,6 +120,10 @@ export function validateSettingsFields(settings: Settings): void {
       Number.isInteger(settings.activePersonalityId) &&
         settings.activePersonalityId >= 0,
     ],
+    [
+      "moodCooldownMinutes must be 5–1440",
+      settings.moodCooldownMinutes >= 5 && settings.moodCooldownMinutes <= 1440,
+    ],
   ];
 
   const failed = checks.find(([, ok]) => !ok);

@@ -1,4 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
+import {
+  DEFAULT_MOOD_VALUES,
+  MOOD_KEYS,
+  clampMoodLevel,
+  normalizeMoodValues,
+  type MoodValues,
+} from "../mood.js";
 
 export const MAX_PERSONALITIES = 32;
 export const MAX_PERSONALITY_NAME_LENGTH = 64;
@@ -11,6 +18,7 @@ export interface PersonalityRecord {
   id: number;
   name: string;
   prompt: string;
+  moodDefaults: MoodValues;
   createdAt: string;
   updatedAt: string;
 }
@@ -28,12 +36,38 @@ export function bindPersonalitiesDatabase(database: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_personalities_name
       ON personalities (name COLLATE NOCASE);
   `);
+
+  const columns = db.prepare("PRAGMA table_info(personalities)").all() as {
+    name: string;
+  }[];
+  if (!columns.some((column) => column.name === "mood_defaults")) {
+    db.exec(`ALTER TABLE personalities ADD COLUMN mood_defaults TEXT`);
+  }
 }
 
 export function configurePersonalityAccess(
   getSettingsFn: () => { activePersonalityId: number },
 ): void {
   getActivePersonalityId = () => getSettingsFn().activePersonalityId;
+}
+
+export function normalizePersonalityMoodDefaults(
+  raw: Partial<Record<string, unknown>> | null | undefined,
+  fallback: MoodValues = DEFAULT_MOOD_VALUES,
+): MoodValues {
+  const normalized = normalizeMoodValues(raw, fallback);
+  for (const key of MOOD_KEYS) {
+    const value = normalized[key];
+    if (
+      !Number.isInteger(value) ||
+      value !== clampMoodLevel(value) ||
+      value < 0 ||
+      value > 5
+    ) {
+      throw new Error(`moodDefaults.${key} must be an integer 0–5`);
+    }
+  }
+  return normalized;
 }
 
 export function normalizePersonalityName(raw: string | undefined): string {
@@ -57,10 +91,22 @@ export function normalizePersonalityPrompt(raw: string | undefined): string {
   return prompt;
 }
 
+function parseMoodDefaultsColumn(raw: string | null | undefined): MoodValues {
+  if (!raw?.trim()) return { ...DEFAULT_MOOD_VALUES };
+  try {
+    return normalizePersonalityMoodDefaults(
+      JSON.parse(raw) as Partial<Record<string, unknown>>,
+    );
+  } catch {
+    return { ...DEFAULT_MOOD_VALUES };
+  }
+}
+
 function rowToPersonality(r: {
   id: number;
   name: string;
   prompt: string;
+  mood_defaults?: string | null;
   created_at: number;
   updated_at: number;
 }): PersonalityRecord {
@@ -68,6 +114,7 @@ function rowToPersonality(r: {
     id: r.id,
     name: r.name,
     prompt: r.prompt,
+    moodDefaults: parseMoodDefaultsColumn(r.mood_defaults),
     createdAt: new Date(r.created_at * 1000).toISOString(),
     updatedAt: new Date(r.updated_at * 1000).toISOString(),
   };
@@ -83,7 +130,7 @@ export function countPersonalities(): number {
 export function listPersonalities(): PersonalityRecord[] {
   const rows = db
     .prepare(
-      `SELECT id, name, prompt, created_at, updated_at
+      `SELECT id, name, prompt, mood_defaults, created_at, updated_at
        FROM personalities
        ORDER BY id ASC`,
     )
@@ -91,6 +138,7 @@ export function listPersonalities(): PersonalityRecord[] {
     id: number;
     name: string;
     prompt: string;
+    mood_defaults: string | null;
     created_at: number;
     updated_at: number;
   }[];
@@ -101,7 +149,7 @@ export function listPersonalities(): PersonalityRecord[] {
 export function getPersonalityById(id: number): PersonalityRecord | null {
   const row = db
     .prepare(
-      `SELECT id, name, prompt, created_at, updated_at
+      `SELECT id, name, prompt, mood_defaults, created_at, updated_at
        FROM personalities WHERE id = ?`,
     )
     .get(id) as
@@ -109,6 +157,7 @@ export function getPersonalityById(id: number): PersonalityRecord | null {
         id: number;
         name: string;
         prompt: string;
+        mood_defaults: string | null;
         created_at: number;
         updated_at: number;
       }
@@ -128,6 +177,12 @@ export function getActivePersonalityPrompt(): string {
   return getPersonalityById(id)?.prompt ?? "";
 }
 
+export function getActivePersonalityMoodDefaults(): MoodValues {
+  const id = resolveActivePersonalityId(getActivePersonalityId());
+  if (!id) return { ...DEFAULT_MOOD_VALUES };
+  return getPersonalityById(id)?.moodDefaults ?? { ...DEFAULT_MOOD_VALUES };
+}
+
 function nameTaken(name: string, exceptId?: number): boolean {
   const row = db
     .prepare(
@@ -142,16 +197,19 @@ function nameTaken(name: string, exceptId?: number): boolean {
 export function createPersonality(
   name: string,
   prompt: string,
+  moodDefaults: MoodValues = DEFAULT_MOOD_VALUES,
 ): PersonalityRecord | null {
   if (countPersonalities() >= MAX_PERSONALITIES) return null;
   if (nameTaken(name)) return null;
 
+  const normalizedMood = normalizePersonalityMoodDefaults(moodDefaults);
+
   const result = db
     .prepare(
-      `INSERT INTO personalities (name, prompt, created_at, updated_at)
-       VALUES (?, ?, unixepoch(), unixepoch())`,
+      `INSERT INTO personalities (name, prompt, mood_defaults, created_at, updated_at)
+       VALUES (?, ?, ?, unixepoch(), unixepoch())`,
     )
-    .run(name, prompt);
+    .run(name, prompt, JSON.stringify(normalizedMood));
 
   const id = Number(result.lastInsertRowid);
   return getPersonalityById(id);
@@ -159,7 +217,7 @@ export function createPersonality(
 
 export function updatePersonalityById(
   id: number,
-  patch: { name?: string; prompt?: string },
+  patch: { name?: string; prompt?: string; moodDefaults?: MoodValues },
 ): PersonalityRecord | "duplicate" | null {
   const existing = getPersonalityById(id);
   if (!existing) return null;
@@ -170,6 +228,10 @@ export function updatePersonalityById(
     patch.prompt !== undefined
       ? normalizePersonalityPrompt(patch.prompt)
       : existing.prompt;
+  const nextMood =
+    patch.moodDefaults !== undefined
+      ? normalizePersonalityMoodDefaults(patch.moodDefaults, existing.moodDefaults)
+      : existing.moodDefaults;
 
   if (nextName !== existing.name && nameTaken(nextName, id)) {
     return "duplicate";
@@ -177,9 +239,9 @@ export function updatePersonalityById(
 
   db.prepare(
     `UPDATE personalities
-     SET name = ?, prompt = ?, updated_at = unixepoch()
+     SET name = ?, prompt = ?, mood_defaults = ?, updated_at = unixepoch()
      WHERE id = ?`,
-  ).run(nextName, nextPrompt, id);
+  ).run(nextName, nextPrompt, JSON.stringify(nextMood), id);
 
   return getPersonalityById(id);
 }

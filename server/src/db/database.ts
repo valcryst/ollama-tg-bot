@@ -20,6 +20,7 @@ import {
   getPersonalityById,
 } from "./personalities.js";
 import { validateSettingsFields } from "../settings-limits.js";
+import { bindMoodDatabase, configureMoodAccess } from "./mood.js";
 
 export interface Settings {
   ollamaHost: string;
@@ -49,6 +50,8 @@ export interface Settings {
   stickerPackName: string;
   /** How often the model should include a sticker (0–100). */
   stickerReplyChance: number;
+  /** Minutes of inactivity until mood returns to the active personality's defaults. */
+  moodCooldownMinutes: number;
 }
 
 export interface Stats {
@@ -76,6 +79,7 @@ const DEFAULT_SETTINGS: Settings = {
   stickersEnabled: false,
   stickerPackName: "",
   stickerReplyChance: 70,
+  moodCooldownMinutes: 120,
 };
 
 let db: DatabaseSync;
@@ -141,7 +145,9 @@ export function initDatabase(): void {
   bindKnownUsersDatabase(db);
   bindMessageRefsDatabase(db);
   bindDataBrowserDatabase(db);
+  bindMoodDatabase(db);
   configureHistoryAccess(getSettings);
+  configureMoodAccess(getSettings);
 }
 
 function getSetting<T>(key: keyof Settings): T {
@@ -176,6 +182,7 @@ export function getSettings(): Settings {
     stickersEnabled: getSetting<boolean>("stickersEnabled"),
     stickerPackName: getSetting<string>("stickerPackName"),
     stickerReplyChance: getSetting<number>("stickerReplyChance"),
+    moodCooldownMinutes: getSetting<number>("moodCooldownMinutes"),
   };
 }
 
@@ -193,7 +200,6 @@ export function updateSettings(partial: Partial<Settings>): Settings {
   if (partial.stickerPackName !== undefined) {
     next.stickerPackName = partial.stickerPackName.trim().replace(/^@/, "");
   }
-
   validateSettingsFields(next);
 
   if (next.activePersonalityId > 0 && !getPersonalityById(next.activePersonalityId)) {

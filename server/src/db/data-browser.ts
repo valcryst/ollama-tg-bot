@@ -78,8 +78,8 @@ const TABLE_CONFIGS: Record<string, TableConfig> = {
   },
   personalities: {
     label: "Personalities",
-    columns: ["id", "name", "prompt", "created_at", "updated_at"],
-    query: `SELECT id, name, prompt, created_at, updated_at
+    columns: ["id", "name", "prompt", "mood_defaults", "created_at", "updated_at"],
+    query: `SELECT id, name, prompt, mood_defaults, created_at, updated_at
             FROM personalities ORDER BY id ASC LIMIT ?`,
     countQuery: "SELECT COUNT(*) AS n FROM personalities",
     timeColumns: ["created_at", "updated_at"],
@@ -125,6 +125,7 @@ const TABLE_ORDER = [
   "user_facts",
   "group_facts",
   "general_facts",
+  "personalities",
   "known_users",
   "message_refs",
   "error_log",

@@ -8,9 +8,14 @@ import { initDatabase } from "./db/database.js";
 import { createApiRouter } from "./api/routes.js";
 import { startBot, stopBot } from "./bot/index.js";
 import { closePlaywrightBrowser } from "./playwright/client.js";
+import {
+  startMoodCooldownWorker,
+  stopMoodCooldownWorker,
+} from "./mood-cooldown.js";
 
 async function main(): Promise<void> {
   initDatabase();
+  startMoodCooldownWorker();
 
   const app = express();
   app.use(cors());
@@ -45,6 +50,7 @@ async function main(): Promise<void> {
 
   const shutdown = async () => {
     logInfo("Shutting down...");
+    stopMoodCooldownWorker();
     await stopBot();
     await closePlaywrightBrowser();
     server.close();

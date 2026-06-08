@@ -52,12 +52,26 @@ import { getDataTable, listDataTables } from "../db/data-browser.js";
 import {
   createPersonality,
   deletePersonalityById,
+  getActivePersonalityMoodDefaults,
+  getPersonalityById,
   listPersonalities,
   resolveActivePersonalityId,
+  normalizePersonalityMoodDefaults,
   normalizePersonalityName,
   normalizePersonalityPrompt,
   updatePersonalityById,
 } from "../db/personalities.js";
+import {
+  getMoodStateView,
+  resetMoodState,
+  saveMoodState,
+  tickMoodCooldown,
+} from "../db/mood.js";
+import {
+  MOOD_KEYS,
+  MOOD_TRAIT_HINTS,
+  normalizeMoodValues,
+} from "../mood.js";
 
 const startedAt = new Date();
 
@@ -114,6 +128,7 @@ export function createApiRouter(): Router {
         "stickersEnabled",
         "stickerPackName",
         "stickerReplyChance",
+        "moodCooldownMinutes",
       ];
       const patch: Partial<Settings> = {};
       for (const key of allowed) {
@@ -279,10 +294,21 @@ export function createApiRouter(): Router {
 
   router.post("/personalities", (req, res) => {
     try {
-      const body = req.body as { name?: string; prompt?: string };
+      const body = req.body as {
+        name?: string;
+        prompt?: string;
+        moodDefaults?: Record<string, number>;
+      };
       const name = normalizePersonalityName(body.name);
       const prompt = normalizePersonalityPrompt(body.prompt);
-      const created = createPersonality(name, prompt);
+      const moodDefaults =
+        body.moodDefaults !== undefined
+          ? normalizePersonalityMoodDefaults(body.moodDefaults)
+          : undefined;
+      const created =
+        moodDefaults !== undefined
+          ? createPersonality(name, prompt, moodDefaults)
+          : createPersonality(name, prompt);
       if (!created) {
         res.status(400).json({
           error: "Could not create personality (duplicate name or limit reached)",
@@ -305,13 +331,28 @@ export function createApiRouter(): Router {
         return;
       }
 
-      const body = req.body as { name?: string; prompt?: string };
-      const patch: { name?: string; prompt?: string } = {};
+      const body = req.body as {
+        name?: string;
+        prompt?: string;
+        moodDefaults?: Record<string, number>;
+      };
+      const patch: {
+        name?: string;
+        prompt?: string;
+        moodDefaults?: ReturnType<typeof normalizePersonalityMoodDefaults>;
+      } = {};
       if (body.name !== undefined) {
         patch.name = normalizePersonalityName(body.name);
       }
       if (body.prompt !== undefined) {
         patch.prompt = normalizePersonalityPrompt(body.prompt);
+      }
+      if (body.moodDefaults !== undefined) {
+        const existing = getPersonalityById(id);
+        patch.moodDefaults = normalizePersonalityMoodDefaults(
+          body.moodDefaults,
+          existing?.moodDefaults,
+        );
       }
       if (Object.keys(patch).length === 0) {
         res.status(400).json({ error: "No fields to update" });
@@ -766,6 +807,86 @@ export function createApiRouter(): Router {
     } catch (err) {
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to load stats",
+      });
+    }
+  });
+
+  function moodApiPayload() {
+    const settings = getSettings();
+    const activePersonalityId = resolveActivePersonalityId(
+      settings.activePersonalityId,
+    );
+    const activePersonality = activePersonalityId
+      ? getPersonalityById(activePersonalityId)
+      : null;
+    return {
+      defaults: getActivePersonalityMoodDefaults(),
+      activePersonalityId,
+      activePersonalityName: activePersonality?.name ?? null,
+      cooldownMinutes: settings.moodCooldownMinutes,
+      traitHints: MOOD_TRAIT_HINTS,
+      current: getMoodStateView(),
+    };
+  }
+
+  router.get("/mood", (_req, res) => {
+    try {
+      res.json(moodApiPayload());
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to load mood",
+      });
+    }
+  });
+
+  router.patch("/mood", (req, res) => {
+    try {
+      const body = req.body as {
+        cooldownMinutes?: number;
+        current?: Record<string, number>;
+      };
+      const patch: Partial<Settings> = {};
+      if (body.cooldownMinutes !== undefined) {
+        patch.moodCooldownMinutes = body.cooldownMinutes;
+      }
+      if (body.current !== undefined) {
+        saveMoodState(
+          normalizeMoodValues(body.current, getActivePersonalityMoodDefaults()),
+        );
+      }
+      if (Object.keys(patch).length === 0 && body.current === undefined) {
+        res.status(400).json({ error: "No mood fields to update" });
+        return;
+      }
+      if (Object.keys(patch).length > 0) {
+        updateSettings(patch);
+      }
+      res.json(moodApiPayload());
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Invalid mood settings",
+      });
+    }
+  });
+
+  router.post("/mood/refresh", (_req, res) => {
+    try {
+      tickMoodCooldown();
+      res.json(moodApiPayload());
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to refresh mood",
+      });
+    }
+  });
+
+  router.delete("/mood/current", (_req, res) => {
+    try {
+      const deleted = resetMoodState();
+      res.json({ ok: true, deleted, ...moodApiPayload() });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to reset mood",
       });
     }
   });

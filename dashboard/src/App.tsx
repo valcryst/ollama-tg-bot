@@ -7,6 +7,7 @@ import { OverviewPage } from "./pages/OverviewPage";
 import { CharacterPage } from "./pages/CharacterPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { DataPage } from "./pages/DataPage";
+import { MoodPage } from "./pages/MoodPage";
 import "./App.css";
 
 function DashboardRoutes() {
@@ -43,6 +44,7 @@ function DashboardRoutes() {
         <Route path="character" element={<CharacterPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="memories" element={<MemoriesPage />} />
+        <Route path="mood" element={<MoodPage />} />
         <Route path="data" element={<DataPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

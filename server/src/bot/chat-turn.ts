@@ -36,6 +36,9 @@ import {
   shouldTryStickerReply,
 } from "./sticker-analyze.js";
 import { resolveStickerFileId } from "./sticker-catalog.js";
+import { getHistory, historyToChatMessages } from "../db/history.js";
+import { getEffectiveMood, saveMoodState } from "../db/mood.js";
+import { evaluateMood } from "../mood-evaluate.js";
 
 export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
 
@@ -194,6 +197,35 @@ export async function runChatTurn(
       logEvent("web_search_skipped", { ...turnLog, reason: "link_fetch_resolved" });
     }
 
+    const storedHistory = getHistory(input.convKey);
+    const historyMessages = historyToChatMessages(storedHistory);
+    const moodContextText = historyMessages
+      .map((m) => `${m.role}: ${m.content}`)
+      .join("\n\n");
+
+    const latestTurnPreview = [
+      input.mentionedUsersContext,
+      input.replyContext,
+      linkFetchContext,
+      webSearchContext,
+      input.latestBody,
+    ]
+      .filter((part) => part?.trim())
+      .join("\n\n");
+
+    logEvent("mood_evaluate_started", turnLog);
+    const decayedMood = getEffectiveMood();
+    const evaluatedMood = await evaluateMood({
+      currentMood: decayedMood,
+      historyText: moodContextText,
+      latestTurn: latestTurnPreview,
+    });
+    saveMoodState(evaluatedMood);
+    logEvent("mood_evaluate_done", {
+      ...turnLog,
+      moodSummary: JSON.stringify(evaluatedMood),
+    });
+
     logEvent("ollama_reply_started", turnLog);
     const built = buildChatMessages(
       getActivePersonalityPrompt(),
@@ -217,6 +249,7 @@ export async function runChatTurn(
         currentUserId: input.userId,
         ownerUserId: getOwnerUserId(),
         ownerUsername: getOwnerUsername(),
+        mood: evaluatedMood,
       },
     );
 

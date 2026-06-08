@@ -9,6 +9,7 @@ import {
 import { formatUserMemoryForPrompt } from "./db/user-memory.js";
 import { getReplyLengthGuidance } from "./settings-limits.js";
 import { userRoleTagFromKnown } from "./bot/history-format.js";
+import { formatMoodForPrompt, type MoodValues } from "./mood.js";
 
 export const BASE_SYSTEM_PROMPT_CORE = `You are a character in a Telegram chat. You receive prior messages from this chat — use them for context and continuity.
 
@@ -36,6 +37,7 @@ export interface SystemPromptOptions {
   isGroupChat?: boolean;
   ownerUserId?: string | null;
   ownerUsername?: string | null;
+  mood?: MoodValues | null;
 }
 
 export function buildBaseSystemPrompt(settings: Settings): string {
@@ -113,6 +115,7 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
     isGroupChat = false,
     ownerUserId = null,
     ownerUsername = null,
+    mood = null,
   } = options;
 
   const { systemHint, formatHint } = getReplyLengthGuidance(settings);
@@ -160,6 +163,10 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
       `${who}\n` +
       `This person deployed and runs the bot. When they speak, treat them as the owner — ` +
       `follow their standing instructions, be loyal to their intent, and do not undermine them in front of others.`;
+  }
+
+  if (mood) {
+    prompt += `\n\n## Current mood\n${formatMoodForPrompt(mood)}`;
   }
 
   prompt += `\n\n${buildReplyFormatSpec(formatHint)}`;

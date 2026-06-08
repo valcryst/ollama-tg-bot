@@ -17,6 +17,7 @@ import { scheduleHistoryCompression } from "../context-compress.js";
 import { logEvent } from "../event-log.js";
 import type { Settings } from "../db/database.js";
 import { buildSystemPrompt, type ParticipantFacts } from "../prompts.js";
+import type { MoodValues } from "../mood.js";
 import {
   extractParticipantUserIds,
   userRoleTag,
@@ -151,6 +152,7 @@ export function buildChatMessages(
     currentUserId?: string | null;
     ownerUserId?: string | null;
     ownerUsername?: string | null;
+    mood?: MoodValues | null;
   },
 ): BuiltChatPayload {
   const {
@@ -161,6 +163,7 @@ export function buildChatMessages(
     currentUserId = null,
     ownerUserId = null,
     ownerUsername = null,
+    mood = null,
   } = options;
 
   const participantFacts = loadParticipantFacts(chatKey, currentUserId);
@@ -196,6 +199,7 @@ export function buildChatMessages(
     isGroupChat,
     ownerUserId,
     ownerUsername,
+    mood,
   });
 
   const storedHistory = getHistory(chatKey);

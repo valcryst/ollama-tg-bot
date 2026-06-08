@@ -82,6 +82,7 @@ import {
   resolveReaction,
 } from "./reactions.js";
 import { logEvent, logEventError } from "../event-log.js";
+import { buildMoodCommandReply } from "./mood-command.js";
 
 async function replyHtml(
   ctx: Context,
@@ -553,7 +554,7 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
           ? ` · Clear group memory: /forgetgroup@${botUsername}`
           : "") +
         (isOwner(ctx)
-          ? `\nOwner tools: /explain@${botUsername} · /remember@${botUsername} (or reply with either)`
+          ? `\nOwner tools: /mood@${botUsername} · /explain@${botUsername} · /remember@${botUsername} (or reply with either)`
           : "") +
         (isOwner(ctx) ? `\n\nYou are the configured bot owner.` : "") +
         (!inGroup && !getOwnerUserId() && !getOwnerUsername()
@@ -597,6 +598,22 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
       ? "this group's shared chat history"
       : "this conversation";
     await replyToUser(ctx, `Chat context cleared for ${scope}.`);
+  });
+
+  bot.command("mood", async (ctx) => {
+    if (!isOwner(ctx)) {
+      await replyToUser(ctx, "Only the bot owner can use /mood.");
+      return;
+    }
+
+    try {
+      await replyToUser(ctx, buildMoodCommandReply());
+    } catch (err) {
+      console.error("/mood command error:", err);
+      await replyToUser(ctx, "Sorry, I could not load mood.").catch((e) =>
+        console.error("Failed to send /mood error reply:", e),
+      );
+    }
   });
 
   bot.command("forget", async (ctx) => {

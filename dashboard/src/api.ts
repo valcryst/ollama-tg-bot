@@ -21,6 +21,49 @@ export interface Settings {
   stickersEnabled: boolean;
   stickerPackName: string;
   stickerReplyChance: number;
+  moodCooldownMinutes?: number;
+}
+
+export const MOOD_KEYS = [
+  "irritated",
+  "exhausted",
+  "amused",
+  "curious",
+  "contemptuous",
+  "gloomy",
+  "impatient",
+  "pleased",
+  "suspicious",
+] as const;
+
+export type MoodKey = (typeof MOOD_KEYS)[number];
+export type MoodValues = Record<MoodKey, number>;
+
+export const DEFAULT_MOOD_VALUES: MoodValues = {
+  irritated: 1,
+  exhausted: 0,
+  amused: 1,
+  curious: 2,
+  contemptuous: 1,
+  gloomy: 0,
+  impatient: 1,
+  pleased: 0,
+  suspicious: 1,
+};
+
+export interface MoodState {
+  values: MoodValues;
+  updatedAt: string;
+  effectiveValues: MoodValues;
+}
+
+export interface MoodPayload {
+  defaults: MoodValues;
+  activePersonalityId: number;
+  activePersonalityName: string | null;
+  cooldownMinutes: number;
+  traitHints: Record<MoodKey, string>;
+  current: MoodState | null;
 }
 
 export interface BotErrorRecord {
@@ -62,6 +105,7 @@ export interface Personality {
   id: number;
   name: string;
   prompt: string;
+  moodDefaults: MoodValues;
   createdAt: string;
   updatedAt: string;
 }
@@ -340,14 +384,18 @@ export const api = {
   tavilyStatus: () =>
     request<{ configured: boolean; ok: boolean }>("/api/tavily/status"),
   getPersonalities: () => request<PersonalitiesPayload>("/api/personalities"),
-  createPersonality: (name: string, prompt: string) =>
+  createPersonality: (
+    name: string,
+    prompt: string,
+    moodDefaults?: MoodValues,
+  ) =>
     request<{ personality: Personality }>("/api/personalities", {
       method: "POST",
-      body: JSON.stringify({ name, prompt }),
+      body: JSON.stringify({ name, prompt, moodDefaults }),
     }),
   updatePersonality: (
     id: number,
-    patch: { name?: string; prompt?: string },
+    patch: { name?: string; prompt?: string; moodDefaults?: MoodValues },
   ) =>
     request<{ personality: Personality }>(`/api/personalities/${id}`, {
       method: "PATCH",
@@ -368,5 +416,21 @@ export const api = {
   getDataTable: (tableId: string) =>
     request<DataTablePayload>(
       `/api/data/${encodeURIComponent(tableId)}`,
+    ),
+  getMood: () => request<MoodPayload>("/api/mood"),
+  updateMood: (patch: {
+    cooldownMinutes?: number;
+    current?: MoodValues;
+  }) =>
+    request<MoodPayload>("/api/mood", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  refreshMood: () =>
+    request<MoodPayload>("/api/mood/refresh", { method: "POST" }),
+  resetMood: () =>
+    request<MoodPayload & { ok: boolean; deleted: boolean }>(
+      "/api/mood/current",
+      { method: "DELETE" },
     ),
 };

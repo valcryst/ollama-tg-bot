@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Personality } from "../api";
+import {
+  api,
+  DEFAULT_MOOD_VALUES,
+  MOOD_KEYS,
+  type MoodKey,
+  type MoodValues,
+  type Personality,
+} from "../api";
 import { useDashboard } from "../context/DashboardContext";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { SettingsNumberField } from "../SettingsNumberField";
 
 export function CharacterPage() {
   const {
@@ -14,6 +22,9 @@ export function CharacterPage() {
 
   const [personalities, setPersonalities] = useState<Personality[]>([]);
   const [activeId, setActiveId] = useState(0);
+  const [traitHints, setTraitHints] = useState<Record<MoodKey, string> | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [activatingId, setActivatingId] = useState<number | null>(null);
@@ -22,17 +33,25 @@ export function CharacterPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editPrompt, setEditPrompt] = useState("");
+  const [editMoodDefaults, setEditMoodDefaults] =
+    useState<MoodValues>(DEFAULT_MOOD_VALUES);
   const [newName, setNewName] = useState("");
   const [newPrompt, setNewPrompt] = useState("");
+  const [newMoodDefaults, setNewMoodDefaults] =
+    useState<MoodValues>(DEFAULT_MOOD_VALUES);
 
   const load = useCallback(async () => {
     if (configBlocked) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getPersonalities();
+      const [data, mood] = await Promise.all([
+        api.getPersonalities(),
+        api.getMood(),
+      ]);
       setPersonalities(data.personalities);
       setActiveId(data.activePersonalityId);
+      setTraitHints(mood.traitHints);
       setDraft((d) =>
         d ? { ...d, activePersonalityId: data.activePersonalityId } : d,
       );
@@ -66,12 +85,14 @@ export function CharacterPage() {
     setEditingId(personality.id);
     setEditName(personality.name);
     setEditPrompt(personality.prompt);
+    setEditMoodDefaults({ ...personality.moodDefaults });
   }
 
   function cancelEdit() {
     setEditingId(null);
     setEditName("");
     setEditPrompt("");
+    setEditMoodDefaults({ ...DEFAULT_MOOD_VALUES });
   }
 
   async function saveEdit(id: number) {
@@ -81,6 +102,7 @@ export function CharacterPage() {
       const { personality } = await api.updatePersonality(id, {
         name: editName,
         prompt: editPrompt,
+        moodDefaults: editMoodDefaults,
       });
       setPersonalities((list) =>
         list.map((p) => (p.id === id ? personality : p)),
@@ -99,10 +121,15 @@ export function CharacterPage() {
     setSavingId("new");
     setSectionError("save", null);
     try {
-      const { personality } = await api.createPersonality(name, newPrompt);
+      const { personality } = await api.createPersonality(
+        name,
+        newPrompt,
+        newMoodDefaults,
+      );
       setPersonalities((list) => [...list, personality]);
       setNewName("");
       setNewPrompt("");
+      setNewMoodDefaults({ ...DEFAULT_MOOD_VALUES });
       if (personalities.length === 0) {
         await activatePersonality(personality.id);
       }
@@ -135,13 +162,47 @@ export function CharacterPage() {
     }
   }
 
+  function renderMoodDefaults(
+    idPrefix: string,
+    values: MoodValues,
+    onChange: (next: MoodValues) => void,
+    disabled: boolean,
+  ) {
+    return (
+      <div className="personality-mood-section">
+        <h5>Mood defaults</h5>
+        <p className="hint">
+          Baseline mood (0–5 per trait). Global mood drifts back to these values
+          when this character is active.
+        </p>
+        <div className="mood-grid">
+          {MOOD_KEYS.map((key) => (
+            <SettingsNumberField
+              key={key}
+              id={`${idPrefix}-${key}`}
+              label={key}
+              hint={traitHints?.[key]}
+              value={values[key]}
+              min={0}
+              max={5}
+              step={1}
+              variant="slider"
+              disabled={disabled}
+              onChange={(value) => onChange({ ...values, [key]: value })}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <header className="page-header">
         <h2>Character</h2>
         <p className="page-desc">
           Manage multiple personalities and choose which one the bot uses for
-          every reply.
+          every reply. Each character has its own mood default baselines.
         </p>
       </header>
 
@@ -288,17 +349,37 @@ export function CharacterPage() {
                 </div>
 
                 {isEditing ? (
-                  <textarea
-                    rows={8}
-                    value={editPrompt}
-                    onChange={(e) => setEditPrompt(e.target.value)}
-                    disabled={configBlocked}
-                    placeholder="Personality, tone, topics, extra rules…"
-                  />
+                  <>
+                    <textarea
+                      rows={8}
+                      value={editPrompt}
+                      onChange={(e) => setEditPrompt(e.target.value)}
+                      disabled={configBlocked}
+                      placeholder="Personality, tone, topics, extra rules…"
+                    />
+                    {renderMoodDefaults(
+                      `edit-${personality.id}`,
+                      editMoodDefaults,
+                      setEditMoodDefaults,
+                      configBlocked || savingId === personality.id,
+                    )}
+                  </>
                 ) : (
-                  <pre className="personality-prompt-preview">
-                    {personality.prompt.trim() || "(empty — base prompt only)"}
-                  </pre>
+                  <>
+                    <pre className="personality-prompt-preview">
+                      {personality.prompt.trim() || "(empty — base prompt only)"}
+                    </pre>
+                    <p className="hint mood-inline-summary">
+                      Mood defaults:{" "}
+                      <span className="mood-summary">
+                        {MOOD_KEYS.map((key) => (
+                          <span key={key} title={traitHints?.[key]}>
+                            {key.slice(0, 3)}:{personality.moodDefaults[key]}
+                          </span>
+                        ))}
+                      </span>
+                    </p>
+                  </>
                 )}
               </article>
             );
@@ -329,6 +410,12 @@ export function CharacterPage() {
               placeholder="Personality, tone, topics, extra rules…"
             />
           </div>
+          {renderMoodDefaults(
+            "new",
+            newMoodDefaults,
+            setNewMoodDefaults,
+            configBlocked || savingId === "new",
+          )}
           <button
             type="button"
             onClick={() => void createPersonality()}
