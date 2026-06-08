@@ -20,12 +20,13 @@ export function getReplyLengthGuidance(settings: Settings): ReplyLengthGuidance 
   const maxChars = historyMaxReplyChars;
 
   const systemHint =
-    `Keep every [REPLY] within your output budget (~${maxTokens} tokens, ` +
-    `about ${maxChars} characters). Be shorter when a brief answer is enough.`;
+    `Your output budget (~${maxTokens} tokens, about ${maxChars} characters) is a maximum — ` +
+    `you are NOT required to use it. Reply as short as the context warrants: a word, a line, ` +
+    `or a terse reaction is fine when enough. Never pad or elaborate just to fill the budget.`;
 
   const formatHint =
-    `Up to ~${maxChars} characters (~${maxTokens} tokens), ` +
-    `Telegram HTML (<b> <i> <code> only).`;
+    `Maximum ~${maxChars} characters (~${maxTokens} tokens) — use only what you need; ` +
+    `shorter is fine. Telegram HTML (<b> <i> <code> only).`;
 
   return { maxTokens, maxChars, systemHint, formatHint };
 }
