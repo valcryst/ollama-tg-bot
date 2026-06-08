@@ -53,15 +53,22 @@ export function getHistoryLimits(settings: Settings): HistoryLimits {
   };
 }
 
+/** Low temperature for structured side passes (mood, memory, search, etc.). */
+export const AUXILIARY_TEMPERATURE = 0.2;
+
 export function getOllamaChatOptions(
   settings: Settings,
-  overrides?: { numPredict?: number },
+  overrides?: { numPredict?: number; auxiliary?: boolean },
 ) {
   return {
     num_predict: overrides?.numPredict ?? settings.numPredict,
     num_ctx: settings.numCtx,
-    temperature: settings.temperature,
-    top_p: 0.9,
+    temperature: overrides?.auxiliary
+      ? AUXILIARY_TEMPERATURE
+      : settings.temperature,
+    top_p: settings.topP,
+    top_k: settings.topK,
+    repeat_penalty: settings.repeatPenalty,
   };
 }
 
@@ -77,6 +84,15 @@ export function validateSettingsFields(settings: Settings): void {
     ["numPredict must be 32–2048", settings.numPredict >= 32 && settings.numPredict <= 2048],
     ["numCtx must be 2048–32768", settings.numCtx >= 2048 && settings.numCtx <= 32768],
     ["temperature must be 0–2", settings.temperature >= 0 && settings.temperature <= 2],
+    ["topP must be 0.05–1", settings.topP >= 0.05 && settings.topP <= 1],
+    [
+      "topK must be 1–200",
+      Number.isInteger(settings.topK) && settings.topK >= 1 && settings.topK <= 200,
+    ],
+    [
+      "repeatPenalty must be 0.8–2",
+      settings.repeatPenalty >= 0.8 && settings.repeatPenalty <= 2,
+    ],
     [
       "chatTimeoutSec must be 30–600",
       settings.chatTimeoutSec >= 30 && settings.chatTimeoutSec <= 600,

@@ -81,6 +81,7 @@ export async function analyzeStickerForReply(
   try {
     const raw = await chatComplete(messages, {
       numPredict: STICKER_CHECK_NUM_PREDICT,
+      auxiliary: true,
       verboseLabel: "sticker pick",
     });
     return parseStickerChoice(raw);

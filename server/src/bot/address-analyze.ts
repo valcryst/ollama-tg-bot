@@ -141,6 +141,7 @@ async function analyzeGroupMessageForBot(
   try {
     const raw = await chatComplete(messages, {
       numPredict: ADDRESS_CHECK_NUM_PREDICT,
+      auxiliary: true,
       verboseLabel: "address detection",
     });
     const yes = parseAddressDecision(raw);

@@ -9,6 +9,9 @@ export interface Settings {
   numPredict: number;
   numCtx: number;
   temperature: number;
+  topP: number;
+  topK: number;
+  repeatPenalty: number;
   chatTimeoutSec: number;
   visionMaxDimension: number;
   derivedHistoryLimits?: {

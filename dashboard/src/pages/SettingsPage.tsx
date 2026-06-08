@@ -476,6 +476,7 @@ export function SettingsPage() {
             <SettingsNumberField
               id="temperature"
               label="Temperature"
+              hint="Randomness for in-character replies and /explain. Side passes (mood, memory, search, etc.) use a fixed low temperature."
               value={draft.temperature}
               min={0}
               max={2}
@@ -484,6 +485,52 @@ export function SettingsPage() {
               disabled={configBlocked}
               onChange={(temperature) => setDraft({ ...draft, temperature })}
             />
+
+            <h3 className="section-title">Sampling</h3>
+            <p className="hint section-hint">
+              Ollama generation parameters for all model calls. Affects main
+              replies and background passes alike.
+            </p>
+
+            <SettingsNumberField
+              id="topP"
+              label="Top P (nucleus sampling)"
+              hint="Keeps the smallest set of tokens whose cumulative probability reaches this value. Lower = more focused and predictable; higher = more varied word choice."
+              value={draft.topP}
+              min={0.05}
+              max={1}
+              step={0.05}
+              variant="slider"
+              disabled={configBlocked}
+              onChange={(topP) => setDraft({ ...draft, topP })}
+            />
+            <SettingsNumberField
+              id="topK"
+              label="Top K"
+              hint="Only the K most likely next tokens are considered each step. Lower = safer and more repetitive; higher = more diverse (Ollama default is 40)."
+              value={draft.topK}
+              min={1}
+              max={200}
+              step={1}
+              variant="slider"
+              disabled={configBlocked}
+              onChange={(topK) => setDraft({ ...draft, topK })}
+            />
+            <SettingsNumberField
+              id="repeatPenalty"
+              label="Repeat penalty"
+              hint="Penalizes tokens that already appeared in the recent output. Above 1.0 reduces loops and repeated phrases; below 1.0 allows more repetition (Ollama default is 1.1)."
+              value={draft.repeatPenalty}
+              min={0.8}
+              max={2}
+              step={0.05}
+              variant="slider"
+              disabled={configBlocked}
+              onChange={(repeatPenalty) =>
+                setDraft({ ...draft, repeatPenalty })
+              }
+            />
+
             <SettingsNumberField
               id="chatTimeoutSec"
               label="Request timeout (seconds)"

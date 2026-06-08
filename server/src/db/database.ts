@@ -36,6 +36,12 @@ export interface Settings {
   /** Context window size sent to Ollama. */
   numCtx: number;
   temperature: number;
+  /** Nucleus sampling — lower = more focused (Ollama top_p). */
+  topP: number;
+  /** Limits candidate tokens per step (Ollama top_k). */
+  topK: number;
+  /** Penalizes repeated tokens (Ollama repeat_penalty). */
+  repeatPenalty: number;
   /** Ollama request timeout in seconds. */
   chatTimeoutSec: number;
   /** Longest edge for vision images (pixels). */
@@ -72,6 +78,9 @@ const DEFAULT_SETTINGS: Settings = {
   numPredict: 512,
   numCtx: 4096,
   temperature: 0.7,
+  topP: 0.9,
+  topK: 40,
+  repeatPenalty: 1.1,
   chatTimeoutSec: 120,
   visionMaxDimension: 768,
   ownerUsername: "",
@@ -175,6 +184,9 @@ export function getSettings(): Settings {
     numPredict: getSetting<number>("numPredict"),
     numCtx: getSetting<number>("numCtx"),
     temperature: getSetting<number>("temperature"),
+    topP: getSetting<number>("topP"),
+    topK: getSetting<number>("topK"),
+    repeatPenalty: getSetting<number>("repeatPenalty"),
     chatTimeoutSec: getSetting<number>("chatTimeoutSec"),
     visionMaxDimension: getSetting<number>("visionMaxDimension"),
     ownerUsername: getSetting<string>("ownerUsername"),
@@ -199,6 +211,9 @@ export function updateSettings(partial: Partial<Settings>): Settings {
   }
   if (partial.stickerPackName !== undefined) {
     next.stickerPackName = partial.stickerPackName.trim().replace(/^@/, "");
+  }
+  if (partial.topK !== undefined) {
+    next.topK = Math.round(partial.topK);
   }
   validateSettingsFields(next);
 

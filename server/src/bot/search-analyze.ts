@@ -112,6 +112,7 @@ export async function analyzeSearchNeed(
   try {
     const raw = await chatComplete(messages, {
       numPredict: SEARCH_CHECK_NUM_PREDICT,
+      auxiliary: true,
       verboseLabel: "web search decision",
     });
     return parseSearchDecision(raw);

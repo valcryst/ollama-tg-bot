@@ -137,6 +137,8 @@ export interface VerbosePromptLayout {
 export interface ChatCompleteOptions {
   model?: string;
   numPredict?: number;
+  /** Use low temperature for structured side passes (mood, memory, search, …). */
+  auxiliary?: boolean;
   /** VERBOSE log section label, e.g. "web search decision". */
   verboseLabel?: string;
   /** VERBOSE: split main-reply prompt into system / history / latest sections. */
@@ -147,6 +149,7 @@ async function requestChat(
   model: string,
   prepared: ChatMessage[],
   numPredict: number,
+  auxiliary: boolean,
   verboseLabel?: string,
   verboseLayout?: VerbosePromptLayout,
 ): Promise<OllamaChatResponse> {
@@ -161,7 +164,7 @@ async function requestChat(
       stream: false,
       think: false,
       keep_alive: OLLAMA_KEEP_ALIVE,
-      options: getOllamaChatOptions(settings, { numPredict }),
+      options: getOllamaChatOptions(settings, { numPredict, auxiliary }),
     }),
   });
 
@@ -200,6 +203,7 @@ export async function chatComplete(
   const cap = options?.numPredict ?? settings.numPredict;
   const verboseLabel = options?.verboseLabel;
   const verboseLayout = options?.verboseLayout;
+  const auxiliary = options?.auxiliary ?? false;
 
   try {
     let numPredict = cap;
@@ -214,6 +218,7 @@ export async function chatComplete(
         model,
         prepared,
         numPredict,
+        auxiliary,
         label,
         verboseLayout,
       );

@@ -100,6 +100,7 @@ export async function evaluateMood(
   try {
     const raw = await chatComplete(messages, {
       numPredict: MOOD_EVAL_NUM_PREDICT,
+      auxiliary: true,
       verboseLabel: "mood evaluate",
     });
     const evaluated = parseMoodBlock(raw, fallback);
