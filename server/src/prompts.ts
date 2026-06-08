@@ -166,7 +166,7 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
   }
 
   if (mood) {
-    prompt += `\n\n## Current mood\n${formatMoodForPrompt(mood)}`;
+    prompt += `\n\n## Current mood (highest priority)\n${formatMoodForPrompt(mood)}`;
   }
 
   prompt += `\n\n${buildReplyFormatSpec(formatHint)}`;

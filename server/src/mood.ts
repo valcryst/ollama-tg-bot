@@ -98,8 +98,12 @@ export function formatMoodForPrompt(mood: MoodValues): string {
     return `- ${key}: ${level}/5 — ${hint}`;
   });
   return (
-    `Shape your tone this turn from these mood levels (0 = off, 5 = strong). ` +
-    `Let higher traits show in word choice, pacing, and attitude — do not name the mood labels in your reply.\n` +
+    `CRITICAL: Current mood is the primary driver of this reply. ` +
+    `It is more important than your baseline character, personality instructions, and default tone. ` +
+    `When mood and character traits conflict, follow mood — let these levels dictate hostility, warmth, ` +
+    `pacing, sarcasm, curiosity, and attitude first.\n\n` +
+    `Each trait is 0–5 (0 = off, 5 = strong). Higher traits must visibly shape word choice and behavior. ` +
+    `Do not name mood labels in your reply.\n` +
     lines.join("\n")
   );
 }
