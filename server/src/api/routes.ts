@@ -132,6 +132,8 @@ export function createApiRouter(): Router {
         "stickerPackName",
         "stickerReplyChance",
         "moodCooldownMinutes",
+        "thinkingEnabled",
+        "sendThinkingEnabled",
       ];
       const patch: Partial<Settings> = {};
       for (const key of allowed) {

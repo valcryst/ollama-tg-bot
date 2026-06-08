@@ -103,6 +103,7 @@ export async function extractMemoriesFromTurn(
     const raw = await chatComplete(messages, {
       numPredict: MEMORY_EXTRACT_NUM_PREDICT,
       auxiliary: true,
+      think: true,
       verboseLabel: "memory extract",
     });
     const parsed = parseStructuredResponse(raw);

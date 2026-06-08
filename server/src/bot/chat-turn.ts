@@ -1,6 +1,6 @@
 import type { Api, Context } from "grammy";
 import type { ChatMessage } from "../ollama/client.js";
-import { chatComplete } from "../ollama/client.js";
+import { chatCompleteDetailed } from "../ollama/client.js";
 import { rememberMessageRef } from "../db/message-refs.js";
 import {
   getSettings,
@@ -10,8 +10,7 @@ import {
 } from "../db/database.js";
 import { getActivePersonalityPrompt } from "../db/personalities.js";
 import { getHistoryLimits } from "../settings-limits.js";
-import { parseStructuredResponse } from "../response-format.js";
-import { sanitizeModelOutput } from "../ollama/sanitize.js";
+import { extractTelegramReply } from "../response-format.js";
 import { prepareTelegramHtml } from "../telegram/html.js";
 import {
   formatTavilyContext,
@@ -39,6 +38,7 @@ import { resolveStickerFileId } from "./sticker-catalog.js";
 import { getHistory, historyToChatMessages } from "../db/history.js";
 import { getEffectiveMood, saveMoodState } from "../db/mood.js";
 import { evaluateMood } from "../mood-evaluate.js";
+import { sendThinkingMessages } from "./send-thinking.js";
 
 export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
 
@@ -271,24 +271,26 @@ export async function runChatTurn(
       latestChars: built.latestContent.length,
     });
 
-    const modelOutput = await chatComplete(built.messages, {
-      verboseLabel: "main reply",
-      verboseLayout: {
-        system: built.systemContent,
-        history: built.historyMessages,
-        latest: built.latestContent,
+    const { raw: modelOutput, thinking } = await chatCompleteDetailed(
+      built.messages,
+      {
+        think: true,
+        verboseLabel: "main reply",
+        verboseLayout: {
+          system: built.systemContent,
+          history: built.historyMessages,
+          latest: built.latestContent,
+        },
       },
-    });
+    );
     logEvent("ollama_reply_done", {
       ...turnLog,
       outputChars: modelOutput.length,
     });
 
-    let { reply: replyBody } = parseStructuredResponse(modelOutput);
-
-    if (!replyBody.trim()) {
-      replyBody = sanitizeModelOutput(modelOutput) || modelOutput.trim();
-    }
+    let replyBody = extractTelegramReply(modelOutput, {
+      thinkingMode: settings.thinkingEnabled,
+    });
     if (!replyBody.trim()) {
       throw new Error("Model response had no [REPLY] content");
     }
@@ -341,6 +343,22 @@ export async function runChatTurn(
       replyToMessageId: input.replyToMessageId,
       messageThreadId: input.messageThreadId,
     });
+
+    if (settings.thinkingEnabled && settings.sendThinkingEnabled && thinking) {
+      const thinkingChunks = await sendThinkingMessages(
+        ctx,
+        input.chatId,
+        thinking,
+        input.messageThreadId,
+      );
+      if (thinkingChunks > 0) {
+        logEvent("thinking_sent", {
+          ...turnLog,
+          chunkCount: thinkingChunks,
+          thinkingChars: thinking.length,
+        });
+      }
+    }
 
     for (let i = 0; i < chunks.length; i++) {
       if (i > 0) {

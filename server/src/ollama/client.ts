@@ -1,14 +1,14 @@
 import { getSettings } from "../db/database.js";
 import { normalizeImageForOllama } from "./images.js";
 import { logOllamaExchange } from "./verbose-log.js";
-import { parseStructuredResponse } from "../response-format.js";
+import { extractTelegramReply } from "../response-format.js";
 import {
   getChatTimeoutMs,
+  getEffectiveNumPredict,
   getOllamaChatOptions,
   LENGTH_RETRY_MIN_PREDICT,
+  MAX_NUM_PREDICT,
 } from "../settings-limits.js";
-import { sanitizeModelOutput } from "./sanitize.js";
-
 export interface OllamaModel {
   name: string;
   modified_at?: string;
@@ -28,7 +28,6 @@ export interface ChatMessage {
 
 /** Keep the model loaded in VRAM until Ollama restarts or the model is unloaded. */
 const OLLAMA_KEEP_ALIVE = -1;
-const MAX_NUM_PREDICT = 2048;
 
 interface OllamaChatResponse {
   message?: {
@@ -40,22 +39,8 @@ interface OllamaChatResponse {
   eval_count?: number;
 }
 
-function pickAssistantRaw(data: OllamaChatResponse): string {
-  const content = data.message?.content?.trim() ?? "";
-  const thinking = data.message?.thinking?.trim() ?? "";
-  return content || thinking || "";
-}
-
-function extractReplyText(raw: string): string {
-  if (!raw) return "";
-
-  const parsed = parseStructuredResponse(raw);
-  if (parsed.reply.trim()) return parsed.reply.trim();
-
-  const sanitized = sanitizeModelOutput(raw);
-  if (sanitized) return sanitized;
-
-  return raw.trim();
+function pickAssistantContent(data: OllamaChatResponse): string {
+  return data.message?.content?.trim() ?? "";
 }
 
 function emptyResponseError(
@@ -139,6 +124,11 @@ export interface ChatCompleteOptions {
   numPredict?: number;
   /** Use low temperature for structured side passes (mood, memory, search, …). */
   auxiliary?: boolean;
+  /**
+   * Request Ollama thinking when settings.thinkingEnabled (main replies and
+   * memory extract only).
+   */
+  think?: boolean;
   /** VERBOSE log section label, e.g. "web search decision". */
   verboseLabel?: string;
   /** VERBOSE: split main-reply prompt into system / history / latest sections. */
@@ -150,6 +140,7 @@ async function requestChat(
   prepared: ChatMessage[],
   numPredict: number,
   auxiliary: boolean,
+  think: boolean,
   verboseLabel?: string,
   verboseLayout?: VerbosePromptLayout,
 ): Promise<OllamaChatResponse> {
@@ -162,7 +153,7 @@ async function requestChat(
       model,
       messages: prepared,
       stream: false,
-      think: false,
+      think,
       keep_alive: OLLAMA_KEEP_ALIVE,
       options: getOllamaChatOptions(settings, { numPredict, auxiliary }),
     }),
@@ -192,21 +183,32 @@ async function requestChat(
   return data;
 }
 
+export interface ChatCompleteResult {
+  /** Ollama message.content (final answer; excludes the thinking field). */
+  raw: string;
+  /** Ollama chain-of-thought when thinking mode is on. */
+  thinking: string;
+}
+
 /** Full model output (includes [MEMORY] / [GROUP_MEMORY] blocks when present). */
-export async function chatComplete(
+export async function chatCompleteDetailed(
   messages: ChatMessage[],
   options?: ChatCompleteOptions,
-): Promise<string> {
+): Promise<ChatCompleteResult> {
   const settings = getSettings();
   const model = options?.model ?? settings.model;
   const prepared = await prepareMessages(messages);
-  const cap = options?.numPredict ?? settings.numPredict;
   const verboseLabel = options?.verboseLabel;
   const verboseLayout = options?.verboseLayout;
   const auxiliary = options?.auxiliary ?? false;
+  const think = Boolean(options?.think && settings.thinkingEnabled);
+  const baseNumPredict = options?.numPredict ?? settings.numPredict;
 
   try {
-    let numPredict = cap;
+    let numPredict = getEffectiveNumPredict(settings, {
+      think,
+      baseNumPredict,
+    });
     let lastData: OllamaChatResponse | null = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -219,11 +221,17 @@ export async function chatComplete(
         prepared,
         numPredict,
         auxiliary,
+        think,
         label,
         verboseLayout,
       );
-      const raw = pickAssistantRaw(lastData);
-      if (raw) return raw;
+      const raw = pickAssistantContent(lastData);
+      if (raw) {
+        return {
+          raw,
+          thinking: lastData.message?.thinking?.trim() ?? "",
+        };
+      }
 
       const canRetry =
         attempt === 0 &&
@@ -245,12 +253,22 @@ export async function chatComplete(
   }
 }
 
+export async function chatComplete(
+  messages: ChatMessage[],
+  options?: ChatCompleteOptions,
+): Promise<string> {
+  const { raw } = await chatCompleteDetailed(messages, options);
+  return raw;
+}
+
 export async function chat(
   messages: ChatMessage[],
   options?: ChatCompleteOptions,
 ): Promise<string> {
+  const settings = getSettings();
+  const think = Boolean(options?.think && settings.thinkingEnabled);
   const raw = await chatComplete(messages, options);
-  const reply = extractReplyText(raw);
+  const reply = extractTelegramReply(raw, { thinkingMode: think });
   if (!reply) {
     throw new Error("Model response had no [REPLY] content");
   }

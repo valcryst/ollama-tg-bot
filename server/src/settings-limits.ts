@@ -1,9 +1,39 @@
 import type { Settings } from "./db/database.js";
 
+export const MAX_NUM_PREDICT = 2048;
+
+/** Extra num_predict reserved for reasoning when thinking mode is on. */
+export const THINKING_NUM_PREDICT_BUMP = 1024;
+
 export interface HistoryLimits {
   historyMaxMessages: number;
   historyMaxChars: number;
   historyMaxReplyChars: number;
+  /** num_predict sent to Ollama when thinking is enabled (reply + reasoning). */
+  effectiveNumPredict: number;
+  /** Reasoning reserve included in effectiveNumPredict (0 when thinking is off). */
+  thinkingNumPredictBump: number;
+}
+
+export function getThinkingNumPredictBump(settings: Settings): number {
+  return settings.thinkingEnabled ? THINKING_NUM_PREDICT_BUMP : 0;
+}
+
+/** Ollama num_predict for a request, including the thinking reserve when applicable. */
+export function getEffectiveNumPredict(
+  settings: Settings,
+  options?: { think?: boolean; baseNumPredict?: number },
+): number {
+  const base = options?.baseNumPredict ?? settings.numPredict;
+  const useThinking =
+    options?.think !== undefined
+      ? options.think && settings.thinkingEnabled
+      : settings.thinkingEnabled;
+  if (!useThinking) return base;
+  return Math.min(
+    MAX_NUM_PREDICT,
+    base + getThinkingNumPredictBump(settings),
+  );
 }
 
 export interface ReplyLengthGuidance {
@@ -31,13 +61,15 @@ export function getReplyLengthGuidance(settings: Settings): ReplyLengthGuidance 
   return { maxTokens, maxChars, systemHint, formatHint };
 }
 
-/** Derive chat history caps from Ollama context and reply token settings. */
+/** Derive chat history caps from Ollama context and generation token settings. */
 export function getHistoryLimits(settings: Settings): HistoryLimits {
   const { numCtx, numPredict } = settings;
+  const thinkingNumPredictBump = getThinkingNumPredictBump(settings);
+  const effectiveNumPredict = getEffectiveNumPredict(settings, { think: true });
 
   const historyTokenBudget = Math.max(
     256,
-    Math.floor((numCtx - numPredict) * 0.45),
+    Math.floor((numCtx - effectiveNumPredict) * 0.45),
   );
 
   return {
@@ -50,6 +82,8 @@ export function getHistoryLimits(settings: Settings): HistoryLimits {
       4000,
       Math.max(100, Math.floor(numPredict * 0.85)),
     ),
+    effectiveNumPredict,
+    thinkingNumPredictBump,
   };
 }
 
@@ -140,6 +174,10 @@ export function validateSettingsFields(settings: Settings): void {
     [
       "moodCooldownMinutes must be 5–1440",
       settings.moodCooldownMinutes >= 5 && settings.moodCooldownMinutes <= 1440,
+    ],
+    [
+      "sendThinkingEnabled requires thinkingEnabled",
+      !settings.sendThinkingEnabled || settings.thinkingEnabled,
     ],
   ];
 

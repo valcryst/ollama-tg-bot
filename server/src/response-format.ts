@@ -1,3 +1,5 @@
+import { sanitizeModelOutput } from "./ollama/sanitize.js";
+
 /**
  * Structured assistant output. Only [REPLY] text is sent to Telegram.
  * Stickers are chosen in a separate model pass; memory blocks come from a dedicated extract pass.
@@ -94,10 +96,13 @@ export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
 
   let reply = extractFirstBlock(raw, "REPLY") ?? "";
   if (!reply) {
+    const closed = raw.match(/\[REPLY\]\s*([\s\S]*?)\s*\[\/REPLY\]/i);
+    if (closed?.[1]) reply = closed[1].trim();
+  }
+  if (!reply) {
     const partial = raw.match(/\[REPLY\]\s*([\s\S]+)/i);
     reply = partial?.[1] ? stripStructuredMarkup(partial[1]) : "";
   }
-  if (!reply) reply = stripStructuredMarkup(raw);
 
   reply = stripStructuredMarkup(reply);
 
@@ -107,4 +112,29 @@ export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
     generalMemoryFacts,
     reply,
   };
+}
+
+function stripEmbeddedThinkingTrace(text: string): string {
+  return text
+    .replace(/`?<think>[\s\S]*?<\/think>`?/gi, "")
+    .replace(/`?<think>[\s\S]*$/gi, "")
+    .trim();
+}
+
+/** User-facing reply text from Ollama message.content (never the thinking field). */
+export function extractTelegramReply(
+  content: string,
+  options?: { thinkingMode?: boolean },
+): string {
+  const cleaned = stripEmbeddedThinkingTrace(content);
+  const { reply } = parseStructuredResponse(cleaned);
+  if (reply.trim()) return reply.trim();
+
+  if (options?.thinkingMode) {
+    return sanitizeModelOutput(cleaned);
+  }
+
+  const legacy = stripStructuredMarkup(cleaned);
+  if (legacy) return legacy;
+  return sanitizeModelOutput(cleaned);
 }

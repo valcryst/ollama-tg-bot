@@ -18,6 +18,8 @@ export interface Settings {
     historyMaxMessages: number;
     historyMaxChars: number;
     historyMaxReplyChars: number;
+    effectiveNumPredict: number;
+    thinkingNumPredictBump: number;
   };
   ownerUsername: string;
   ownerUserId: string;
@@ -25,6 +27,8 @@ export interface Settings {
   stickerPackName: string;
   stickerReplyChance: number;
   moodCooldownMinutes?: number;
+  thinkingEnabled: boolean;
+  sendThinkingEnabled: boolean;
 }
 
 export const MOOD_KEYS = [

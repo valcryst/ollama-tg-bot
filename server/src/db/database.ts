@@ -58,6 +58,10 @@ export interface Settings {
   stickerReplyChance: number;
   /** Minutes of inactivity until mood returns to the active personality's defaults. */
   moodCooldownMinutes: number;
+  /** Enable Ollama thinking mode for reasoning models (separate chain-of-thought). */
+  thinkingEnabled: boolean;
+  /** Send model thinking to Telegram as a message before the reply (replies only). */
+  sendThinkingEnabled: boolean;
 }
 
 export interface Stats {
@@ -89,6 +93,8 @@ const DEFAULT_SETTINGS: Settings = {
   stickerPackName: "",
   stickerReplyChance: 70,
   moodCooldownMinutes: 120,
+  thinkingEnabled: false,
+  sendThinkingEnabled: false,
 };
 
 let db: DatabaseSync;
@@ -195,6 +201,8 @@ export function getSettings(): Settings {
     stickerPackName: getSetting<string>("stickerPackName"),
     stickerReplyChance: getSetting<number>("stickerReplyChance"),
     moodCooldownMinutes: getSetting<number>("moodCooldownMinutes"),
+    thinkingEnabled: getSetting<boolean>("thinkingEnabled"),
+    sendThinkingEnabled: getSetting<boolean>("sendThinkingEnabled"),
   };
 }
 

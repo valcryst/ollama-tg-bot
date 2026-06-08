@@ -30,7 +30,11 @@ export function SettingsPage() {
   const derivedHistory = useMemo(
     () =>
       draft
-        ? deriveHistoryLimits(draft.numCtx, draft.numPredict)
+        ? deriveHistoryLimits(
+            draft.numCtx,
+            draft.numPredict,
+            draft.thinkingEnabled,
+          )
         : null,
     [draft],
   );
@@ -450,10 +454,63 @@ export function SettingsPage() {
               Lower values = faster replies. Takes effect on the next message.
             </p>
 
+            <div className="field toggle-row">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={draft.thinkingEnabled}
+                  onChange={(e) => {
+                    const thinkingEnabled = e.target.checked;
+                    setDraft({
+                      ...draft,
+                      thinkingEnabled,
+                      ...(thinkingEnabled
+                        ? {}
+                        : { sendThinkingEnabled: false }),
+                    });
+                  }}
+                />
+                Thinking mode
+              </label>
+              <p className="hint">
+                For reasoning models (e.g. DeepSeek-R1, Qwen3). Adds{" "}
+                {derivedHistory?.thinkingNumPredictBump ?? 1024} reasoning tokens
+                to each thinking request and shrinks derived history accordingly.
+                Used for chat replies and memory extraction only — background
+                passes stay off.
+              </p>
+            </div>
+
+            {draft.thinkingEnabled ? (
+              <div className="field toggle-row">
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={draft.sendThinkingEnabled}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        sendThinkingEnabled: e.target.checked,
+                      })
+                    }
+                  />
+                  Send thinking
+                </label>
+                <p className="hint">
+                  Post the model&apos;s chain-of-thought as a separate message
+                  before each reply. Not saved to chat history.
+                </p>
+              </div>
+            ) : null}
+
             <SettingsNumberField
               id="numPredict"
               label="Max reply tokens (num_predict)"
-              hint="Hard cap on generated length. Use 512+ for structured replies; lower = faster but may truncate."
+              hint={
+                draft.thinkingEnabled && derivedHistory
+                  ? `Reply budget. With thinking on, Ollama receives ${derivedHistory.effectiveNumPredict} tokens (+${derivedHistory.thinkingNumPredictBump} for reasoning, capped at 2048).`
+                  : "Hard cap on generated reply length. Use 512+ for structured replies; lower = faster but may truncate."
+              }
               value={draft.numPredict}
               min={32}
               max={2048}
@@ -464,7 +521,11 @@ export function SettingsPage() {
             <SettingsNumberField
               id="numCtx"
               label="Context size (num_ctx)"
-              hint="Ollama context window. Chat history limits are derived from this and max reply tokens."
+              hint={
+                draft.thinkingEnabled && derivedHistory
+                  ? `Ollama context window. History limits assume ${derivedHistory.effectiveNumPredict} generation tokens (reply + reasoning).`
+                  : "Ollama context window. Chat history limits are derived from this and max reply tokens."
+              }
               value={draft.numCtx}
               min={2048}
               max={32768}
@@ -549,7 +610,11 @@ export function SettingsPage() {
                 Derived chat history: up to {derivedHistory.historyMaxMessages}{" "}
                 messages, {derivedHistory.historyMaxChars.toLocaleString()}{" "}
                 characters, replies stored to{" "}
-                {derivedHistory.historyMaxReplyChars.toLocaleString()} chars.
+                {derivedHistory.historyMaxReplyChars.toLocaleString()} chars
+                {draft.thinkingEnabled
+                  ? ` (generation budget: ${derivedHistory.effectiveNumPredict} tokens = ${draft.numPredict} reply + ${derivedHistory.thinkingNumPredictBump} reasoning)`
+                  : ""}
+                .
               </p>
             ) : null}
 
