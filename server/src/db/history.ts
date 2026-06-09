@@ -173,7 +173,7 @@ export function trimForContext(
 export function historyToChatMessages(history: StoredMessage[]): ChatMessage[] {
   return trimForContext(history).map((m) => ({
     role: m.role === ASSISTANT_ROLE ? "assistant" : "user",
-    content: m.content,
+    content: isCompressedRole(m.role) ? `[compressed]: ${m.content}` : m.content,
   }));
 }
 

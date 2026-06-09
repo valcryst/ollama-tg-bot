@@ -6,6 +6,7 @@ export const NUM_PREDICT_STEP = 32;
 export const MIN_THINKING_TOKENS = 32;
 export const MIN_REPLY_TOKENS = 32;
 export const DEFAULT_THINKING_NUM_PREDICT = 384;
+const APPROX_CHARS_PER_TOKEN = 3.5;
 
 export interface HistoryLimits {
   historyMaxMessages: number;
@@ -120,7 +121,7 @@ export function getHistoryLimits(settings: Settings): HistoryLimits {
     historyMaxMessages: Math.min(50, Math.max(4, Math.floor(numCtx / 512))),
     historyMaxReplyChars: Math.min(
       4000,
-      Math.max(100, Math.floor(replyNumPredict * 0.85)),
+      Math.max(100, Math.floor(replyNumPredict * APPROX_CHARS_PER_TOKEN)),
     ),
     numPredict: normalized.numPredict,
     thinkingNumPredict,
