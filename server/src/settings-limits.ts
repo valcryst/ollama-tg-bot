@@ -1,7 +1,9 @@
 import type { Settings } from "./db/database.js";
 
 export const MIN_NUM_PREDICT = 32;
-export const MAX_NUM_PREDICT = 2048;
+/** Hard cap on num_predict; also limited by num_ctx minus prompt headroom. */
+export const MAX_NUM_PREDICT = 8192;
+const NUM_CTX_GENERATION_HEADROOM = 512;
 export const NUM_PREDICT_STEP = 32;
 export const MIN_THINKING_TOKENS = 32;
 export const MIN_REPLY_TOKENS = 32;
@@ -21,6 +23,14 @@ export interface HistoryLimits {
 export function snapNumPredict(value: number): number {
   const snapped = Math.round(value / NUM_PREDICT_STEP) * NUM_PREDICT_STEP;
   return Math.min(MAX_NUM_PREDICT, Math.max(MIN_NUM_PREDICT, snapped));
+}
+
+/** Largest num_predict allowed for a given context window. */
+export function maxNumPredictForContext(numCtx: number): number {
+  return Math.min(
+    MAX_NUM_PREDICT,
+    Math.max(MIN_NUM_PREDICT, snapNumPredict(numCtx - NUM_CTX_GENERATION_HEADROOM)),
+  );
 }
 
 export function clampThinkingSplit(
@@ -196,10 +206,10 @@ export function validateSettingsFields(settings: Settings): void {
     ["activePersonalityId must be a number", isFiniteNumber(settings.activePersonalityId)],
     ["moodCooldownMinutes must be a number", isFiniteNumber(settings.moodCooldownMinutes)],
     [
-      "numPredict must be 32–2048",
+      `numPredict must be ${MIN_NUM_PREDICT}–${maxNumPredictForContext(settings.numCtx)} (context headroom)`,
       isFiniteNumber(normalized.numPredict) &&
         normalized.numPredict >= MIN_NUM_PREDICT &&
-        normalized.numPredict <= MAX_NUM_PREDICT,
+        normalized.numPredict <= maxNumPredictForContext(settings.numCtx),
     ],
     [
       "thinkingNumPredict must leave at least 32 tokens for reply",

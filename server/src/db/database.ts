@@ -62,7 +62,7 @@ export interface Settings {
   moodCooldownMinutes: number;
   /** Enable Ollama thinking mode for reasoning models (separate chain-of-thought). */
   thinkingEnabled: boolean;
-  /** Tokens from num_predict reserved for reasoning (remainder is reply). */
+  /** Target thinking slice of num_predict (soft; Ollama shares one generation budget). */
   thinkingNumPredict: number;
   /** Send model thinking to Telegram as a message before the reply (replies only). */
   sendThinkingEnabled: boolean;

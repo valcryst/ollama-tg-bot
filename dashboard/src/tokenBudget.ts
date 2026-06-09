@@ -1,7 +1,8 @@
 /** Keep in sync with server/src/settings-limits.ts */
 
 export const MIN_NUM_PREDICT = 32;
-export const MAX_NUM_PREDICT = 2048;
+export const MAX_NUM_PREDICT = 8192;
+const NUM_CTX_GENERATION_HEADROOM = 512;
 export const NUM_PREDICT_STEP = 32;
 export const MIN_THINKING_TOKENS = 32;
 export const MIN_REPLY_TOKENS = 32;
@@ -11,6 +12,13 @@ const APPROX_CHARS_PER_TOKEN = 3.5;
 export function snapNumPredict(value: number): number {
   const snapped = Math.round(value / NUM_PREDICT_STEP) * NUM_PREDICT_STEP;
   return Math.min(MAX_NUM_PREDICT, Math.max(MIN_NUM_PREDICT, snapped));
+}
+
+export function maxNumPredictForContext(numCtx: number): number {
+  return Math.min(
+    MAX_NUM_PREDICT,
+    Math.max(MIN_NUM_PREDICT, snapNumPredict(numCtx - NUM_CTX_GENERATION_HEADROOM)),
+  );
 }
 
 export function clampThinkingSplit(

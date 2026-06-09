@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  MAX_NUM_PREDICT,
   MIN_NUM_PREDICT,
   NUM_PREDICT_STEP,
   clampThinkingSplit,
+  maxNumPredictForContext,
   snapNumPredict,
 } from "./tokenBudget";
 
@@ -11,32 +11,35 @@ interface NumPredictSplitSliderProps {
   total: number;
   thinking: number;
   thinkingEnabled: boolean;
+  numCtx: number;
   disabled?: boolean;
   onChange: (total: number, thinking: number) => void;
 }
 
 type DragMode = "total" | "split" | null;
 
-function valueFromRatio(ratio: number): number {
+function valueFromRatio(ratio: number, maxTotal: number): number {
   const clamped = Math.min(1, Math.max(0, ratio));
   return snapNumPredict(
-    MIN_NUM_PREDICT + clamped * (MAX_NUM_PREDICT - MIN_NUM_PREDICT),
+    MIN_NUM_PREDICT + clamped * (maxTotal - MIN_NUM_PREDICT),
   );
 }
 
-function ratioFromValue(value: number): number {
-  return (value - MIN_NUM_PREDICT) / (MAX_NUM_PREDICT - MIN_NUM_PREDICT);
+function ratioFromValue(value: number, maxTotal: number): number {
+  return (value - MIN_NUM_PREDICT) / (maxTotal - MIN_NUM_PREDICT);
 }
 
 export function NumPredictSplitSlider({
   total,
   thinking,
   thinkingEnabled,
+  numCtx,
   disabled,
   onChange,
 }: NumPredictSplitSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragMode, setDragMode] = useState<DragMode>(null);
+  const maxTotal = maxNumPredictForContext(numCtx);
 
   const split = thinkingEnabled
     ? clampThinkingSplit(total, thinking)
@@ -48,8 +51,8 @@ export function NumPredictSplitSlider({
     if (!track) return MIN_NUM_PREDICT;
     const rect = track.getBoundingClientRect();
     if (rect.width <= 0) return MIN_NUM_PREDICT;
-    return valueFromRatio((clientX - rect.left) / rect.width);
-  }, []);
+    return valueFromRatio((clientX - rect.left) / rect.width, maxTotal);
+  }, [maxTotal]);
 
   useEffect(() => {
     if (!dragMode) return;
@@ -76,8 +79,8 @@ export function NumPredictSplitSlider({
     };
   }, [dragMode, onChange, split.thinking, split.total, valueFromClientX]);
 
-  const totalRatio = ratioFromValue(split.total);
-  const splitRatio = ratioFromValue(split.thinking);
+  const totalRatio = ratioFromValue(split.total, maxTotal);
+  const splitRatio = ratioFromValue(split.thinking, maxTotal);
   const thinkingShare =
     split.total > 0 ? (split.thinking / split.total) * 100 : 0;
 
@@ -142,7 +145,7 @@ export function NumPredictSplitSlider({
         type="range"
         className="num-predict-split-accessible"
         min={MIN_NUM_PREDICT}
-        max={MAX_NUM_PREDICT}
+        max={maxTotal}
         step={NUM_PREDICT_STEP}
         value={split.total}
         disabled={disabled}
@@ -175,7 +178,7 @@ export function NumPredictSplitSlider({
 
       <div className="slider-bounds" aria-hidden="true">
         <span>{MIN_NUM_PREDICT}</span>
-        <span>{MAX_NUM_PREDICT}</span>
+        <span>{maxTotal}</span>
       </div>
 
       {thinkingEnabled ? (
@@ -196,6 +199,13 @@ export function NumPredictSplitSlider({
           is faster but may truncate.
         </p>
       )}
+      {thinkingEnabled ? (
+        <p className="hint">
+          Thinking and reply share one Ollama num_predict budget — the split
+          guides prompts and history sizing; the model may still spend most of
+          it on reasoning.
+        </p>
+      ) : null}
     </div>
   );
 }

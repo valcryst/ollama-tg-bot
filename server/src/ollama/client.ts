@@ -7,8 +7,9 @@ import {
   getEffectiveNumPredict,
   getOllamaChatOptions,
   getOllamaRequestTimeoutMs,
+  getReplyNumPredict,
   LENGTH_RETRY_MIN_PREDICT,
-  MAX_NUM_PREDICT,
+  maxNumPredictForContext,
 } from "../settings-limits.js";
 export interface OllamaModel {
   name: string;
@@ -54,10 +55,19 @@ function emptyResponseError(
   const evalCount = data.eval_count ?? 0;
   const hadThinking = Boolean(data.message?.thinking?.trim());
 
+  const settings = getSettings();
   let hint =
-    "Try /reset to shorten context, pick a different model, or raise max reply tokens in Settings.";
+    "Try /reset to shorten context, pick a different model, or raise generation tokens in Settings.";
   if (reason === "length") {
-    hint = `Generation used all ${numPredict} tokens (num_predict) before a usable [REPLY]. Raise max reply tokens in Settings (try 512+) or send /reset.`;
+    if (settings.thinkingEnabled) {
+      const replyBudget = getReplyNumPredict(settings);
+      hint =
+        `Generation used all ${numPredict} tokens (num_predict) before a usable [REPLY]. ` +
+        `Thinking and reply share one Ollama budget — the model may have spent it on reasoning ` +
+        `(reply slice ~${replyBudget} tokens). Raise total generation tokens, lower thinking, or send /reset.`;
+    } else {
+      hint = `Generation used all ${numPredict} tokens (num_predict) before a usable [REPLY]. Raise generation tokens in Settings (try 512+) or send /reset.`;
+    }
   } else if (hadThinking) {
     hint =
       "This model returned thinking output but no final answer. Restart the server and retry, or switch models.";
@@ -237,16 +247,17 @@ export async function chatCompleteDetailed(
         };
       }
 
+      const predictCap = maxNumPredictForContext(settings.numCtx);
       const canRetry =
         attempt === 0 &&
         lastData.done_reason === "length" &&
-        numPredict < MAX_NUM_PREDICT &&
+        numPredict < predictCap &&
         options?.numPredict == null;
 
       if (!canRetry) break;
 
       numPredict = Math.min(
-        MAX_NUM_PREDICT,
+        predictCap,
         Math.max(numPredict * 2, LENGTH_RETRY_MIN_PREDICT),
       );
     }

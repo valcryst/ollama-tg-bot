@@ -481,9 +481,10 @@ export function SettingsPage() {
                 Thinking mode
               </label>
               <p className="hint">
-                For reasoning models (e.g. DeepSeek-R1, Qwen3). Split the
-                generation budget below between thinking and reply. Used for chat
-                replies and memory extraction only — background passes stay off.
+                For reasoning models (e.g. DeepSeek-R1, Qwen3). One Ollama
+                num_predict budget is split below between thinking and reply.
+                Used for chat replies and memory extraction only — background
+                passes stay off.
               </p>
             </div>
 
@@ -513,6 +514,7 @@ export function SettingsPage() {
               total={draft.numPredict}
               thinking={draft.thinkingNumPredict}
               thinkingEnabled={draft.thinkingEnabled}
+              numCtx={draft.numCtx}
               disabled={configBlocked}
               onChange={(numPredict, thinkingNumPredict) =>
                 setDraft({ ...draft, numPredict, thinkingNumPredict })
