@@ -12,7 +12,6 @@ import {
   clearErrorLog,
 } from "./error-log.js";
 import { bindKnownUsersDatabase } from "./known-users.js";
-import { bindMessageRefsDatabase } from "./message-refs.js";
 import { bindDataBrowserDatabase } from "./data-browser.js";
 import {
   bindPersonalitiesDatabase,
@@ -113,6 +112,9 @@ export function initDatabase(): void {
   db.exec("PRAGMA journal_mode = WAL");
 
   db.exec(`
+    DROP TABLE IF EXISTS message_refs;
+    DROP TABLE IF EXISTS group_activity;
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -164,7 +166,6 @@ export function initDatabase(): void {
   bindGeneralMemoryDatabase(db);
   bindErrorLogDatabase(db);
   bindKnownUsersDatabase(db);
-  bindMessageRefsDatabase(db);
   bindDataBrowserDatabase(db);
   bindMoodDatabase(db);
   configureHistoryAccess(getSettings);

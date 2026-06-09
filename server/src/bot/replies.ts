@@ -1,6 +1,5 @@
 import type { Context } from "grammy";
 import type { Message, User } from "grammy/types";
-import { findMessageRefInChat } from "../db/message-refs.js";
 import type { CurrentSpeaker } from "./speaker.js";
 import { stickerHistoryLabel } from "./stickers.js";
 
@@ -187,13 +186,7 @@ function collectReplyChain(message: Message, maxDepth: number): Message[] {
 }
 
 function describeMessage(message: Message, options: ReplyThreadOptions): string {
-  let summary = summarizeMessageContent(message);
-  if (needsRefEnrichment(summary) && options.chatId != null) {
-    const ref = findMessageRefInChat(options.chatId, message.message_id);
-    if (ref?.content.trim()) {
-      summary = ref.content.trim();
-    }
-  }
+  const summary = summarizeMessageContent(message);
 
   if (summary === "[message]" && message.reply_to_message) {
     const nested = describeMessage(message.reply_to_message, options);
@@ -203,16 +196,6 @@ function describeMessage(message: Message, options: ReplyThreadOptions): string 
   }
 
   return summary;
-}
-
-function needsRefEnrichment(summary: string): boolean {
-  return (
-    summary === "[message]" ||
-    summary === "[photo]" ||
-    summary.startsWith("[file:") ||
-    summary === "[video]" ||
-    summary === "[voice message]"
-  );
 }
 
 function isMessageFromBot(

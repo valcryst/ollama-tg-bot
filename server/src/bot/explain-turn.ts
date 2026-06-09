@@ -1,7 +1,6 @@
 import type { Api, Context } from "grammy";
 import type { ChatMessage } from "../ollama/client.js";
 import { chatCompleteDetailed } from "../ollama/client.js";
-import { rememberMessageRef } from "../db/message-refs.js";
 import {
   getSettings,
   recordError,
@@ -206,14 +205,7 @@ export async function runExplainTurn(
       if (i > 0) {
         await ctx.api.sendChatAction(input.chatId, "typing");
       }
-      const sent = await replyHtml(ctx, chunks[i], replyExtra);
-      rememberMessageRef(
-        input.convKey,
-        sent.message_id,
-        "assistant",
-        replyBody,
-        "Bot",
-      );
+      await replyHtml(ctx, chunks[i], replyExtra);
     }
 
     recordReply(false);

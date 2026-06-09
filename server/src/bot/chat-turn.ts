@@ -1,7 +1,6 @@
 import type { Api, Context } from "grammy";
 import type { ChatMessage } from "../ollama/client.js";
 import { chatCompleteDetailed } from "../ollama/client.js";
-import { rememberMessageRef } from "../db/message-refs.js";
 import {
   getSettings,
   recordError,
@@ -66,7 +65,6 @@ export interface ChatTurnInput {
   currentSpeakerIsOwner?: boolean;
   replyContext?: string | null;
   mentionedUsersContext?: string | null;
-  replyToMessageId?: number;
   messageThreadId?: number;
 }
 
@@ -124,15 +122,13 @@ function escapeHtml(text: string): string {
 
 function buildReplyExtra(
   ctx: Context,
-  options?: { replyToMessageId?: number; messageThreadId?: number },
+  options?: { messageThreadId?: number },
 ): Parameters<Context["reply"]>[1] {
   const extra: Parameters<Context["reply"]>[1] = {};
   if (options?.messageThreadId) {
     extra.message_thread_id = options.messageThreadId;
   }
-  const replyParams = options?.replyToMessageId
-    ? { message_id: options.replyToMessageId }
-    : replyParameters(ctx);
+  const replyParams = replyParameters(ctx);
   if (replyParams) extra.reply_parameters = replyParams;
   return Object.keys(extra).length > 0 ? extra : undefined;
 }
@@ -346,7 +342,6 @@ export async function runChatTurn(
     const chunks = reply ? splitMessage(reply) : [];
 
     const replyExtra = buildReplyExtra(ctx, {
-      replyToMessageId: input.replyToMessageId,
       messageThreadId: input.messageThreadId,
     });
 
@@ -370,14 +365,7 @@ export async function runChatTurn(
       if (i > 0) {
         await ctx.api.sendChatAction(input.chatId, "typing");
       }
-      const sent = await replyHtml(ctx, chunks[i], replyExtra);
-      rememberMessageRef(
-        input.convKey,
-        sent.message_id,
-        "assistant",
-        historyText,
-        "Bot",
-      );
+      await replyHtml(ctx, chunks[i], replyExtra);
     }
 
     if (stickerFileId) {
@@ -388,17 +376,10 @@ export async function runChatTurn(
       if (chunks.length === 0 && replyExtra?.reply_parameters) {
         stickerExtra.reply_parameters = replyExtra.reply_parameters;
       }
-      const sentSticker = await ctx.api.sendSticker(
+      await ctx.api.sendSticker(
         input.chatId,
         stickerFileId,
         Object.keys(stickerExtra).length > 0 ? stickerExtra : undefined,
-      );
-      rememberMessageRef(
-        input.convKey,
-        sentSticker.message_id,
-        "assistant",
-        `[sticker: ${stickerEmoji}]`,
-        "Bot",
       );
     }
 
@@ -428,7 +409,6 @@ export async function runChatTurn(
     const msg =
       err instanceof Error ? err.message : "Something went wrong";
     const errReplyExtra = buildReplyExtra(ctx, {
-      replyToMessageId: input.replyToMessageId,
       messageThreadId: input.messageThreadId,
     });
     await replyHtml(

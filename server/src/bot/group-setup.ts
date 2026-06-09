@@ -6,12 +6,10 @@ export function groupSetupMessage(botUsername: string): string {
     `<b>To talk to me here:</b>\n` +
     `• ${bot} + your message\n` +
     `• Reply to one of my messages\n` +
-    `• React with emoji to my messages\n` +
     `• <code>/start@${botUsername}</code> (not just /start)\n\n` +
     `<b>If I never respond:</b>\n` +
     `1. Open @BotFather → <code>/setprivacy</code> → <b>Disable</b>\n` +
-    `2. Remove me from the group and add again\n` +
-    `3. Make me a <b>group admin</b> (needed for emoji reactions in groups)\n\n` +
+    `2. Remove me from the group and add again\n\n` +
     `I remember facts about this group across sessions. Clear with <code>/forgetgroup@${botUsername}</code>.\n\n` +
     `Private chat: open ${bot} and send anything.`
   );

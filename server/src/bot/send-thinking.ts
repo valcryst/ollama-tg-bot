@@ -47,7 +47,7 @@ async function sendHtmlMessage(
   }
 }
 
-/** Send thinking to Telegram without storing it in chat history or message refs. */
+/** Send thinking to Telegram without storing it in chat history. */
 export async function sendThinkingMessages(
   ctx: Context,
   chatId: number,

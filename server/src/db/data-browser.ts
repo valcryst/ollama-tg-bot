@@ -92,21 +92,6 @@ const TABLE_CONFIGS: Record<string, TableConfig> = {
     countQuery: "SELECT COUNT(*) AS n FROM known_users",
     timeColumns: ["updated_at"],
   },
-  message_refs: {
-    label: "Message refs",
-    columns: [
-      "chat_key",
-      "telegram_message_id",
-      "role",
-      "sender_label",
-      "content",
-      "created_at",
-    ],
-    query: `SELECT chat_key, telegram_message_id, role, sender_label, content, created_at
-            FROM message_refs ORDER BY created_at DESC LIMIT ?`,
-    countQuery: "SELECT COUNT(*) AS n FROM message_refs",
-    timeColumns: ["created_at"],
-  },
   error_log: {
     label: "Error log",
     columns: ["id", "message", "stack", "chat_id", "user_id", "created_at"],
@@ -127,7 +112,6 @@ const TABLE_ORDER = [
   "general_facts",
   "personalities",
   "known_users",
-  "message_refs",
   "error_log",
 ] as const;
 

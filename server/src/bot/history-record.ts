@@ -1,6 +1,5 @@
 import type { Context } from "grammy";
 import { appendMessage } from "../db/history.js";
-import { rememberMessageRef } from "../db/message-refs.js";
 import { scheduleHistoryCompression } from "../context-compress.js";
 import { logEvent, logEventError } from "../event-log.js";
 import { isSlashCommandMessage } from "./addressed.js";
@@ -63,7 +62,6 @@ export async function recordPassiveGroupHistory(
   );
   if (textContent) {
     appendMessage(chatKey, role, textContent);
-    rememberMessageRef(chatKey, msg.message_id, "user", textContent);
     stored = true;
     logEvent("passive_history_stored", { ...msgLog, kind: "text" });
   }
@@ -92,7 +90,6 @@ export async function recordPassiveGroupHistory(
       );
       if (mediaHistory) {
         appendMessage(chatKey, role, mediaHistory);
-        rememberMessageRef(chatKey, msg.message_id, "user", mediaHistory);
         stored = true;
         logEvent("vision_stored", {
           ...msgLog,

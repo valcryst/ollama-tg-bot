@@ -19,7 +19,6 @@ import {
   createUserFact,
   getUserFacts,
 } from "../db/user-memory.js";
-import { rememberMessageRef } from "../db/message-refs.js";
 import {
   scheduleGeneralMemoryCompression,
   scheduleGroupMemoryCompression,
@@ -74,13 +73,6 @@ import {
   replyParameters,
   summarizeMessageContent,
 } from "./replies.js";
-import {
-  formatReactionPrompt,
-  isReactionAddressed,
-  parseReactionChange,
-  reactionHistoryLabel,
-  resolveReaction,
-} from "./reactions.js";
 import { logEvent, logEventError } from "../event-log.js";
 import { buildMoodCommandReply } from "./mood-command.js";
 
@@ -360,15 +352,6 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         }
       }
 
-      if (!inGroupChat && userHistoryContent) {
-        rememberMessageRef(
-          convKey,
-          ctx.message.message_id,
-          "user",
-          userHistoryContent,
-        );
-      }
-
       await runChatTurn(ctx, {
         convKey,
         chatId,
@@ -401,108 +384,6 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     }
   });
 
-  bot.on("message_reaction", async (ctx) => {
-    const change = parseReactionChange(ctx);
-    if (!change) return;
-
-    const resolved = resolveReaction(ctx);
-    if (!resolved) return;
-
-    logEvent("reaction_received", {
-      chatId: resolved.chatId,
-      userId: resolved.reactor?.id,
-      messageId: resolved.messageId,
-      chatType: resolved.chatType,
-      targetRole: resolved.targetRole ?? "unknown",
-    });
-
-    const settings = getSettings();
-    const randomHit =
-      settings.randomReplyEnabled &&
-      resolved.chatType !== "private" &&
-      Math.random() * 100 < settings.randomReplyChance;
-
-    if (
-      !isReactionAddressed(
-        resolved.chatType,
-        resolved.targetRole,
-        randomHit,
-      )
-    ) {
-      logEvent("reaction_ignored", {
-        chatId: resolved.chatId,
-        messageId: resolved.messageId,
-        targetRole: resolved.targetRole ?? "unknown",
-        randomHit,
-      });
-      return;
-    }
-
-    logEvent("reaction_accepted", {
-      chatId: resolved.chatId,
-      userId: resolved.reactor?.id,
-      messageId: resolved.messageId,
-    });
-
-    recordMessageReceived();
-
-    const { convKey, chatId, messageId, targetRole, targetContent } = resolved;
-    const userId =
-      resolved.reactor?.id != null
-        ? String(resolved.reactor.id)
-        : resolveUserId(ctx);
-    const inGroup =
-      resolved.chatType === "group" || resolved.chatType === "supergroup";
-    const groupChatId = inGroup ? String(chatId) : null;
-    const userMemoryFacts = userId ? getUserFacts(userId) : [];
-    const groupMemoryFacts = groupChatId ? getGroupFacts(groupChatId) : [];
-    const generalMemoryFacts = getGeneralFacts();
-
-    if (userId) scheduleUserMemoryCompression(userId);
-    if (groupChatId) scheduleGroupMemoryCompression(groupChatId);
-    scheduleGeneralMemoryCompression();
-    scheduleHistoryCompression(convKey);
-
-    const reactor = resolved.reactor;
-    const speaker = inGroup ? currentSpeakerFromUser(reactor) : null;
-    const latestBody = formatReactionPrompt(
-      reactor,
-      change,
-      targetRole,
-      targetContent,
-    );
-    const userRole = userRoleTag(reactor);
-    const userHistoryContent = userRole
-      ? `[${userRole} reacted]: ${reactionHistoryLabel(reactor, change, targetRole)}`
-      : null;
-
-    await runChatTurn(ctx, {
-      convKey,
-      chatId,
-      userId,
-      groupChatId,
-      inGroup,
-      latestBody,
-      userRole,
-      userHistoryContent,
-      userMemoryFacts,
-      groupMemoryFacts,
-      generalMemoryFacts,
-      currentSpeaker: speaker,
-      currentSpeakerIsOwner: inGroup ? isOwner(ctx) : false,
-      memoryInput: {
-        userMessage: latestBody,
-        replyContext: targetContent,
-        existingUserFacts: userMemoryFacts,
-        existingGroupFacts: groupMemoryFacts,
-        existingGeneralFacts: generalMemoryFacts,
-        isGroupChat: inGroup,
-      },
-      replyToMessageId: messageId,
-      messageThreadId: resolved.messageThreadId,
-    });
-  });
-
   bot.on("my_chat_member", async (ctx) => {
     const chat = ctx.chat;
     if (!chat || (chat.type !== "group" && chat.type !== "supergroup")) return;
@@ -511,12 +392,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       ctx.myChatMember;
     if (!wasBotAddedToChat(oldMember.status, newMember.status)) return;
 
-    let text = groupSetupMessage(botUsername);
-    if (newMember.status !== "administrator") {
-      text +=
-        "\n\n<b>Emoji reactions:</b> make me a <b>group admin</b> so I can see " +
-        "when you react to my messages (required by Telegram in groups).";
-    }
+    const text = groupSetupMessage(botUsername);
 
     try {
       await ctx.api.sendMessage(chat.id, text, { parse_mode: "HTML" });
@@ -538,8 +414,7 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
         (inGroup
           ? ""
           : `• Send me anything in private chat\n` +
-            `• Send photos or stickers (animated/video use a preview frame)\n` +
-            `• React to my messages with emoji — I'll respond\n`) +
+            `• Send photos or stickers (animated/video use a preview frame)\n`) +
         `• I remember recent messages in this chat\n` +
         `• I open links in your messages and read the page content\n` +
         (config.tavilyApiKey
