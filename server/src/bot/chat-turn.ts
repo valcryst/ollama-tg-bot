@@ -44,6 +44,7 @@ import { getHistory, historyToChatMessages } from "../db/history.js";
 import { getEffectiveMood, saveMoodState } from "../db/mood.js";
 import { evaluateMood } from "../mood-evaluate.js";
 import { sendThinkingMessages } from "./send-thinking.js";
+import { resolveTypingThreadParams } from "./typing.js";
 
 export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
 
@@ -66,6 +67,7 @@ export interface ChatTurnInput {
   replyContext?: string | null;
   mentionedUsersContext?: string | null;
   messageThreadId?: number;
+  isForum?: boolean;
 }
 
 async function replyHtml(
@@ -347,13 +349,19 @@ export async function runChatTurn(
     const replyExtra = buildReplyExtra(ctx, {
       messageThreadId: input.messageThreadId,
     });
+    const typingThreadParams = resolveTypingThreadParams(
+      input.inGroup
+        ? { type: "supergroup", is_forum: input.isForum }
+        : undefined,
+      input.messageThreadId,
+    );
 
     if (settings.thinkingEnabled && settings.sendThinkingEnabled && thinking) {
       const thinkingChunks = await sendThinkingMessages(
         ctx,
         input.chatId,
         thinking,
-        input.messageThreadId,
+        typingThreadParams,
       );
       if (thinkingChunks > 0) {
         logEvent("thinking_sent", {
@@ -366,13 +374,9 @@ export async function runChatTurn(
 
     for (let i = 0; i < chunks.length; i++) {
       if (i > 0) {
-        await ctx.api.sendChatAction(
-          input.chatId,
-          "typing",
-          input.messageThreadId
-            ? { message_thread_id: input.messageThreadId }
-            : undefined,
-        ).catch(() => {});
+        await ctx.api
+          .sendChatAction(input.chatId, "typing", typingThreadParams)
+          .catch(() => {});
       }
       await replyHtml(ctx, chunks[i], replyExtra);
     }

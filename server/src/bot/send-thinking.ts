@@ -1,4 +1,5 @@
 import type { Api, Context } from "grammy";
+import { messageThreadExtra, type TypingThreadParams } from "./typing.js";
 
 const MAX_MESSAGE_CHARS = 4000;
 
@@ -35,7 +36,7 @@ async function sendHtmlMessage(
   api: Api,
   chatId: number,
   text: string,
-  extra?: { message_thread_id?: number },
+  extra?: TypingThreadParams,
 ): Promise<void> {
   try {
     await api.sendMessage(chatId, text, {
@@ -52,24 +53,24 @@ export async function sendThinkingMessages(
   ctx: Context,
   chatId: number,
   thinking: string,
-  messageThreadId?: number,
+  typingThreadParams: TypingThreadParams = {},
 ): Promise<number> {
   const trimmed = thinking.trim();
   if (!trimmed) return 0;
 
-  const extra = messageThreadId
-    ? { message_thread_id: messageThreadId }
-    : undefined;
+  const messageExtra = messageThreadExtra(typingThreadParams);
   const chunks = splitText(trimmed);
   for (let i = 0; i < chunks.length; i++) {
     if (i > 0) {
-      await ctx.api.sendChatAction(chatId, "typing", extra).catch(() => {});
+      await ctx.api
+        .sendChatAction(chatId, "typing", typingThreadParams)
+        .catch(() => {});
     }
     await sendHtmlMessage(
       ctx.api,
       chatId,
       formatThinkingChunk(chunks[i], i + 1, chunks.length),
-      extra,
+      messageExtra,
     );
   }
   return chunks.length;

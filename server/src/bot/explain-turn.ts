@@ -22,6 +22,7 @@ import { sendThinkingMessages } from "./send-thinking.js";
 import { recordExchange } from "./conversation.js";
 import { replyParameters } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
+import { resolveTypingThreadParams } from "./typing.js";
 
 export interface ExplainTurnInput {
   convKey: string;
@@ -35,6 +36,7 @@ export interface ExplainTurnInput {
   groupMemoryFacts: string[];
   generalMemoryFacts: string[];
   messageThreadId?: number;
+  isForum?: boolean;
 }
 
 async function replyHtml(
@@ -159,13 +161,19 @@ export async function runExplainTurn(
     const replyExtra = buildReplyExtra(ctx, {
       messageThreadId: input.messageThreadId,
     });
+    const typingThreadParams = resolveTypingThreadParams(
+      input.inGroup
+        ? { type: "supergroup", is_forum: input.isForum }
+        : undefined,
+      input.messageThreadId,
+    );
 
     if (settings.thinkingEnabled && settings.sendThinkingEnabled && thinking) {
       const thinkingChunks = await sendThinkingMessages(
         ctx,
         input.chatId,
         thinking,
-        input.messageThreadId,
+        typingThreadParams,
       );
       if (thinkingChunks > 0) {
         logEvent("thinking_sent", {
@@ -179,13 +187,9 @@ export async function runExplainTurn(
 
     for (let i = 0; i < chunks.length; i++) {
       if (i > 0) {
-        await ctx.api.sendChatAction(
-          input.chatId,
-          "typing",
-          input.messageThreadId
-            ? { message_thread_id: input.messageThreadId }
-            : undefined,
-        ).catch(() => {});
+        await ctx.api
+          .sendChatAction(input.chatId, "typing", typingThreadParams)
+          .catch(() => {});
       }
       await replyHtml(ctx, chunks[i], replyExtra);
     }

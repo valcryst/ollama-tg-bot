@@ -74,7 +74,7 @@ import {
 } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
 import { buildMoodCommandReply } from "./mood-command.js";
-import { startTypingIndicator } from "./typing.js";
+import { startTypingForMessage } from "./typing.js";
 
 async function replyHtml(
   ctx: Context,
@@ -198,20 +198,16 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
     recordMessageReceived();
 
-    const chatId = ctx.chat?.id;
-    if (!chatId) return;
-
-    const convKey = resolveConversationKey(ctx);
-    if (!convKey) return;
-
-    const messageThreadId = ctx.message?.message_thread_id;
-    const stopTyping = startTypingIndicator(
-      ctx.api,
-      chatId,
-      messageThreadId,
-    );
-
+    let endTyping: (() => void) | undefined;
     try {
+      endTyping = startTypingForMessage(ctx) ?? undefined;
+      const chatId = ctx.chat?.id;
+      if (!chatId) return;
+
+      const convKey = resolveConversationKey(ctx);
+      if (!convKey) return;
+
+      const messageThreadId = ctx.message?.message_thread_id;
       const userId = resolveUserId(ctx);
       const groupChatId = resolveGroupChatId(ctx);
       const inGroupChat = isGroupChat(ctx);
@@ -406,6 +402,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         replyContext,
         mentionedUsersContext,
         messageThreadId,
+        isForum: ctx.chat?.is_forum === true,
         memoryInput: {
           userMessage: latestBody,
           replyContext,
@@ -418,7 +415,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     } catch (err) {
       logEventError("handler_error", err, msgLog);
     } finally {
-      stopTyping();
+      endTyping?.();
     }
   });
 
@@ -572,12 +569,7 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
     const convKey = resolveConversationKey(ctx);
     if (!convKey) return;
 
-    const messageThreadId = ctx.message?.message_thread_id;
-    const stopTyping = startTypingIndicator(
-      ctx.api,
-      chatId,
-      messageThreadId,
-    );
+    let endTyping = startTypingForMessage(ctx) ?? undefined;
 
     try {
       const userId = resolveUserId(ctx);
@@ -594,7 +586,8 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
         userMemoryFacts: userId ? getUserFacts(userId) : [],
         groupMemoryFacts: groupChatId ? getGroupFacts(groupChatId) : [],
         generalMemoryFacts: getGeneralFacts(),
-        messageThreadId,
+        messageThreadId: ctx.message?.message_thread_id,
+        isForum: ctx.chat?.is_forum === true,
       });
     } catch (err) {
       logEventError("explain_command_failed", err, {
@@ -602,7 +595,7 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
         userId: ctx.from?.id,
       });
     } finally {
-      stopTyping();
+      endTyping?.();
     }
   });
 
