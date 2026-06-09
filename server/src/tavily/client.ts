@@ -17,7 +17,7 @@ interface TavilySearchResponse {
 }
 
 const TAVILY_SEARCH_URL = "https://api.tavily.com/search";
-const SEARCH_TIMEOUT_MS = 20_000;
+const SEARCH_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_RESULTS = 5;
 
 export function isTavilyConfigured(): boolean {

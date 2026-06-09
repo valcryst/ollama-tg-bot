@@ -22,7 +22,6 @@ import {
 import {
   scheduleGeneralMemoryCompression,
   scheduleGroupMemoryCompression,
-  scheduleHistoryCompression,
   scheduleUserMemoryCompression,
 } from "../context-compress.js";
 import {
@@ -170,20 +169,19 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       });
     }
 
-    const addressed = await isMessageAddressedToBot(ctx);
     const settings = getSettings();
     const inGroup = ctx.chat?.type !== "private";
     const randomHit =
       settings.randomReplyEnabled &&
       inGroup &&
-      !addressed &&
       Math.random() * 100 < settings.randomReplyChance;
     const imageHit =
       settings.reactToEveryImage &&
       inGroup &&
-      !addressed &&
       !randomHit &&
       messageHasUserImage(ctx.message);
+    const addressed =
+      randomHit || imageHit ? false : await isMessageAddressedToBot(ctx);
 
     if (!addressed && !randomHit && !imageHit) {
       logEvent("message_ignored", { ...msgLog, reason: "not_addressed" });
@@ -211,11 +209,6 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     const userMemoryFacts = userId ? getUserFacts(userId) : [];
     const groupMemoryFacts = groupChatId ? getGroupFacts(groupChatId) : [];
     const generalMemoryFacts = getGeneralFacts();
-
-    if (userId) scheduleUserMemoryCompression(userId);
-    if (groupChatId) scheduleGroupMemoryCompression(groupChatId);
-    scheduleGeneralMemoryCompression();
-    scheduleHistoryCompression(convKey);
 
     try {
       const botId = ctx.me?.id;
@@ -252,8 +245,40 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
             recordReply(false);
             return;
           }
+          if (loaded.images.length > 0) {
+            const visionDescription = await describeVisionImages(
+              loaded.images,
+              {
+                ...msgLog,
+                convKey,
+              },
+              loaded.visionHint,
+            );
+            const sticker = loaded.sourceSticker ?? ctx.message.sticker;
+            const mediaKind = mediaKindForMessage(ctx.message, !!sticker);
+            const mediaHistory = buildMediaHistoryContent(
+              ctx.from,
+              ctx.message,
+              mediaKind,
+              visionDescription,
+              botId,
+              stickerPackEmoji(sticker),
+            );
+            if (mediaHistory) {
+              userHistoryContent = mediaHistory;
+              skipUserHistory = false;
+              logEvent("vision_stored", {
+                ...msgLog,
+                convKey,
+                mediaKind,
+                chars: visionDescription.length,
+              });
+            }
+            const mediaNote = `The user sent a ${mediaKind}: ${visionDescription}`;
+            latestBody = [messageText, mediaNote].filter(Boolean).join("\n\n");
+          }
         }
-        if (!messageText) {
+        if (!latestBody.trim() || latestBody === "(non-text message)") {
           latestBody = "Respond to this.";
         }
       } else {
@@ -295,11 +320,15 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
         let visionDescription = "";
         if (loaded.images.length > 0) {
-          visionDescription = await describeVisionImages(loaded.images, {
-            ...msgLog,
-            convKey,
-            fromReply: visionFromReply,
-          });
+          visionDescription = await describeVisionImages(
+            loaded.images,
+            {
+              ...msgLog,
+              convKey,
+              fromReply: visionFromReply,
+            },
+            loaded.visionHint,
+          );
         }
 
         const sticker = loaded.sourceSticker ?? ctx.message.sticker;

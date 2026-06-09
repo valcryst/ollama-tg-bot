@@ -7,7 +7,7 @@ export interface FetchedPage {
   error?: string;
 }
 
-const NAVIGATION_TIMEOUT_MS = 20_000;
+const NAVIGATION_TIMEOUT_MS = 60_000;
 const MAX_URLS_PER_TURN = 3;
 const MAX_PAGE_TEXT_CHARS = 12_000;
 

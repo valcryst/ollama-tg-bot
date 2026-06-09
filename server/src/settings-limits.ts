@@ -155,6 +155,13 @@ export function getChatTimeoutMs(settings: Settings): number {
   return settings.chatTimeoutSec * 1000;
 }
 
+export function getOllamaRequestTimeoutMs(
+  settings: Settings,
+  _options?: { auxiliary?: boolean },
+): number {
+  return getChatTimeoutMs(settings);
+}
+
 export function validateSettingsFields(settings: Settings): void {
   const normalized = normalizeTokenBudget(settings);
   const isFiniteNumber = (value: unknown): value is number =>

@@ -57,6 +57,7 @@ fact two
 [/FACTS]`;
 
 const inFlight = new Set<string>();
+let compressionQueue: Promise<void> = Promise.resolve();
 
 export function historyNeedsCompression(chatKey: string): boolean {
   const settings = getSettings();
@@ -96,37 +97,44 @@ export function generalMemoryNeedsCompression(): boolean {
 
 export function scheduleHistoryCompression(chatKey: string): void {
   const key = `history:${chatKey}`;
-  if (inFlight.has(key)) return;
-  inFlight.add(key);
-  void compressHistoryIfNeeded(chatKey)
-    .catch((err) => logEventError("history_compression_failed", err, { convKey: chatKey }))
-    .finally(() => inFlight.delete(key));
+  enqueueCompression(key, () => compressHistoryIfNeeded(chatKey), (err) =>
+    logEventError("history_compression_failed", err, { convKey: chatKey }),
+  );
 }
 
 export function scheduleUserMemoryCompression(userId: string): void {
   const key = `user:${userId}`;
-  if (inFlight.has(key)) return;
-  inFlight.add(key);
-  void compressUserMemoryIfNeeded(userId)
-    .catch((err) => logEventError("user_memory_compression_failed", err, { userId }))
-    .finally(() => inFlight.delete(key));
+  enqueueCompression(key, () => compressUserMemoryIfNeeded(userId), (err) =>
+    logEventError("user_memory_compression_failed", err, { userId }),
+  );
 }
 
 export function scheduleGroupMemoryCompression(groupId: string): void {
   const key = `group:${groupId}`;
-  if (inFlight.has(key)) return;
-  inFlight.add(key);
-  void compressGroupMemoryIfNeeded(groupId)
-    .catch((err) => logEventError("group_memory_compression_failed", err, { groupId }))
-    .finally(() => inFlight.delete(key));
+  enqueueCompression(key, () => compressGroupMemoryIfNeeded(groupId), (err) =>
+    logEventError("group_memory_compression_failed", err, { groupId }),
+  );
 }
 
 export function scheduleGeneralMemoryCompression(): void {
   const key = "general";
   if (inFlight.has(key)) return;
+  enqueueCompression(key, compressGeneralMemoryIfNeeded, (err) =>
+    logEventError("general_memory_compression_failed", err),
+  );
+}
+
+function enqueueCompression(
+  key: string,
+  task: () => Promise<void>,
+  onError: (err: unknown) => void,
+): void {
+  if (inFlight.has(key)) return;
   inFlight.add(key);
-  void compressGeneralMemoryIfNeeded()
-    .catch((err) => logEventError("general_memory_compression_failed", err))
+  compressionQueue = compressionQueue
+    .catch(() => {})
+    .then(task)
+    .catch(onError)
     .finally(() => inFlight.delete(key));
 }
 

@@ -67,9 +67,10 @@ export async function recordPassiveGroupHistory(
   }
 
   if (messageHasVisionMedia(msg)) {
+    const mediaKind = mediaKindForMessage(msg, !!msg.sticker);
     logEvent("media_detected", {
       ...msgLog,
-      mediaKind: mediaKindForMessage(msg, !!msg.sticker),
+      mediaKind,
       onMessage: true,
     });
 
@@ -78,8 +79,11 @@ export async function recordPassiveGroupHistory(
       logEvent("vision_unavailable", msgLog);
     } else if (loaded.images.length > 0) {
       const sticker = loaded.sourceSticker ?? msg.sticker;
-      const mediaKind = mediaKindForMessage(msg, !!sticker);
-      const visionDescription = await describeVisionImages(loaded.images, msgLog);
+      const visionDescription = await describeVisionImages(
+        loaded.images,
+        msgLog,
+        loaded.visionHint,
+      );
       const mediaHistory = buildMediaHistoryContent(
         ctx.from,
         msg,

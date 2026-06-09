@@ -12,6 +12,7 @@ Focus only on visible content. No markdown, no labels, no preamble.`;
 export async function describeVisionImages(
   images: ImagePayload[],
   logContext: EventFields = {},
+  visionHint?: string,
 ): Promise<string> {
   if (images.length === 0) return "";
 
@@ -25,7 +26,7 @@ export async function describeVisionImages(
       { role: "system", content: VISION_DESCRIBE_SYSTEM },
       {
         role: "user",
-        content: "Describe this image.",
+        content: ["Describe this image.", visionHint].filter(Boolean).join("\n\n"),
         images: images.map((i) => i.base64),
       },
     ];

@@ -155,6 +155,27 @@ export async function runChatTurn(
   try {
     logEvent("chat_turn_started", turnLog);
 
+    const storedHistory = getHistory(input.convKey);
+    const historyMessages = historyToChatMessages(storedHistory);
+    const moodContextText = historyMessages
+      .map((m) => `${m.role}: ${m.content}`)
+      .join("\n\n");
+    const moodLatestTurnPreview = [
+      input.mentionedUsersContext,
+      input.replyContext,
+      input.latestBody,
+    ]
+      .filter((part) => part?.trim())
+      .join("\n\n");
+
+    logEvent("mood_evaluate_started", turnLog);
+    const decayedMood = getEffectiveMood();
+    const moodPromise = evaluateMood({
+      currentMood: decayedMood,
+      historyText: moodContextText,
+      latestTurn: moodLatestTurnPreview,
+    });
+
     let linkFetchContext: string | null = null;
     const linkFetch = await resolveLinkFetchContext({
       userMessage: input.latestBody,
@@ -197,29 +218,7 @@ export async function runChatTurn(
       logEvent("web_search_skipped", { ...turnLog, reason: "link_fetch_resolved" });
     }
 
-    const storedHistory = getHistory(input.convKey);
-    const historyMessages = historyToChatMessages(storedHistory);
-    const moodContextText = historyMessages
-      .map((m) => `${m.role}: ${m.content}`)
-      .join("\n\n");
-
-    const latestTurnPreview = [
-      input.mentionedUsersContext,
-      input.replyContext,
-      linkFetchContext,
-      webSearchContext,
-      input.latestBody,
-    ]
-      .filter((part) => part?.trim())
-      .join("\n\n");
-
-    logEvent("mood_evaluate_started", turnLog);
-    const decayedMood = getEffectiveMood();
-    const evaluatedMood = await evaluateMood({
-      currentMood: decayedMood,
-      historyText: moodContextText,
-      latestTurn: latestTurnPreview,
-    });
+    const evaluatedMood = await moodPromise;
     saveMoodState(evaluatedMood);
     logEvent("mood_evaluate_done", {
       ...turnLog,

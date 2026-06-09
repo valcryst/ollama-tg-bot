@@ -6,6 +6,7 @@ import {
   getChatTimeoutMs,
   getEffectiveNumPredict,
   getOllamaChatOptions,
+  getOllamaRequestTimeoutMs,
   LENGTH_RETRY_MIN_PREDICT,
   MAX_NUM_PREDICT,
 } from "../settings-limits.js";
@@ -28,6 +29,7 @@ export interface ChatMessage {
 
 /** Keep the model loaded in VRAM until Ollama restarts or the model is unloaded. */
 const OLLAMA_KEEP_ALIVE = -1;
+const LIST_MODELS_TIMEOUT_MS = 60_000;
 
 interface OllamaChatResponse {
   message?: {
@@ -81,7 +83,9 @@ function baseUrl(): string {
 type TagsModel = OllamaModel & { model?: string };
 
 export async function listModels(hostOverride?: string): Promise<OllamaModel[]> {
-  const res = await fetch(`${resolveBaseUrl(hostOverride)}/api/tags`);
+  const res = await fetch(`${resolveBaseUrl(hostOverride)}/api/tags`, {
+    signal: AbortSignal.timeout(LIST_MODELS_TIMEOUT_MS),
+  });
   if (!res.ok) {
     throw new Error(`Ollama returned ${res.status}: ${await res.text()}`);
   }
@@ -148,7 +152,9 @@ async function requestChat(
   const res = await fetch(`${baseUrl()}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(getChatTimeoutMs(settings)),
+    signal: AbortSignal.timeout(
+      getOllamaRequestTimeoutMs(settings, { auxiliary }),
+    ),
     body: JSON.stringify({
       model,
       messages: prepared,
@@ -247,7 +253,7 @@ export async function chatCompleteDetailed(
 
     throw emptyResponseError(model, lastData!, numPredict);
   } catch (err) {
-    throw wrapChatError(err);
+    throw wrapChatError(err, auxiliary);
   }
 }
 
@@ -273,8 +279,13 @@ export async function chat(
   return reply;
 }
 
-function wrapChatError(err: unknown): Error {
+function wrapChatError(err: unknown, auxiliary = false): Error {
   if (err instanceof Error && err.name === "TimeoutError") {
+    if (auxiliary) {
+      return new Error(
+        `Ollama auxiliary request timed out (${getSettings().chatTimeoutSec}s). The bot will skip that side pass and continue where possible.`,
+      );
+    }
     return new Error(
       `Ollama request timed out (${getSettings().chatTimeoutSec}s). Try a smaller model, fewer chat history (/reset), or lower timeout in dashboard.`,
     );
