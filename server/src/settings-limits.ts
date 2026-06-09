@@ -94,8 +94,8 @@ export function getReplyLengthGuidance(settings: Settings): ReplyLengthGuidance 
     `or a terse reaction is fine when enough. Never pad or elaborate just to fill the budget.`;
 
   const formatHint =
-    `Maximum ~${maxChars} characters (~${maxTokens} tokens) — use only what you need; ` +
-    `shorter is fine. Telegram HTML (<b> <i> <code> only).`;
+    `Maximum ~${maxChars} characters (~${maxTokens} tokens) — use only what you need; shorter is fine. ` +
+    `Plain text is the default. You may use Telegram HTML (<b> <i> <code> only) for occasional emphasis when it helps — you do not have to use tags at all.`;
 
   return { maxTokens, maxChars, systemHint, formatHint };
 }

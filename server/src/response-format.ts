@@ -11,7 +11,8 @@ export function buildReplyFormatSpec(formatHint: string): string {
 ${formatHint}
 [/REPLY]
 
-Rules: always include [REPLY]. Do not output [MEMORY], [GROUP_MEMORY], or [GENERAL_MEMORY] in your reply — memory is handled separately.`;
+Rules: always include [REPLY]. Do not output [MEMORY], [GROUP_MEMORY], or [GENERAL_MEMORY] in your reply — memory is handled separately.
+Formatting: HTML tags are optional — reply in plain text unless a tag genuinely adds emphasis. Never send empty tags (e.g. <b></b>).`;
 }
 
 /** Used by the dedicated memory extraction pass. */
