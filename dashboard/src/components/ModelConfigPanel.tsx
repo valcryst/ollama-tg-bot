@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
-import type { Settings } from "../api";
+import type { OllamaModel, Settings } from "../api";
+import {
+  calculateContextBudget,
+  modelContextFromTags,
+  type ContextBudget,
+} from "../contextBudgetCalc";
 import { NumPredictSplitSlider } from "../NumPredictSplitSlider";
 import { SettingsNumberField } from "../SettingsNumberField";
 import {
@@ -7,14 +12,15 @@ import {
   analyzeModelConfig,
   applyModelConfigUpdate,
   issuesForField,
-  numCtxHint,
   numPredictHint,
   type ModelConfigIssue,
 } from "../modelConfig";
-import { MAX_NUM_CTX, MIN_NUM_CTX, clampThinkingSplit } from "../tokenBudget";
+import { clampThinkingSplit } from "../tokenBudget";
 
 interface ModelConfigPanelProps {
   draft: Settings;
+  models: OllamaModel[];
+  vramAvailableGb: number | undefined;
   disabled?: boolean;
   onChange: (settings: Settings) => void;
 }
@@ -25,16 +31,47 @@ function FieldIssue({ issues }: { issues: ModelConfigIssue[] }) {
   return <p className="field-error">{error.message}</p>;
 }
 
+function limiterLabel(limitedBy: ContextBudget["limitedBy"]): string {
+  switch (limitedBy) {
+    case "vram_tier":
+      return "VRAM tier baseline";
+    case "kv_headroom":
+      return "KV cache headroom after model weights";
+    case "model_max":
+      return "Model native maximum";
+    case "generation_floor":
+      return "Generation budget floor";
+    case "min_floor":
+      return "Minimum context floor";
+  }
+}
+
 export function ModelConfigPanel({
   draft,
+  models,
+  vramAvailableGb,
   disabled,
   onChange,
 }: ModelConfigPanelProps) {
-  const analysis = useMemo(() => analyzeModelConfig(draft), [draft]);
+  const contextBudget = useMemo(() => {
+    if (vramAvailableGb == null) return null;
+    const tag = models.find((m) => m.name === draft.model);
+    return calculateContextBudget(
+      vramAvailableGb,
+      modelContextFromTags(draft.model, tag),
+      draft.numPredict,
+    );
+  }, [draft.model, draft.numPredict, models, vramAvailableGb]);
+
+  const analysis = useMemo(
+    () => (contextBudget ? analyzeModelConfig(draft, contextBudget) : null),
+    [draft, contextBudget],
+  );
   const [rejectFlash, setRejectFlash] = useState<ModelConfigIssue | null>(null);
 
-  function update(patch: Parameters<typeof applyModelConfigUpdate>[1]) {
-    const result = applyModelConfigUpdate(draft, patch);
+  function update(patch: Parameters<typeof applyModelConfigUpdate>[2]) {
+    if (!contextBudget) return;
+    const result = applyModelConfigUpdate(draft, contextBudget, patch);
     if (!result.ok) {
       setRejectFlash(result.issue);
       return;
@@ -43,12 +80,21 @@ export function ModelConfigPanel({
     onChange(result.settings);
   }
 
-  const ctxIssues = issuesForField(analysis.issues, "numCtx");
+  if (vramAvailableGb == null || !contextBudget || !analysis) {
+    return (
+      <div className="model-config">
+        <header className="model-config-header">
+          <h3 className="section-title">Model parameters</h3>
+        </header>
+        <p className="field-error">
+          VRAM_AVAILABLE is required on the server. Add it to <code>.env</code>{" "}
+          (e.g. <code>VRAM_AVAILABLE=24</code>) and restart the bot.
+        </p>
+      </div>
+    );
+  }
+
   const predictIssues = issuesForField(analysis.issues, "numPredict");
-  const numCtxError =
-    rejectFlash?.field === "numCtx"
-      ? rejectFlash.message
-      : ctxIssues[0]?.message;
   const numPredictError =
     rejectFlash?.field === "numPredict"
       ? rejectFlash.message
@@ -59,8 +105,8 @@ export function ModelConfigPanel({
       <header className="model-config-header">
         <h3 className="section-title">Model parameters</h3>
         <p className="hint section-hint">
-          Configure in order: context window, then generation budget, then
-          reasoning and sampling. Dependent limits update live.
+          Context is computed automatically from VRAM and the selected model.
+          Adjust generation budget, reasoning, and sampling below.
         </p>
       </header>
 
@@ -71,19 +117,42 @@ export function ModelConfigPanel({
         <p className="hint model-config-group-desc">
           {MODEL_CONFIG_GROUPS[0].description}
         </p>
-        <SettingsNumberField
-          id="numCtx"
-          label="Context size (num_ctx)"
-          hint={numCtxHint(analysis.minNumCtx, analysis.maxNumPredict)}
-          value={draft.numCtx}
-          min={Math.max(MIN_NUM_CTX, analysis.minNumCtx)}
-          max={MAX_NUM_CTX}
-          step={512}
-          variant="slider"
-          disabled={disabled}
-          error={numCtxError}
-          onChange={(numCtx) => update({ numCtx })}
-        />
+        <div className="context-budget-card">
+          <div className="context-budget-value">
+            <span className="context-budget-label">num_ctx</span>
+            <strong>{contextBudget.effectiveNumCtx.toLocaleString()}</strong>
+            <span className="context-budget-unit">tokens</span>
+          </div>
+          <dl className="context-budget-meta">
+            <div>
+              <dt>VRAM</dt>
+              <dd>{contextBudget.vramGb} GB</dd>
+            </div>
+            <div>
+              <dt>Model</dt>
+              <dd>{contextBudget.modelName || "—"}</dd>
+            </div>
+            {contextBudget.modelWeightGb != null ? (
+              <div>
+                <dt>Weights</dt>
+                <dd>~{contextBudget.modelWeightGb.toFixed(1)} GB</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>Limited by</dt>
+              <dd>{limiterLabel(contextBudget.limitedBy)}</dd>
+            </div>
+            <div>
+              <dt>Generation max</dt>
+              <dd>{analysis.maxNumPredict.toLocaleString()} tokens</dd>
+            </div>
+          </dl>
+          <ul className="context-budget-notes">
+            {contextBudget.notes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
       </section>
 
       <section className="model-config-group" aria-labelledby="model-gen">
@@ -97,10 +166,10 @@ export function ModelConfigPanel({
           total={draft.numPredict}
           thinking={draft.thinkingNumPredict}
           thinkingEnabled={draft.thinkingEnabled}
-          numCtx={draft.numCtx}
+          numCtx={contextBudget.effectiveNumCtx}
           disabled={disabled}
           error={numPredictError}
-          hint={numPredictHint(analysis.maxNumPredict, draft.numCtx)}
+          hint={numPredictHint(analysis.maxNumPredict, contextBudget.effectiveNumCtx)}
           onChange={(numPredict, thinkingNumPredict) =>
             update({ numPredict, thinkingNumPredict })
           }

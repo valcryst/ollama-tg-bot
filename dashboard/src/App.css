@@ -489,6 +489,27 @@
   color: var(--text);
 }
 
+.empty-state-subhead {
+  margin: 1.25rem 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.empty-state .error-meta {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+}
+
+.empty-state .error-hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0 0 1rem;
+}
+
 .form-fieldset {
   border: none;
   margin: 0;
@@ -621,6 +642,71 @@
 
 .model-config-save-block {
   margin-bottom: 0.75rem;
+}
+
+.context-budget-card {
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.context-budget-value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.context-budget-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.context-budget-value strong {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.context-budget-unit {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.context-budget-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.context-budget-meta div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.context-budget-meta dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.context-budget-meta dd {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.context-budget-notes {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
 }
 
 .hint.success-inline {

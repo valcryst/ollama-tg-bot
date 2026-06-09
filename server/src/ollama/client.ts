@@ -1,4 +1,6 @@
+import { extractModelMaxCtx } from "../context-budget.js";
 import { getSettings } from "../db/database.js";
+import { getResolvedSettings } from "../settings-runtime.js";
 import { normalizeImageForOllama } from "./images.js";
 import { logOllamaExchange } from "./verbose-log.js";
 import { extractTelegramReply } from "../response-format.js";
@@ -15,11 +17,16 @@ export interface OllamaModel {
   name: string;
   modified_at?: string;
   size?: number;
+  modelMaxCtx?: number;
   details?: {
     family?: string;
     parameter_size?: string;
     quantization_level?: string;
   };
+}
+
+export interface ModelShowResult {
+  modelMaxCtx: number | null;
 }
 
 export interface ChatMessage {
@@ -113,6 +120,27 @@ export async function listModels(hostOverride?: string): Promise<OllamaModel[]> 
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export async function showModel(
+  name: string,
+  hostOverride?: string,
+): Promise<ModelShowResult> {
+  const res = await fetch(`${resolveBaseUrl(hostOverride)}/api/show`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(LIST_MODELS_TIMEOUT_MS),
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    throw new Error(`Ollama show failed (${res.status}): ${await res.text()}`);
+  }
+  const data = (await res.json()) as { model_info?: Record<string, unknown> };
+  return {
+    modelMaxCtx: data.model_info
+      ? extractModelMaxCtx(data.model_info)
+      : null,
+  };
+}
+
 async function prepareMessages(
   messages: ChatMessage[],
 ): Promise<ChatMessage[]> {
@@ -158,7 +186,7 @@ async function requestChat(
   verboseLabel?: string,
   verboseLayout?: VerbosePromptLayout,
 ): Promise<OllamaChatResponse> {
-  const settings = getSettings();
+  const settings = getResolvedSettings();
   const res = await fetch(`${baseUrl()}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -211,7 +239,7 @@ export async function chatCompleteDetailed(
   messages: ChatMessage[],
   options?: ChatCompleteOptions,
 ): Promise<ChatCompleteResult> {
-  const settings = getSettings();
+  const settings = getResolvedSettings();
   const model = options?.model ?? settings.model;
   const prepared = await prepareMessages(messages);
   const verboseLabel = options?.verboseLabel;

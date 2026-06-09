@@ -31,6 +31,24 @@ export interface Settings {
   thinkingEnabled: boolean;
   thinkingNumPredict: number;
   sendThinkingEnabled: boolean;
+  contextBudget?: ContextBudget;
+  vramAvailableGb: number;
+}
+
+export interface ContextBudget {
+  effectiveNumCtx: number;
+  vramGb: number;
+  modelName: string;
+  modelWeightGb: number | null;
+  modelMaxCtx: number | null;
+  vramTierCtx: number;
+  limitedBy:
+    | "vram_tier"
+    | "kv_headroom"
+    | "model_max"
+    | "generation_floor"
+    | "min_floor";
+  notes: string[];
 }
 
 export const MOOD_KEYS = [
@@ -161,6 +179,7 @@ export interface StickerCatalog {
 export interface OllamaModel {
   name: string;
   size?: number;
+  modelMaxCtx?: number;
   details?: {
     parameter_size?: string;
     family?: string;
@@ -225,7 +244,7 @@ export function describeApiError(err: unknown): {
 function hintForPath(path: string, status: number): string | undefined {
   if (path === "/api/health" || path.startsWith("/api/settings") || path === "/api/stats") {
     if (status >= 500) {
-      return "The backend may have crashed on startup (check the server terminal). In dev, run: npm run dev -w server";
+      return "Check the server terminal and .env — common causes are missing BOT_TOKEN or VRAM_AVAILABLE. In dev: npm run dev -w server (port 3000).";
     }
     if (status === 404) {
       return "API route not found — is the server running on :3000? Vite proxies /api in dev.";
@@ -268,7 +287,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       path,
       message: "Could not connect to the API",
       hint:
-        "Start the backend: npm run dev -w server (or npm run dev). Vite proxies /api in dev.",
+        "The server may not be running, or it exited on startup — check the server terminal for errors (often missing BOT_TOKEN or VRAM_AVAILABLE in .env). In dev: npm run dev or npm run dev -w server (listens on :3000; Vite proxies /api).",
     });
   }
 

@@ -3,6 +3,10 @@ import { useDashboard } from "../context/DashboardContext";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { ModelConfigPanel } from "../components/ModelConfigPanel";
 import {
+  calculateContextBudget,
+  modelContextFromTags,
+} from "../contextBudgetCalc";
+import {
   analyzeModelConfig,
   hasModelConfigErrors,
 } from "../modelConfig";
@@ -15,6 +19,7 @@ export function SettingsPage() {
     draft,
     setDraft,
     models,
+    vramAvailableGb,
     sectionErrors,
     setSectionError,
     configBlocked,
@@ -31,11 +36,18 @@ export function SettingsPage() {
     load,
   } = useDashboard();
 
-  const modelConfigIssues = useMemo(
-    () => (draft ? analyzeModelConfig(draft).issues : []),
-    [draft],
-  );
-  const modelConfigInvalid = hasModelConfigErrors(modelConfigIssues);
+  const modelConfigIssues = useMemo(() => {
+    if (!draft || vramAvailableGb == null) return [];
+    const tag = models.find((m) => m.name === draft.model);
+    const budget = calculateContextBudget(
+      vramAvailableGb,
+      modelContextFromTags(draft.model, tag),
+      draft.numPredict,
+    );
+    return analyzeModelConfig(draft, budget).issues;
+  }, [draft, models, vramAvailableGb]);
+  const modelConfigInvalid =
+    vramAvailableGb == null || hasModelConfigErrors(modelConfigIssues);
 
   const [stickerCatalog, setStickerCatalog] = useState<StickerCatalog | null>(
     null,
@@ -449,6 +461,8 @@ export function SettingsPage() {
 
             <ModelConfigPanel
               draft={draft}
+              models={models}
+              vramAvailableGb={vramAvailableGb}
               disabled={configBlocked}
               onChange={(next) => setDraft(next)}
             />
@@ -479,7 +493,9 @@ export function SettingsPage() {
 
             {modelConfigInvalid ? (
               <p className="field-error model-config-save-block">
-                Fix model parameter errors before saving.
+                {vramAvailableGb == null
+                  ? "VRAM_AVAILABLE must be set on the server before saving model settings."
+                  : "Fix model parameter errors before saving."}
               </p>
             ) : null}
 

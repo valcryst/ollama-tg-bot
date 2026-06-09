@@ -1,23 +1,20 @@
+import type { ContextBudget } from "./contextBudgetCalc";
 import type { Settings } from "./api";
 import {
   DEFAULT_THINKING_NUM_PREDICT,
-  MIN_NUM_CTX,
   MIN_REPLY_TOKENS,
   MIN_THINKING_TOKENS,
   NUM_CTX_GENERATION_HEADROOM,
-  NUM_CTX_STEP,
   clampThinkingSplit,
   defaultThinkingForTotal,
   deriveHistoryLimits,
   maxNumPredictForContext,
   minNumCtxForPredict,
-  snapNumCtx,
   snapNumPredict,
   type DerivedHistoryLimits,
 } from "./tokenBudget";
 
 export type ModelConfigField =
-  | "numCtx"
   | "numPredict"
   | "thinkingNumPredict"
   | "thinkingEnabled"
@@ -37,7 +34,6 @@ export type ModelConfigIssue = {
 export type ModelConfigPatch = Partial<
   Pick<
     Settings,
-    | "numCtx"
     | "numPredict"
     | "thinkingNumPredict"
     | "thinkingEnabled"
@@ -54,23 +50,27 @@ export type ModelConfigAnalysis = {
   settings: Settings;
   derived: DerivedHistoryLimits;
   issues: ModelConfigIssue[];
+  effectiveNumCtx: number;
   minNumCtx: number;
   maxNumPredict: number;
+  contextBudget: ContextBudget;
 };
 
 export type ModelConfigUpdateResult =
   | { ok: true; settings: Settings }
   | { ok: false; settings: Settings; issue: ModelConfigIssue };
 
-function normalizeModelFields(settings: Settings): Settings {
-  const numCtx = snapNumCtx(settings.numCtx);
-  const maxPredict = maxNumPredictForContext(numCtx);
+function normalizeModelFields(
+  settings: Settings,
+  effectiveNumCtx: number,
+): Settings {
+  const maxPredict = maxNumPredictForContext(effectiveNumCtx);
   const numPredict = snapNumPredict(Math.min(settings.numPredict, maxPredict));
 
   if (!settings.thinkingEnabled) {
     return {
       ...settings,
-      numCtx,
+      numCtx: effectiveNumCtx,
       numPredict,
       sendThinkingEnabled: false,
     };
@@ -79,33 +79,37 @@ function normalizeModelFields(settings: Settings): Settings {
   const split = clampThinkingSplit(numPredict, settings.thinkingNumPredict);
   return {
     ...settings,
-    numCtx,
+    numCtx: effectiveNumCtx,
     numPredict: split.total,
     thinkingNumPredict: split.thinking,
     sendThinkingEnabled: settings.sendThinkingEnabled,
   };
 }
 
-export function analyzeModelConfig(settings: Settings): ModelConfigAnalysis {
-  const normalized = normalizeModelFields(settings);
+export function analyzeModelConfig(
+  settings: Settings,
+  contextBudget: ContextBudget,
+): ModelConfigAnalysis {
+  const effectiveNumCtx = contextBudget.effectiveNumCtx;
+  const normalized = normalizeModelFields(settings, effectiveNumCtx);
   const derived = deriveHistoryLimits(
-    normalized.numCtx,
+    effectiveNumCtx,
     normalized.numPredict,
     normalized.thinkingEnabled,
     normalized.thinkingNumPredict,
   );
   const minNumCtx = minNumCtxForPredict(normalized.numPredict);
-  const maxNumPredict = maxNumPredictForContext(normalized.numCtx);
+  const maxNumPredict = maxNumPredictForContext(effectiveNumCtx);
   const issues: ModelConfigIssue[] = [];
 
-  if (settings.numCtx < minNumCtx) {
+  if (effectiveNumCtx < minNumCtx) {
     issues.push({
-      field: "numCtx",
+      field: "numPredict",
       severity: "error",
       message:
-        `Context must be at least ${minNumCtx} for the generation budget ` +
-        `(${normalized.numPredict} tokens + ${NUM_CTX_GENERATION_HEADROOM} prompt headroom). ` +
-        `Lower generation tokens first, or raise context.`,
+        `Generation budget (${normalized.numPredict} tokens) needs at least ` +
+        `${minNumCtx} context (${NUM_CTX_GENERATION_HEADROOM} headroom). ` +
+        `Lower generation tokens or increase VRAM_AVAILABLE / use a smaller model.`,
     });
   }
 
@@ -114,8 +118,8 @@ export function analyzeModelConfig(settings: Settings): ModelConfigAnalysis {
       field: "numPredict",
       severity: "error",
       message:
-        `Generation budget cannot exceed ${maxNumPredict} with context ${normalized.numCtx}. ` +
-        `Raise context first.`,
+        `Generation budget cannot exceed ${maxNumPredict} with derived context ` +
+        `${effectiveNumCtx}. Lower generation tokens.`,
     });
   }
 
@@ -148,8 +152,10 @@ export function analyzeModelConfig(settings: Settings): ModelConfigAnalysis {
     settings: normalized,
     derived,
     issues,
+    effectiveNumCtx,
     minNumCtx,
     maxNumPredict,
+    contextBudget,
   };
 }
 
@@ -166,32 +172,14 @@ export function issuesForField(
 
 export function applyModelConfigUpdate(
   settings: Settings,
+  contextBudget: ContextBudget,
   patch: ModelConfigPatch,
 ): ModelConfigUpdateResult {
+  const effectiveNumCtx = contextBudget.effectiveNumCtx;
   let next: Settings = { ...settings, ...patch };
 
-  if (patch.numCtx != null) {
-    const numCtx = snapNumCtx(patch.numCtx);
-    const minCtx = minNumCtxForPredict(next.numPredict);
-    if (numCtx < minCtx) {
-      return {
-        ok: false,
-        settings,
-        issue: {
-          field: "numCtx",
-          severity: "error",
-          message:
-            `Cannot set context to ${numCtx}: it must be at least ${minCtx} ` +
-            `for the current generation budget (${snapNumPredict(next.numPredict)} + ` +
-            `${NUM_CTX_GENERATION_HEADROOM} headroom). Lower generation tokens first.`,
-        },
-      };
-    }
-    next.numCtx = numCtx;
-  }
-
   if (patch.numPredict != null || patch.thinkingNumPredict != null) {
-    const maxPredict = maxNumPredictForContext(next.numCtx);
+    const maxPredict = maxNumPredictForContext(effectiveNumCtx);
     const requested = snapNumPredict(patch.numPredict ?? next.numPredict);
     if (requested > maxPredict) {
       return {
@@ -202,7 +190,7 @@ export function applyModelConfigUpdate(
           severity: "error",
           message:
             `Cannot set generation to ${requested}: max is ${maxPredict} ` +
-            `with context ${next.numCtx}. Raise context first.`,
+            `with derived context ${effectiveNumCtx}. Lower generation tokens.`,
         },
       };
     }
@@ -245,16 +233,16 @@ export function applyModelConfigUpdate(
     };
   }
 
-  next = normalizeModelFields(next);
+  next = normalizeModelFields(next, effectiveNumCtx);
   return { ok: true, settings: next };
 }
 
 export const MODEL_CONFIG_GROUPS = [
   {
     id: "context",
-    title: "1. Context window",
+    title: "1. Context window (auto)",
     description:
-      "Set num_ctx first. It must cover chat history, the system prompt, and the generation budget below.",
+      "num_ctx is derived from VRAM_AVAILABLE, the selected model size, and your generation budget.",
   },
   {
     id: "generation",
@@ -281,18 +269,11 @@ export const MODEL_CONFIG_GROUPS = [
   },
 ] as const;
 
-export function numCtxHint(minNumCtx: number, maxNumPredict: number): string {
+export function numPredictHint(maxNumPredict: number, effectiveNumCtx: number): string {
   return (
-    `Ollama context window (step ${NUM_CTX_STEP}). Minimum ${minNumCtx} with the ` +
-    `current generation budget. Generation max with this context: ${maxNumPredict}.`
+    `Hard cap on generated tokens per reply. Maximum ${maxNumPredict} with ` +
+    `derived context ${effectiveNumCtx.toLocaleString()}.`
   );
 }
 
-export function numPredictHint(maxNumPredict: number, numCtx: number): string {
-  return (
-    `Hard cap on generated tokens per reply. Maximum ${maxNumPredict} until ` +
-    `context is above ${numCtx + NUM_CTX_GENERATION_HEADROOM}.`
-  );
-}
-
-export { DEFAULT_THINKING_NUM_PREDICT, MIN_NUM_CTX, NUM_CTX_STEP };
+export { DEFAULT_THINKING_NUM_PREDICT };

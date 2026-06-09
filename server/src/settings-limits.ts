@@ -5,7 +5,9 @@ export const MIN_NUM_PREDICT = 32;
 export const MAX_NUM_PREDICT = 8192;
 export const NUM_CTX_GENERATION_HEADROOM = 512;
 export const MIN_NUM_CTX = 2048;
-export const MAX_NUM_CTX = 32768;
+/** Upper bound for derived num_ctx (256k VRAM tier). */
+export const ABSOLUTE_MAX_NUM_CTX = 262144;
+export const MAX_NUM_CTX = ABSOLUTE_MAX_NUM_CTX;
 export const NUM_CTX_STEP = 512;
 export const NUM_PREDICT_STEP = 32;
 export const MIN_THINKING_TOKENS = 32;
@@ -235,7 +237,7 @@ export function validateSettingsFields(settings: Settings): void {
             normalized.numPredict - MIN_REPLY_TOKENS),
     ],
     [
-      "numCtx must be 2048–32768",
+      `numCtx must be ${MIN_NUM_CTX}–${MAX_NUM_CTX} (derived from VRAM and model)`,
       isFiniteNumber(settings.numCtx) &&
         settings.numCtx >= MIN_NUM_CTX &&
         settings.numCtx <= MAX_NUM_CTX,

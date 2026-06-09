@@ -19,7 +19,13 @@ import {
 import { checkHealth, listModels } from "../ollama/client.js";
 import { isTavilyConfigured } from "../tavily/client.js";
 import { buildBaseSystemPrompt } from "../prompts.js";
-import { getHistoryLimits } from "../settings-limits.js";
+import { config, getVramAvailableGb } from "../config.js";
+import { ensureModelContextCache } from "../ollama/model-context-cache.js";
+import {
+  getContextBudgetForSettings,
+  getResolvedHistoryLimits,
+  getResolvedSettings,
+} from "../settings-runtime.js";
 import {
   clearGroupFactsForGroup,
   createGroupFact,
@@ -94,13 +100,17 @@ export function createApiRouter(): Router {
     res.json({ ok: true });
   });
 
-  router.get("/settings", (_req, res) => {
+  router.get("/settings", async (_req, res) => {
     try {
       const settings = getSettings();
+      await ensureModelContextCache(settings.model, settings.ollamaHost);
+      const resolved = getResolvedSettings(settings);
       res.json({
-        ...settings,
-        baseSystemPrompt: buildBaseSystemPrompt(settings),
-        derivedHistoryLimits: getHistoryLimits(settings),
+        ...resolved,
+        baseSystemPrompt: buildBaseSystemPrompt(resolved),
+        derivedHistoryLimits: getResolvedHistoryLimits(settings),
+        contextBudget: getContextBudgetForSettings(settings),
+        vramAvailableGb: getVramAvailableGb(),
       });
     } catch (err) {
       res.status(500).json({
@@ -120,7 +130,6 @@ export function createApiRouter(): Router {
         "randomReplyChance",
         "reactToEveryImage",
         "numPredict",
-        "numCtx",
         "temperature",
         "topP",
         "topK",
@@ -153,6 +162,7 @@ export function createApiRouter(): Router {
       }
 
       const updated = updateSettings(patch);
+      await ensureModelContextCache(updated.model, updated.ollamaHost);
 
       if (
         body.stickersEnabled !== undefined ||
@@ -166,10 +176,13 @@ export function createApiRouter(): Router {
         }
       }
 
+      const resolved = getResolvedSettings(updated);
       res.json({
-        ...updated,
-        baseSystemPrompt: buildBaseSystemPrompt(updated),
-        derivedHistoryLimits: getHistoryLimits(updated),
+        ...resolved,
+        baseSystemPrompt: buildBaseSystemPrompt(resolved),
+        derivedHistoryLimits: getResolvedHistoryLimits(updated),
+        contextBudget: getContextBudgetForSettings(updated),
+        vramAvailableGb: getVramAvailableGb(),
       });
     } catch (err) {
       res.status(400).json({

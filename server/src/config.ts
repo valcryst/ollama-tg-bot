@@ -27,8 +27,68 @@ function resolveLoggingLevel(): LoggingLevel {
   return "ERROR";
 }
 
+interface StartupEnv {
+  botToken: string;
+  vramAvailableGb: number;
+}
+
+let startupEnv: StartupEnv | undefined;
+
+function collectRequiredEnvErrors(): string[] {
+  const errors: string[] = [];
+
+  const botToken = (process.env.BOT_TOKEN ?? "").trim();
+  if (!botToken) {
+    errors.push("BOT_TOKEN environment variable is required");
+  }
+
+  const vramRaw = (process.env.VRAM_AVAILABLE ?? "").trim();
+  if (!vramRaw) {
+    errors.push(
+      "VRAM_AVAILABLE environment variable is required (GPU VRAM in gigabytes, e.g. 24)",
+    );
+  } else {
+    const value = Number(vramRaw);
+    if (!Number.isFinite(value) || value <= 0) {
+      errors.push(
+        "VRAM_AVAILABLE must be a positive number of gigabytes (e.g. 24)",
+      );
+    }
+  }
+
+  return errors;
+}
+
+function resolveStartupEnv(): StartupEnv {
+  const errors = collectRequiredEnvErrors();
+  if (errors.length > 0) {
+    throw new Error(errors.join("; "));
+  }
+
+  return {
+    botToken: (process.env.BOT_TOKEN ?? "").trim(),
+    vramAvailableGb: Number((process.env.VRAM_AVAILABLE ?? "").trim()),
+  };
+}
+
+/** Validates BOT_TOKEN and VRAM_AVAILABLE. Call once before the server listens. */
+export function requireStartupEnv(): StartupEnv {
+  if (!startupEnv) {
+    startupEnv = resolveStartupEnv();
+  }
+  return startupEnv;
+}
+
+export function requireBotToken(): string {
+  return requireStartupEnv().botToken;
+}
+
+/** GPU VRAM from VRAM_AVAILABLE — used to derive num_ctx from the selected model. */
+export function getVramAvailableGb(): number {
+  return requireStartupEnv().vramAvailableGb;
+}
+
 export const config = {
-  botToken: process.env.BOT_TOKEN ?? "",
   host: "0.0.0.0",
   port: resolvePort(),
   databasePath:
@@ -39,10 +99,3 @@ export const config = {
   /** ERROR = errors only; DEBUG = lifecycle events; VERBOSE = + Ollama I/O. */
   loggingLevel: resolveLoggingLevel(),
 };
-
-export function requireBotToken(): string {
-  if (!config.botToken) {
-    throw new Error("BOT_TOKEN environment variable is required");
-  }
-  return config.botToken;
-}

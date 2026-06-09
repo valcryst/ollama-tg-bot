@@ -1,5 +1,5 @@
 import { getSettings } from "./db/database.js";
-import { getHistoryLimits } from "./settings-limits.js";
+import { getResolvedHistoryLimits } from "./settings-runtime.js";
 import {
   getGeneralFacts,
   generalMemoryTotalChars,
@@ -61,7 +61,7 @@ let compressionQueue: Promise<void> = Promise.resolve();
 
 export function historyNeedsCompression(chatKey: string): boolean {
   const settings = getSettings();
-  const limits = getHistoryLimits(settings);
+  const limits = getResolvedHistoryLimits(settings);
   const history = getHistoryForCompression(chatKey);
   if (history.length < 2) return false;
   if (history.length === 1 && history[0].role === COMPRESSED_ROLE) {
@@ -145,7 +145,7 @@ async function compressHistoryIfNeeded(chatKey: string): Promise<void> {
   const history = getHistoryForCompression(chatKey);
   if (history.length === 0) return;
 
-  const limits = getHistoryLimits(settings);
+  const limits = getResolvedHistoryLimits(settings);
   const maxSummaryChars = Math.max(
     400,
     Math.floor(limits.historyMaxChars * 0.85),

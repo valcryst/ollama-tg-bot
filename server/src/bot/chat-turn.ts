@@ -2,13 +2,12 @@ import type { Context } from "grammy";
 import type { ChatMessage } from "../ollama/client.js";
 import { chatCompleteDetailed } from "../ollama/client.js";
 import {
-  getSettings,
   recordError,
   recordReply,
   type ErrorLogInput,
 } from "../db/database.js";
 import { getActivePersonalityPrompt } from "../db/personalities.js";
-import { getHistoryLimits } from "../settings-limits.js";
+import { getResolvedHistoryLimits, getResolvedSettings } from "../settings-runtime.js";
 import { extractTelegramReply } from "../response-format.js";
 import {
   hasVisibleTelegramReply,
@@ -143,7 +142,7 @@ export async function runChatTurn(
   ctx: Context,
   input: ChatTurnInput,
 ): Promise<void> {
-  const settings = getSettings();
+  const settings = getResolvedSettings();
 
   const turnLog = {
     chatId: input.chatId,
@@ -255,7 +254,7 @@ export async function runChatTurn(
       },
     );
 
-    const historyLimits = getHistoryLimits(settings);
+    const historyLimits = getResolvedHistoryLimits(settings);
     const injectedChars = built.historyMessages.reduce(
       (n, m) => n + m.content.length,
       0,

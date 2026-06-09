@@ -2,9 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import express from "express";
 import cors from "cors";
-import { config } from "./config.js";
+import { config, requireStartupEnv } from "./config.js";
 import { logInfo } from "./logging.js";
-import { initDatabase } from "./db/database.js";
+import { initDatabase, getSettings } from "./db/database.js";
+import { refreshModelContextCache } from "./ollama/model-context-cache.js";
 import { createApiRouter } from "./api/routes.js";
 import { startBot, stopBot } from "./bot/index.js";
 import { closePlaywrightBrowser } from "./playwright/client.js";
@@ -14,7 +15,11 @@ import {
 } from "./mood-cooldown.js";
 
 async function main(): Promise<void> {
+  requireStartupEnv();
+
   initDatabase();
+  const bootSettings = getSettings();
+  void refreshModelContextCache(bootSettings.model, bootSettings.ollamaHost);
   startMoodCooldownWorker();
 
   const app = express();
@@ -42,11 +47,11 @@ async function main(): Promise<void> {
     logInfo("No dashboard build — run npm run dev -w dashboard (Vite)");
   }
 
-  await startBot();
-
   const server = app.listen(config.port, config.host, () => {
     logInfo(`Listening on http://${config.host}:${config.port}`);
   });
+
+  await startBot();
 
   const shutdown = async () => {
     logInfo("Shutting down...");

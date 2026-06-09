@@ -19,6 +19,11 @@ import {
   getPersonalityById,
 } from "./personalities.js";
 import {
+  invalidateModelContextCache,
+  refreshModelContextCache,
+} from "../ollama/model-context-cache.js";
+import { getResolvedSettings } from "../settings-runtime.js";
+import {
   normalizeTokenBudget,
   validateSettingsFields,
 } from "../settings-limits.js";
@@ -168,7 +173,7 @@ export function initDatabase(): void {
   bindKnownUsersDatabase(db);
   bindDataBrowserDatabase(db);
   bindMoodDatabase(db);
-  configureHistoryAccess(getSettings);
+  configureHistoryAccess(getResolvedSettings);
   configureMoodAccess(getSettings);
 }
 
@@ -216,7 +221,8 @@ export function getSettings(): Settings {
 
 export function updateSettings(partial: Partial<Settings>): Settings {
   const current = getSettings();
-  const next = { ...current, ...partial };
+  const { numCtx: _ignoredCtx, ...rest } = partial;
+  const next = { ...current, ...rest };
   if (partial.ownerUsername !== undefined) {
     const raw = partial.ownerUsername.trim();
     next.ownerUsername =
@@ -231,17 +237,24 @@ export function updateSettings(partial: Partial<Settings>): Settings {
   if (partial.topK !== undefined) {
     next.topK = Math.round(partial.topK);
   }
-  const normalized = normalizeTokenBudget(next);
-  validateSettingsFields(normalized);
+  if (partial.model !== undefined || partial.ollamaHost !== undefined) {
+    invalidateModelContextCache();
+  }
 
-  if (normalized.activePersonalityId > 0 && !getPersonalityById(normalized.activePersonalityId)) {
+  const normalized = normalizeTokenBudget(next);
+  const resolved = getResolvedSettings(normalized);
+  validateSettingsFields(resolved);
+
+  if (resolved.activePersonalityId > 0 && !getPersonalityById(resolved.activePersonalityId)) {
     throw new Error("activePersonalityId does not match a saved personality");
   }
 
-  for (const key of Object.keys(normalized) as (keyof Settings)[]) {
-    setSetting(key, normalized[key]);
+  for (const key of Object.keys(resolved) as (keyof Settings)[]) {
+    setSetting(key, resolved[key]);
   }
-  return normalized;
+
+  void refreshModelContextCache(resolved.model, resolved.ollamaHost);
+  return resolved;
 }
 
 function incrementStat(key: keyof Stats): void {

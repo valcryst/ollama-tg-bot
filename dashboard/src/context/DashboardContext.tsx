@@ -9,6 +9,10 @@ import {
 } from "react";
 import { api, type OllamaModel, type Settings, type Stats } from "../api";
 import {
+  calculateContextBudget,
+  modelContextFromTags,
+} from "../contextBudgetCalc";
+import {
   analyzeModelConfig,
   hasModelConfigErrors,
 } from "../modelConfig";
@@ -31,6 +35,7 @@ interface DashboardContextValue {
   setDraft: React.Dispatch<React.SetStateAction<Settings | null>>;
   stats: Stats | null;
   models: OllamaModel[];
+  vramAvailableGb: number | undefined;
   ollamaOk: boolean | null;
   tavilyConfigured: boolean | null;
   apiOnline: boolean | null;
@@ -61,6 +66,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState<Settings | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [models, setModels] = useState<OllamaModel[]>([]);
+  const [vramAvailableGb, setVramAvailableGb] = useState<number | undefined>(
+    undefined,
+  );
   const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
   const [tavilyConfigured, setTavilyConfigured] = useState<boolean | null>(
     null,
@@ -116,6 +124,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     if (settingsRes.status === "fulfilled") {
       setSettings(settingsRes.value);
       setDraft(settingsRes.value);
+      setVramAvailableGb(settingsRes.value.vramAvailableGb);
     } else {
       nextErrors.settings = settingsRes.reason;
     }
@@ -297,7 +306,22 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   const save = async () => {
     if (!draft) return;
-    const analysis = analyzeModelConfig(draft);
+    const tag = models.find((m) => m.name === draft.model);
+    if (vramAvailableGb == null) {
+      setSectionError(
+        "save",
+        new Error(
+          "VRAM_AVAILABLE is not configured on the server. Set it in .env and restart.",
+        ),
+      );
+      return;
+    }
+    const budget = calculateContextBudget(
+      vramAvailableGb,
+      modelContextFromTags(draft.model, tag),
+      draft.numPredict,
+    );
+    const analysis = analyzeModelConfig(draft, budget);
     if (hasModelConfigErrors(analysis.issues)) {
       setSectionError(
         "save",
@@ -317,6 +341,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       const updated = await api.updateSettings(analysis.settings);
       setSettings(updated);
       setDraft(updated);
+      setVramAvailableGb(updated.vramAvailableGb);
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2500);
     } catch (err) {
@@ -347,6 +372,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     setDraft,
     stats,
     models,
+    vramAvailableGb,
     ollamaOk,
     tavilyConfigured,
     apiOnline,

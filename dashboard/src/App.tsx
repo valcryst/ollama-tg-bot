@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { isApiError } from "./api";
 import { DashboardProvider, useDashboard } from "./context/DashboardContext";
 import { AppLayout } from "./layout/AppLayout";
 import { MemoriesPage } from "./pages/MemoriesPage";
@@ -28,7 +29,15 @@ function DashboardRoutes() {
     );
   }
 
-  if (apiUnreachable && !settings && !stats) {
+  const showOfflinePage =
+    !settings &&
+    !stats &&
+    (apiUnreachable ||
+      (primaryLoadError != null &&
+        isApiError(primaryLoadError) &&
+        primaryLoadError.kind === "server"));
+
+  if (showOfflinePage) {
     return (
       <OfflinePage
         primaryLoadError={primaryLoadError}
