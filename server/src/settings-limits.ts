@@ -156,68 +156,120 @@ export function getChatTimeoutMs(settings: Settings): number {
 
 export function validateSettingsFields(settings: Settings): void {
   const normalized = normalizeTokenBudget(settings);
+  const isFiniteNumber = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+  const isBoolean = (value: unknown): value is boolean =>
+    typeof value === "boolean";
+  const isString = (value: unknown): value is string =>
+    typeof value === "string";
+
   const checks: [string, boolean][] = [
+    ["ollamaHost must be a string", isString(settings.ollamaHost)],
+    ["model must be a string", isString(settings.model)],
+    ["randomReplyEnabled must be true or false", isBoolean(settings.randomReplyEnabled)],
+    ["reactToEveryImage must be true or false", isBoolean(settings.reactToEveryImage)],
+    ["stickersEnabled must be true or false", isBoolean(settings.stickersEnabled)],
+    ["thinkingEnabled must be true or false", isBoolean(settings.thinkingEnabled)],
+    ["sendThinkingEnabled must be true or false", isBoolean(settings.sendThinkingEnabled)],
+    ["ownerUsername must be a string", isString(settings.ownerUsername)],
+    ["ownerUserId must be a string", isString(settings.ownerUserId)],
+    ["stickerPackName must be a string", isString(settings.stickerPackName)],
+    ["numPredict must be a number", isFiniteNumber(settings.numPredict)],
+    ["thinkingNumPredict must be a number", isFiniteNumber(settings.thinkingNumPredict)],
+    ["numCtx must be a number", isFiniteNumber(settings.numCtx)],
+    ["temperature must be a number", isFiniteNumber(settings.temperature)],
+    ["topP must be a number", isFiniteNumber(settings.topP)],
+    ["topK must be a number", isFiniteNumber(settings.topK)],
+    ["repeatPenalty must be a number", isFiniteNumber(settings.repeatPenalty)],
+    ["chatTimeoutSec must be a number", isFiniteNumber(settings.chatTimeoutSec)],
+    ["visionMaxDimension must be a number", isFiniteNumber(settings.visionMaxDimension)],
+    ["randomReplyChance must be a number", isFiniteNumber(settings.randomReplyChance)],
+    ["stickerReplyChance must be a number", isFiniteNumber(settings.stickerReplyChance)],
+    ["activePersonalityId must be a number", isFiniteNumber(settings.activePersonalityId)],
+    ["moodCooldownMinutes must be a number", isFiniteNumber(settings.moodCooldownMinutes)],
     [
       "numPredict must be 32–2048",
-      normalized.numPredict >= MIN_NUM_PREDICT &&
+      isFiniteNumber(normalized.numPredict) &&
+        normalized.numPredict >= MIN_NUM_PREDICT &&
         normalized.numPredict <= MAX_NUM_PREDICT,
     ],
     [
       "thinkingNumPredict must leave at least 32 tokens for reply",
       !normalized.thinkingEnabled ||
-        (normalized.thinkingNumPredict >= MIN_THINKING_TOKENS &&
+        (isFiniteNumber(normalized.thinkingNumPredict) &&
+          normalized.thinkingNumPredict >= MIN_THINKING_TOKENS &&
           normalized.thinkingNumPredict <=
             normalized.numPredict - MIN_REPLY_TOKENS),
     ],
-    ["numCtx must be 2048–32768", settings.numCtx >= 2048 && settings.numCtx <= 32768],
-    ["temperature must be 0–2", settings.temperature >= 0 && settings.temperature <= 2],
-    ["topP must be 0.05–1", settings.topP >= 0.05 && settings.topP <= 1],
+    ["numCtx must be 2048–32768", isFiniteNumber(settings.numCtx) && settings.numCtx >= 2048 && settings.numCtx <= 32768],
+    ["temperature must be 0–2", isFiniteNumber(settings.temperature) && settings.temperature >= 0 && settings.temperature <= 2],
+    ["topP must be 0.05–1", isFiniteNumber(settings.topP) && settings.topP >= 0.05 && settings.topP <= 1],
     [
       "topK must be 1–200",
-      Number.isInteger(settings.topK) && settings.topK >= 1 && settings.topK <= 200,
+      Number.isInteger(settings.topK) &&
+        settings.topK >= 1 &&
+        settings.topK <= 200,
     ],
     [
       "repeatPenalty must be 0.8–2",
-      settings.repeatPenalty >= 0.8 && settings.repeatPenalty <= 2,
+      isFiniteNumber(settings.repeatPenalty) &&
+        settings.repeatPenalty >= 0.8 &&
+        settings.repeatPenalty <= 2,
     ],
     [
       "chatTimeoutSec must be 30–600",
-      settings.chatTimeoutSec >= 30 && settings.chatTimeoutSec <= 600,
+      isFiniteNumber(settings.chatTimeoutSec) &&
+        settings.chatTimeoutSec >= 30 &&
+        settings.chatTimeoutSec <= 600,
     ],
     [
       "visionMaxDimension must be 256–2048",
-      settings.visionMaxDimension >= 256 && settings.visionMaxDimension <= 2048,
+      isFiniteNumber(settings.visionMaxDimension) &&
+        settings.visionMaxDimension >= 256 &&
+        settings.visionMaxDimension <= 2048,
     ],
     [
       "randomReplyChance must be 0–100",
-      settings.randomReplyChance >= 0 && settings.randomReplyChance <= 100,
+      isFiniteNumber(settings.randomReplyChance) &&
+        settings.randomReplyChance >= 0 &&
+        settings.randomReplyChance <= 100,
     ],
     [
       "ownerUsername must be empty or a valid Telegram username",
-      settings.ownerUsername.trim() === "" ||
-        /^[a-z0-9_]{5,32}$/i.test(settings.ownerUsername.trim()),
+      isString(settings.ownerUsername) &&
+        (settings.ownerUsername.trim() === "" ||
+          /^[a-z0-9_]{5,32}$/i.test(settings.ownerUsername.trim())),
     ],
     [
       "ownerUserId must be empty or a numeric Telegram user id",
-      settings.ownerUserId.trim() === "" ||
-        /^\d{1,20}$/.test(settings.ownerUserId.trim()),
+      isString(settings.ownerUserId) &&
+        (settings.ownerUserId.trim() === "" ||
+          /^\d{1,20}$/.test(settings.ownerUserId.trim())),
     ],
     [
       "ownerUserId is required when ownerUsername is set",
-      settings.ownerUsername.trim() === "" || settings.ownerUserId.trim() !== "",
+      isString(settings.ownerUsername) &&
+        isString(settings.ownerUserId) &&
+        (settings.ownerUsername.trim() === "" ||
+          settings.ownerUserId.trim() !== ""),
     ],
     [
       "stickerPackName must be empty or a valid sticker set name",
-      settings.stickerPackName.trim() === "" ||
-        /^[a-zA-Z0-9_]{1,64}$/.test(settings.stickerPackName.trim()),
+      isString(settings.stickerPackName) &&
+        (settings.stickerPackName.trim() === "" ||
+          /^[a-zA-Z0-9_]{1,64}$/.test(settings.stickerPackName.trim())),
     ],
     [
       "stickerPackName is required when stickers are enabled",
-      !settings.stickersEnabled || settings.stickerPackName.trim() !== "",
+      isBoolean(settings.stickersEnabled) &&
+        isString(settings.stickerPackName) &&
+        (!settings.stickersEnabled || settings.stickerPackName.trim() !== ""),
     ],
     [
       "stickerReplyChance must be 0–100",
-      settings.stickerReplyChance >= 0 && settings.stickerReplyChance <= 100,
+      isFiniteNumber(settings.stickerReplyChance) &&
+        settings.stickerReplyChance >= 0 &&
+        settings.stickerReplyChance <= 100,
     ],
     [
       "activePersonalityId must be a non-negative integer",
@@ -226,7 +278,9 @@ export function validateSettingsFields(settings: Settings): void {
     ],
     [
       "moodCooldownMinutes must be 5–1440",
-      settings.moodCooldownMinutes >= 5 && settings.moodCooldownMinutes <= 1440,
+      isFiniteNumber(settings.moodCooldownMinutes) &&
+        settings.moodCooldownMinutes >= 5 &&
+        settings.moodCooldownMinutes <= 1440,
     ],
     [
       "sendThinkingEnabled requires thinkingEnabled",

@@ -72,16 +72,20 @@ function balanceTelegramHtml(text: string): string {
     if (!normalized) continue;
 
     if (normalized.startsWith("</")) {
-      const name = normalized.slice(2, -1);
+      const name = tagNameFromNormalized(normalized);
+      if (!name) continue;
       const idx = stack.lastIndexOf(name);
       if (idx === -1) continue;
-      stack.splice(idx);
+      while (stack.length > idx + 1) {
+        out.push(`</${stack.pop()!}>`);
+      }
+      stack.pop();
       out.push(normalized);
       continue;
     }
 
-    const name = normalized.slice(1, -1);
-    if (PAIRED_TAGS.has(name)) {
+    const name = tagNameFromNormalized(normalized);
+    if (name && PAIRED_TAGS.has(name)) {
       stack.push(name);
       out.push(normalized);
     }
@@ -93,6 +97,11 @@ function balanceTelegramHtml(text: string): string {
   }
 
   return out.join("");
+}
+
+function tagNameFromNormalized(tag: string): string | null {
+  const match = tag.match(/^<\/?([a-z][a-z0-9-]*)\b/i);
+  return match?.[1].toLowerCase() ?? null;
 }
 
 function normalizeTelegramTag(raw: string): string | null {
@@ -120,9 +129,11 @@ function normalizeTelegramTag(raw: string): string | null {
   }
   if (/^<\/blockquote>$/i.test(tag)) return "</blockquote>";
 
-  const spoilerOpen = tag.match(/^<span\s+class="tg-spoiler"\s*>$/i);
-  if (spoilerOpen) return '<span class="tg-spoiler">';
-  if (/^<\/span>$/i.test(tag)) return "</span>";
+  const spoilerOpen = tag.match(
+    /^<span\s+class=(?:"tg-spoiler"|'tg-spoiler'|tg-spoiler)\s*>$/i,
+  );
+  if (spoilerOpen) return "<tg-spoiler>";
+  if (/^<\/span>$/i.test(tag)) return "</tg-spoiler>";
 
   const generic = tag.match(/^<\s*(\/?)\s*([a-z][a-z0-9-]*)\b[^>]*>$/i);
   if (!generic) return null;
