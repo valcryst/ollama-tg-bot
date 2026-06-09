@@ -164,8 +164,8 @@ export function addUserFacts(userId: string, facts: string[]): number {
   let added = 0;
 
   for (const fact of facts) {
-    const normalized = fact.trim();
-    if (normalized.length < 2 || normalized.length > 500) continue;
+    const normalized = normalizeFactText(fact);
+    if (!normalized) continue;
     const key = normalized.toLowerCase();
     if (existing.has(key)) continue;
     existing.add(key);

@@ -4,6 +4,7 @@ import type { Settings } from "./database.js";
 import { getHistoryLimits } from "../settings-limits.js";
 export const ASSISTANT_ROLE = "assistant";
 export const COMPRESSED_ROLE = "compressed";
+const HISTORY_RETENTION_MULTIPLIER = 2;
 
 let readSettings: () => Settings = () => {
   throw new Error("History module not initialized");
@@ -76,16 +77,42 @@ export function threadIdFromChatKey(
 
 export function getHistory(chatKey: string): StoredMessage[] {
   const { historyMaxMessages } = getHistoryLimits(readSettings());
-  const rows = db
+  const rows = selectLatestHistoryRows(chatKey, historyMaxMessages);
+  if (rows.some((m) => isCompressedRole(m.role))) return rows.reverse();
+
+  const compressed = db
     .prepare(
       `SELECT role, content FROM chat_messages
-       WHERE chat_key = ?
+       WHERE chat_key = ? AND role = ?
        ORDER BY id DESC
-       LIMIT ?`,
+       LIMIT 1`,
     )
-    .all(chatKey, historyMaxMessages) as unknown as StoredMessage[];
+    .get(chatKey, COMPRESSED_ROLE) as StoredMessage | undefined;
 
-  return rows.reverse();
+  if (!compressed) return rows.reverse();
+
+  return [
+    compressed,
+    ...rows.slice(0, Math.max(0, historyMaxMessages - 1)).reverse(),
+  ];
+}
+
+export function getHistoryForCompression(chatKey: string): StoredMessage[] {
+  const { historyMaxMessages } = getHistoryLimits(readSettings());
+  const limit = historyMaxMessages * HISTORY_RETENTION_MULTIPLIER;
+  const rows = selectLatestHistoryRows(chatKey, limit);
+  if (rows.some((m) => isCompressedRole(m.role))) return rows.reverse();
+
+  const compressed = db
+    .prepare(
+      `SELECT role, content FROM chat_messages
+       WHERE chat_key = ? AND role = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+    )
+    .get(chatKey, COMPRESSED_ROLE) as StoredMessage | undefined;
+
+  return compressed ? [compressed, ...rows.reverse()] : rows.reverse();
 }
 
 export function appendMessage(
@@ -144,15 +171,30 @@ export function replaceHistory(
 
 function pruneHistory(chatKey: string): void {
   const { historyMaxMessages } = getHistoryLimits(readSettings());
+  const retentionLimit = historyMaxMessages * HISTORY_RETENTION_MULTIPLIER;
   db.prepare(
     `DELETE FROM chat_messages
-     WHERE chat_key = ? AND id NOT IN (
+     WHERE chat_key = ? AND role != ? AND id NOT IN (
        SELECT id FROM chat_messages
        WHERE chat_key = ?
        ORDER BY id DESC
        LIMIT ?
      )`,
-  ).run(chatKey, chatKey, historyMaxMessages);
+  ).run(chatKey, COMPRESSED_ROLE, chatKey, retentionLimit);
+}
+
+function selectLatestHistoryRows(
+  chatKey: string,
+  limit: number,
+): StoredMessage[] {
+  return db
+    .prepare(
+      `SELECT role, content FROM chat_messages
+       WHERE chat_key = ?
+       ORDER BY id DESC
+       LIMIT ?`,
+    )
+    .all(chatKey, limit) as unknown as StoredMessage[];
 }
 
 export function trimForContext(

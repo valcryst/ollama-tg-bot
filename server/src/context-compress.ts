@@ -12,7 +12,7 @@ import {
 } from "./db/group-memory.js";
 import {
   COMPRESSED_ROLE,
-  getHistory,
+  getHistoryForCompression,
   historyTotalChars,
   replaceHistory,
   type StoredMessage,
@@ -61,7 +61,7 @@ const inFlight = new Set<string>();
 export function historyNeedsCompression(chatKey: string): boolean {
   const settings = getSettings();
   const limits = getHistoryLimits(settings);
-  const history = getHistory(chatKey);
+  const history = getHistoryForCompression(chatKey);
   if (history.length < 2) return false;
   if (history.length === 1 && history[0].role === COMPRESSED_ROLE) {
     return historyTotalChars(history) > limits.historyMaxChars;
@@ -71,7 +71,7 @@ export function historyNeedsCompression(chatKey: string): boolean {
   if (total > limits.historyMaxChars) return true;
 
   return (
-    history.length >= limits.historyMaxMessages &&
+    history.length >= limits.historyMaxMessages * 2 &&
     total > limits.historyMaxChars * 0.75
   );
 }
@@ -134,7 +134,7 @@ async function compressHistoryIfNeeded(chatKey: string): Promise<void> {
   if (!historyNeedsCompression(chatKey)) return;
 
   const settings = getSettings();
-  const history = getHistory(chatKey);
+  const history = getHistoryForCompression(chatKey);
   if (history.length === 0) return;
 
   const limits = getHistoryLimits(settings);

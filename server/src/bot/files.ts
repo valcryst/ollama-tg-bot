@@ -1,4 +1,5 @@
 const TELEGRAM_FILE = "https://api.telegram.org/file/bot";
+const TELEGRAM_FILE_TIMEOUT_MS = 20_000;
 
 export type ImagePayload = { base64: string; mimeHint: string };
 
@@ -15,6 +16,7 @@ export async function getTelegramFilePath(
 ): Promise<string | null> {
   const file = await fetch(
     `https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`,
+    { signal: AbortSignal.timeout(TELEGRAM_FILE_TIMEOUT_MS) },
   ).then((r) => r.json()) as { ok: boolean; result?: { file_path: string } };
 
   if (!file.ok || !file.result?.file_path) return null;
@@ -29,7 +31,9 @@ export async function downloadTelegramFile(
   if (!filePath) return null;
 
   const url = `${TELEGRAM_FILE}${token}/${filePath}`;
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(TELEGRAM_FILE_TIMEOUT_MS),
+  });
   if (!res.ok) return null;
 
   const buffer = Buffer.from(await res.arrayBuffer());

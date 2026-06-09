@@ -234,7 +234,11 @@ function cleanupLegacyDuplicateRefs(): void {
           AND feed.chat_key = substr(
             per_user.chat_key,
             1,
-            instr(per_user.chat_key, ':', instr(per_user.chat_key, ':') + 1) - 1
+            instr(per_user.chat_key, ':') +
+              instr(
+                substr(per_user.chat_key, instr(per_user.chat_key, ':') + 1),
+                ':'
+              ) - 1
           )
       )
   `);
