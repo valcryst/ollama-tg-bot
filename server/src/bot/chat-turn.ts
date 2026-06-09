@@ -11,7 +11,11 @@ import {
 import { getActivePersonalityPrompt } from "../db/personalities.js";
 import { getHistoryLimits } from "../settings-limits.js";
 import { extractTelegramReply } from "../response-format.js";
-import { prepareTelegramHtml } from "../telegram/html.js";
+import {
+  hasVisibleTelegramReply,
+  prepareTelegramHtml,
+  visibleTelegramText,
+} from "../telegram/html.js";
 import {
   formatTavilyContext,
   formatTavilyFailure,
@@ -288,12 +292,10 @@ export async function runChatTurn(
       outputChars: modelOutput.length,
     });
 
-    let replyBody = extractTelegramReply(modelOutput, {
+    const replyBody = extractTelegramReply(modelOutput, {
       thinkingMode: settings.thinkingEnabled,
     });
-    if (!replyBody.trim()) {
-      throw new Error("Model response had no [REPLY] content");
-    }
+    const hasReply = hasVisibleTelegramReply(replyBody);
 
     let stickerEmoji: string | null = null;
     if (
@@ -322,14 +324,18 @@ export async function runChatTurn(
       });
     }
 
+    if (!hasReply && !stickerFileId) {
+      throw new Error("Model response had no [REPLY] content");
+    }
+
     const historyText =
-      stickerEmoji && replyBody.trim()
+      hasReply && stickerEmoji
         ? `${replyBody}\n[sticker: ${stickerEmoji}]`
         : stickerEmoji
           ? `[sticker: ${stickerEmoji}]`
           : replyBody;
 
-    const reply = replyBody.trim() ? prepareTelegramHtml(replyBody) : "";
+    const reply = hasReply ? prepareTelegramHtml(replyBody) : "";
     recordExchange(
       input.convKey,
       input.userRole,
@@ -400,7 +406,7 @@ export async function runChatTurn(
     logEvent("reply_sent", {
       ...turnLog,
       chunkCount: chunks.length,
-      replyChars: replyBody.length,
+      replyChars: hasReply ? visibleTelegramText(replyBody).length : 0,
       sticker: stickerEmoji ?? undefined,
       skipUserHistory: Boolean(input.skipUserHistory),
     });

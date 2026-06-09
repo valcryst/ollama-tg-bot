@@ -28,6 +28,26 @@ export function prepareTelegramHtml(text: string): string {
   return s.replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/** Plain text visible to the user after Telegram HTML tags/entities are removed. */
+export function visibleTelegramText(text: string): string {
+  const prepared = prepareTelegramHtml(text);
+  if (!prepared) return "";
+
+  return prepared
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .trim();
+}
+
+/** False for empty replies and HTML shells with no visible text (e.g. `<b></b>`). */
+export function hasVisibleTelegramReply(text: string): boolean {
+  return visibleTelegramText(text).length > 0;
+}
+
 /** Models often use **bold** despite being told to use HTML. */
 function markdownBoldToHtml(text: string): string {
   return text

@@ -14,7 +14,10 @@ import {
 } from "../db/personalities.js";
 import { getHistory, historyToChatMessages } from "../db/history.js";
 import { extractTelegramReply } from "../response-format.js";
-import { prepareTelegramHtml } from "../telegram/html.js";
+import {
+  hasVisibleTelegramReply,
+  prepareTelegramHtml,
+} from "../telegram/html.js";
 import { buildExplainSystemPrompt } from "../prompts.js";
 import { sendThinkingMessages } from "./send-thinking.js";
 import { recordExchange } from "./conversation.js";
@@ -164,7 +167,7 @@ export async function runExplainTurn(
     const replyBody = extractTelegramReply(modelOutput, {
       thinkingMode: settings.thinkingEnabled,
     });
-    if (!replyBody.trim()) {
+    if (!hasVisibleTelegramReply(replyBody)) {
       throw new Error("Model response had no [REPLY] content");
     }
 
