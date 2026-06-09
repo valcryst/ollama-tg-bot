@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { ChatMessage } from "../ollama/client.js";
+import { stripAssistantHistoryEnvelope } from "../bot/history-format.js";
 import type { Settings } from "./database.js";
 import { getHistoryLimits } from "../settings-limits.js";
 export const ASSISTANT_ROLE = "assistant";
@@ -215,7 +216,11 @@ export function trimForContext(
 export function historyToChatMessages(history: StoredMessage[]): ChatMessage[] {
   return trimForContext(history).map((m) => ({
     role: m.role === ASSISTANT_ROLE ? "assistant" : "user",
-    content: isCompressedRole(m.role) ? `[compressed]: ${m.content}` : m.content,
+    content: isCompressedRole(m.role)
+      ? `[compressed]: ${m.content}`
+      : m.role === ASSISTANT_ROLE
+        ? stripAssistantHistoryEnvelope(m.content)
+        : m.content,
   }));
 }
 

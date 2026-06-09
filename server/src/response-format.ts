@@ -1,3 +1,4 @@
+import { stripEchoedHistoryMarkup } from "./bot/history-format.js";
 import { sanitizeModelOutput } from "./ollama/sanitize.js";
 
 /**
@@ -12,6 +13,7 @@ ${formatHint}
 [/REPLY]
 
 Rules: always include [REPLY]. Do not output [MEMORY], [GROUP_MEMORY], or [GENERAL_MEMORY] in your reply — memory is handled separately.
+Never include internal chat-history tags in [REPLY] (e.g. [assistant said], [user:… said], [sticker: …], [compressed]) — those are metadata, not spoken text.
 Formatting: HTML tags are optional — reply in plain text unless a tag genuinely adds emphasis. Never send empty tags (e.g. <b></b>).`;
 }
 
@@ -105,7 +107,7 @@ export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
     reply = partial?.[1] ? stripStructuredMarkup(partial[1]) : "";
   }
 
-  reply = stripStructuredMarkup(reply);
+  reply = stripEchoedHistoryMarkup(stripStructuredMarkup(reply));
 
   return {
     memoryFacts,
@@ -135,7 +137,7 @@ export function extractTelegramReply(
     return sanitizeModelOutput(cleaned);
   }
 
-  const legacy = stripStructuredMarkup(cleaned);
+  const legacy = stripEchoedHistoryMarkup(stripStructuredMarkup(cleaned));
   if (legacy) return legacy;
   return sanitizeModelOutput(cleaned);
 }
