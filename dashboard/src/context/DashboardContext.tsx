@@ -8,6 +8,10 @@ import {
   type ReactNode,
 } from "react";
 import { api, type OllamaModel, type Settings, type Stats } from "../api";
+import {
+  analyzeModelConfig,
+  hasModelConfigErrors,
+} from "../modelConfig";
 import { buildModelOptions, resolveModelSelection } from "../modelOptions";
 
 export type SectionKey = "settings" | "stats" | "ollama" | "models" | "save";
@@ -293,11 +297,24 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   const save = async () => {
     if (!draft) return;
+    const analysis = analyzeModelConfig(draft);
+    if (hasModelConfigErrors(analysis.issues)) {
+      setSectionError(
+        "save",
+        new Error(
+          analysis.issues
+            .filter((issue) => issue.severity === "error")
+            .map((issue) => issue.message)
+            .join(" "),
+        ),
+      );
+      return;
+    }
     setSaving(true);
     setSaveOk(false);
     setSectionError("save", null);
     try {
-      const updated = await api.updateSettings(draft);
+      const updated = await api.updateSettings(analysis.settings);
       setSettings(updated);
       setDraft(updated);
       setSaveOk(true);

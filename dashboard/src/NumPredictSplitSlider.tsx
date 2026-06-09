@@ -13,6 +13,8 @@ interface NumPredictSplitSliderProps {
   thinkingEnabled: boolean;
   numCtx: number;
   disabled?: boolean;
+  error?: string;
+  hint?: string;
   onChange: (total: number, thinking: number) => void;
 }
 
@@ -35,6 +37,8 @@ export function NumPredictSplitSlider({
   thinkingEnabled,
   numCtx,
   disabled,
+  error,
+  hint,
   onChange,
 }: NumPredictSplitSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -85,7 +89,9 @@ export function NumPredictSplitSlider({
     split.total > 0 ? (split.thinking / split.total) * 100 : 0;
 
   return (
-    <div className="field slider-field num-predict-split">
+    <div
+      className={`field slider-field num-predict-split${error ? " field-invalid" : ""}`}
+    >
       <label>
         Max generation tokens (num_predict)
         <span className="slider-value">{split.total}</span>
@@ -193,10 +199,12 @@ export function NumPredictSplitSlider({
             Total <strong>{split.total}</strong>
           </span>
         </div>
+      ) : hint ? (
+        <p className="hint">{hint}</p>
       ) : (
         <p className="hint">
-          Hard cap on generated length. Use 512+ for structured replies; lower
-          is faster but may truncate.
+          Hard cap on generated length. Use 512+ for structured replies; lower is
+          faster but may truncate.
         </p>
       )}
       {thinkingEnabled ? (
@@ -206,6 +214,7 @@ export function NumPredictSplitSlider({
           it on reasoning.
         </p>
       ) : null}
+      {error ? <p className="field-error">{error}</p> : null}
     </div>
   );
 }

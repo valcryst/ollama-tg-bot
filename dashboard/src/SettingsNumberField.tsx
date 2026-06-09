@@ -2,6 +2,7 @@ interface SettingsNumberFieldProps {
   id: string;
   label: string;
   hint?: string;
+  error?: string;
   value: number;
   min: number;
   max: number;
@@ -25,6 +26,7 @@ export function SettingsNumberField({
   id,
   label,
   hint,
+  error,
   value,
   min,
   max,
@@ -33,10 +35,12 @@ export function SettingsNumberField({
   variant = "number",
   onChange,
 }: SettingsNumberFieldProps) {
+  const invalid = Boolean(error);
+
   if (variant === "slider") {
     const display = formatSliderValue(value, step);
     return (
-      <div className="field slider-field">
+      <div className={`field slider-field${invalid ? " field-invalid" : ""}`}>
         <label htmlFor={id}>
           {label}
           <span className="slider-value">{display}</span>
@@ -49,6 +53,7 @@ export function SettingsNumberField({
           step={step}
           value={value}
           disabled={disabled}
+          aria-invalid={invalid}
           onChange={(e) => onChange(Number(e.target.value))}
         />
         <div className="slider-bounds" aria-hidden="true">
@@ -56,12 +61,13 @@ export function SettingsNumberField({
           <span>{max}</span>
         </div>
         {hint ? <p className="hint">{hint}</p> : null}
+        {error ? <p className="field-error">{error}</p> : null}
       </div>
     );
   }
 
   return (
-    <div className="field">
+    <div className={`field${invalid ? " field-invalid" : ""}`}>
       <label htmlFor={id}>{label}</label>
       <input
         id={id}
@@ -71,9 +77,11 @@ export function SettingsNumberField({
         step={step}
         value={value}
         disabled={disabled}
+        aria-invalid={invalid}
         onChange={(e) => onChange(Number(e.target.value))}
       />
       {hint ? <p className="hint">{hint}</p> : null}
+      {error ? <p className="field-error">{error}</p> : null}
     </div>
   );
 }

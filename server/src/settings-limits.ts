@@ -3,7 +3,10 @@ import type { Settings } from "./db/database.js";
 export const MIN_NUM_PREDICT = 32;
 /** Hard cap on num_predict; also limited by num_ctx minus prompt headroom. */
 export const MAX_NUM_PREDICT = 8192;
-const NUM_CTX_GENERATION_HEADROOM = 512;
+export const NUM_CTX_GENERATION_HEADROOM = 512;
+export const MIN_NUM_CTX = 2048;
+export const MAX_NUM_CTX = 32768;
+export const NUM_CTX_STEP = 512;
 export const NUM_PREDICT_STEP = 32;
 export const MIN_THINKING_TOKENS = 32;
 export const MIN_REPLY_TOKENS = 32;
@@ -26,11 +29,23 @@ export function snapNumPredict(value: number): number {
 }
 
 /** Largest num_predict allowed for a given context window. */
+export function snapNumCtx(value: number): number {
+  const snapped = Math.round(value / NUM_CTX_STEP) * NUM_CTX_STEP;
+  return Math.min(MAX_NUM_CTX, Math.max(MIN_NUM_CTX, snapped));
+}
+
 export function maxNumPredictForContext(numCtx: number): number {
   return Math.min(
     MAX_NUM_PREDICT,
-    Math.max(MIN_NUM_PREDICT, snapNumPredict(numCtx - NUM_CTX_GENERATION_HEADROOM)),
+    Math.max(
+      MIN_NUM_PREDICT,
+      snapNumPredict(numCtx - NUM_CTX_GENERATION_HEADROOM),
+    ),
   );
+}
+
+export function minNumCtxForPredict(numPredict: number): number {
+  return snapNumCtx(snapNumPredict(numPredict) + NUM_CTX_GENERATION_HEADROOM);
 }
 
 export function clampThinkingSplit(
@@ -219,7 +234,17 @@ export function validateSettingsFields(settings: Settings): void {
           normalized.thinkingNumPredict <=
             normalized.numPredict - MIN_REPLY_TOKENS),
     ],
-    ["numCtx must be 2048–32768", isFiniteNumber(settings.numCtx) && settings.numCtx >= 2048 && settings.numCtx <= 32768],
+    [
+      "numCtx must be 2048–32768",
+      isFiniteNumber(settings.numCtx) &&
+        settings.numCtx >= MIN_NUM_CTX &&
+        settings.numCtx <= MAX_NUM_CTX,
+    ],
+    [
+      `numCtx must be at least ${minNumCtxForPredict(normalized.numPredict)} for the generation budget (${normalized.numPredict} tokens + ${NUM_CTX_GENERATION_HEADROOM} prompt headroom)`,
+      isFiniteNumber(settings.numCtx) &&
+        settings.numCtx >= minNumCtxForPredict(normalized.numPredict),
+    ],
     ["temperature must be 0–2", isFiniteNumber(settings.temperature) && settings.temperature >= 0 && settings.temperature <= 2],
     ["topP must be 0.05–1", isFiniteNumber(settings.topP) && settings.topP >= 0.05 && settings.topP <= 1],
     [

@@ -566,6 +566,63 @@
   color: var(--warning);
 }
 
+.field-error {
+  margin: 0.35rem 0 0;
+  color: var(--danger, #f87171);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.field-invalid input[type="range"] {
+  outline: 1px solid var(--danger, #f87171);
+}
+
+.model-config {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.model-config-header {
+  margin-bottom: 0.5rem;
+}
+
+.model-config-group {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.model-config-group-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.model-config-group-desc {
+  margin: 0 0 0.75rem;
+}
+
+.model-config-derived {
+  margin-top: 1.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.model-config-derived-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.model-config-save-block {
+  margin-bottom: 0.75rem;
+}
+
 .hint.success-inline {
   color: var(--accent);
   margin-top: 0.5rem;

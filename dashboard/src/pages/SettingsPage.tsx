@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { useDashboard } from "../context/DashboardContext";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { deriveHistoryLimits } from "../derivedHistoryLimits";
-import { NumPredictSplitSlider } from "../NumPredictSplitSlider";
+import { ModelConfigPanel } from "../components/ModelConfigPanel";
+import {
+  analyzeModelConfig,
+  hasModelConfigErrors,
+} from "../modelConfig";
 import { SettingsNumberField } from "../SettingsNumberField";
-import { clampThinkingSplit } from "../tokenBudget";
 import { api, type StickerCatalog } from "../api";
 
 export function SettingsPage() {
@@ -29,18 +31,11 @@ export function SettingsPage() {
     load,
   } = useDashboard();
 
-  const derivedHistory = useMemo(
-    () =>
-      draft
-        ? deriveHistoryLimits(
-            draft.numCtx,
-            draft.numPredict,
-            draft.thinkingEnabled,
-            draft.thinkingNumPredict,
-          )
-        : null,
+  const modelConfigIssues = useMemo(
+    () => (draft ? analyzeModelConfig(draft).issues : []),
     [draft],
   );
+  const modelConfigInvalid = hasModelConfigErrors(modelConfigIssues);
 
   const [stickerCatalog, setStickerCatalog] = useState<StickerCatalog | null>(
     null,
@@ -452,173 +447,11 @@ export function SettingsPage() {
               </>
             ) : null}
 
-            <h3 className="section-title">Ollama performance</h3>
-            <p className="hint section-hint">
-              Lower values = faster replies. Takes effect on the next message.
-            </p>
-
-            <div className="field toggle-row">
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={draft.thinkingEnabled}
-                  onChange={(e) => {
-                    const thinkingEnabled = e.target.checked;
-                    setDraft({
-                      ...draft,
-                      thinkingEnabled,
-                      ...(thinkingEnabled
-                        ? {
-                            thinkingNumPredict: clampThinkingSplit(
-                              draft.numPredict,
-                              draft.thinkingNumPredict,
-                            ).thinking,
-                          }
-                        : { sendThinkingEnabled: false }),
-                    });
-                  }}
-                />
-                Thinking mode
-              </label>
-              <p className="hint">
-                For reasoning models (e.g. DeepSeek-R1, Qwen3). One Ollama
-                num_predict budget is split below between thinking and reply.
-                Used for chat replies and memory extraction only — background
-                passes stay off.
-              </p>
-            </div>
-
-            {draft.thinkingEnabled ? (
-              <div className="field toggle-row">
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={draft.sendThinkingEnabled}
-                    onChange={(e) =>
-                      setDraft({
-                        ...draft,
-                        sendThinkingEnabled: e.target.checked,
-                      })
-                    }
-                  />
-                  Send thinking
-                </label>
-                <p className="hint">
-                  Post the model&apos;s chain-of-thought as a separate message
-                  before each reply. Not saved to chat history.
-                </p>
-              </div>
-            ) : null}
-
-            <NumPredictSplitSlider
-              total={draft.numPredict}
-              thinking={draft.thinkingNumPredict}
-              thinkingEnabled={draft.thinkingEnabled}
-              numCtx={draft.numCtx}
+            <ModelConfigPanel
+              draft={draft}
               disabled={configBlocked}
-              onChange={(numPredict, thinkingNumPredict) =>
-                setDraft({ ...draft, numPredict, thinkingNumPredict })
-              }
+              onChange={(next) => setDraft(next)}
             />
-            <SettingsNumberField
-              id="numCtx"
-              label="Context size (num_ctx)"
-              hint={
-                draft.thinkingEnabled && derivedHistory
-                  ? `Ollama context window. History limits assume ${derivedHistory.numPredict} generation tokens (${derivedHistory.thinkingNumPredict} thinking + ${derivedHistory.replyNumPredict} reply).`
-                  : "Ollama context window. Chat history limits are derived from this and max reply tokens."
-              }
-              value={draft.numCtx}
-              min={2048}
-              max={32768}
-              step={512}
-              variant="slider"
-              disabled={configBlocked}
-              onChange={(numCtx) => setDraft({ ...draft, numCtx })}
-            />
-            <SettingsNumberField
-              id="temperature"
-              label="Temperature"
-              hint="Randomness for in-character replies and /explain. Side passes (mood, memory, search, etc.) use a fixed low temperature."
-              value={draft.temperature}
-              min={0}
-              max={2}
-              step={0.1}
-              variant="slider"
-              disabled={configBlocked}
-              onChange={(temperature) => setDraft({ ...draft, temperature })}
-            />
-
-            <h3 className="section-title">Sampling</h3>
-            <p className="hint section-hint">
-              Ollama generation parameters for all model calls. Affects main
-              replies and background passes alike.
-            </p>
-
-            <SettingsNumberField
-              id="topP"
-              label="Top P (nucleus sampling)"
-              hint="Keeps the smallest set of tokens whose cumulative probability reaches this value. Lower = more focused and predictable; higher = more varied word choice."
-              value={draft.topP}
-              min={0.05}
-              max={1}
-              step={0.05}
-              variant="slider"
-              disabled={configBlocked}
-              onChange={(topP) => setDraft({ ...draft, topP })}
-            />
-            <SettingsNumberField
-              id="topK"
-              label="Top K"
-              hint="Only the K most likely next tokens are considered each step. Lower = safer and more repetitive; higher = more diverse (Ollama default is 40)."
-              value={draft.topK}
-              min={1}
-              max={200}
-              step={1}
-              variant="slider"
-              disabled={configBlocked}
-              onChange={(topK) => setDraft({ ...draft, topK })}
-            />
-            <SettingsNumberField
-              id="repeatPenalty"
-              label="Repeat penalty"
-              hint="Penalizes tokens that already appeared in the recent output. Above 1.0 reduces loops and repeated phrases; below 1.0 allows more repetition (Ollama default is 1.1)."
-              value={draft.repeatPenalty}
-              min={0.8}
-              max={2}
-              step={0.05}
-              variant="slider"
-              disabled={configBlocked}
-              onChange={(repeatPenalty) =>
-                setDraft({ ...draft, repeatPenalty })
-              }
-            />
-
-            <SettingsNumberField
-              id="chatTimeoutSec"
-              label="Request timeout (seconds)"
-              value={draft.chatTimeoutSec}
-              min={30}
-              max={600}
-              variant="slider"
-              disabled={configBlocked}
-              onChange={(chatTimeoutSec) =>
-                setDraft({ ...draft, chatTimeoutSec })
-              }
-            />
-
-            {derivedHistory ? (
-              <p className="hint section-hint">
-                Derived chat history: up to {derivedHistory.historyMaxMessages}{" "}
-                messages, {derivedHistory.historyMaxChars.toLocaleString()}{" "}
-                characters, replies stored to{" "}
-                {derivedHistory.historyMaxReplyChars.toLocaleString()} chars
-                {draft.thinkingEnabled
-                  ? ` (reply budget: ${derivedHistory.replyNumPredict} tokens of ${derivedHistory.numPredict} total)`
-                  : ""}
-                .
-              </p>
-            ) : null}
 
             <h3 className="section-title">Vision</h3>
 
@@ -644,11 +477,19 @@ export function SettingsPage() {
               />
             ) : null}
 
+            {modelConfigInvalid ? (
+              <p className="field-error model-config-save-block">
+                Fix model parameter errors before saving.
+              </p>
+            ) : null}
+
             <div className="actions">
               <button
                 type="button"
                 onClick={() => void save()}
-                disabled={saving || !draft || configBlocked}
+                disabled={
+                  saving || !draft || configBlocked || modelConfigInvalid
+                }
               >
                 {saving ? "Saving…" : "Save settings"}
               </button>

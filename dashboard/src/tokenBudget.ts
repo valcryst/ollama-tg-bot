@@ -2,7 +2,10 @@
 
 export const MIN_NUM_PREDICT = 32;
 export const MAX_NUM_PREDICT = 8192;
-const NUM_CTX_GENERATION_HEADROOM = 512;
+export const NUM_CTX_GENERATION_HEADROOM = 512;
+export const MIN_NUM_CTX = 2048;
+export const MAX_NUM_CTX = 32768;
+export const NUM_CTX_STEP = 512;
 export const NUM_PREDICT_STEP = 32;
 export const MIN_THINKING_TOKENS = 32;
 export const MIN_REPLY_TOKENS = 32;
@@ -14,11 +17,24 @@ export function snapNumPredict(value: number): number {
   return Math.min(MAX_NUM_PREDICT, Math.max(MIN_NUM_PREDICT, snapped));
 }
 
+export function snapNumCtx(value: number): number {
+  const snapped = Math.round(value / NUM_CTX_STEP) * NUM_CTX_STEP;
+  return Math.min(MAX_NUM_CTX, Math.max(MIN_NUM_CTX, snapped));
+}
+
 export function maxNumPredictForContext(numCtx: number): number {
   return Math.min(
     MAX_NUM_PREDICT,
-    Math.max(MIN_NUM_PREDICT, snapNumPredict(numCtx - NUM_CTX_GENERATION_HEADROOM)),
+    Math.max(
+      MIN_NUM_PREDICT,
+      snapNumPredict(numCtx - NUM_CTX_GENERATION_HEADROOM),
+    ),
   );
+}
+
+/** Smallest num_ctx that fits the current generation budget plus prompt headroom. */
+export function minNumCtxForPredict(numPredict: number): number {
+  return snapNumCtx(snapNumPredict(numPredict) + NUM_CTX_GENERATION_HEADROOM);
 }
 
 export function clampThinkingSplit(
