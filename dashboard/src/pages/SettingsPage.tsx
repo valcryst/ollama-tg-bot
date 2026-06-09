@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { useDashboard } from "../context/DashboardContext";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { deriveHistoryLimits } from "../derivedHistoryLimits";
+import { NumPredictSplitSlider } from "../NumPredictSplitSlider";
 import { SettingsNumberField } from "../SettingsNumberField";
+import { clampThinkingSplit } from "../tokenBudget";
 import { api, type StickerCatalog } from "../api";
 
 export function SettingsPage() {
@@ -34,6 +36,7 @@ export function SettingsPage() {
             draft.numCtx,
             draft.numPredict,
             draft.thinkingEnabled,
+            draft.thinkingNumPredict,
           )
         : null,
     [draft],
@@ -465,7 +468,12 @@ export function SettingsPage() {
                       ...draft,
                       thinkingEnabled,
                       ...(thinkingEnabled
-                        ? {}
+                        ? {
+                            thinkingNumPredict: clampThinkingSplit(
+                              draft.numPredict,
+                              draft.thinkingNumPredict,
+                            ).thinking,
+                          }
                         : { sendThinkingEnabled: false }),
                     });
                   }}
@@ -473,11 +481,9 @@ export function SettingsPage() {
                 Thinking mode
               </label>
               <p className="hint">
-                For reasoning models (e.g. DeepSeek-R1, Qwen3). Adds{" "}
-                {derivedHistory?.thinkingNumPredictBump ?? 1024} reasoning tokens
-                to each thinking request and shrinks derived history accordingly.
-                Used for chat replies and memory extraction only — background
-                passes stay off.
+                For reasoning models (e.g. DeepSeek-R1, Qwen3). Split the
+                generation budget below between thinking and reply. Used for chat
+                replies and memory extraction only — background passes stay off.
               </p>
             </div>
 
@@ -503,27 +509,21 @@ export function SettingsPage() {
               </div>
             ) : null}
 
-            <SettingsNumberField
-              id="numPredict"
-              label="Max reply tokens (num_predict)"
-              hint={
-                draft.thinkingEnabled && derivedHistory
-                  ? `Reply budget. With thinking on, Ollama receives ${derivedHistory.effectiveNumPredict} tokens (+${derivedHistory.thinkingNumPredictBump} for reasoning, capped at 2048).`
-                  : "Hard cap on generated reply length. Use 512+ for structured replies; lower = faster but may truncate."
-              }
-              value={draft.numPredict}
-              min={32}
-              max={2048}
-              variant="slider"
+            <NumPredictSplitSlider
+              total={draft.numPredict}
+              thinking={draft.thinkingNumPredict}
+              thinkingEnabled={draft.thinkingEnabled}
               disabled={configBlocked}
-              onChange={(numPredict) => setDraft({ ...draft, numPredict })}
+              onChange={(numPredict, thinkingNumPredict) =>
+                setDraft({ ...draft, numPredict, thinkingNumPredict })
+              }
             />
             <SettingsNumberField
               id="numCtx"
               label="Context size (num_ctx)"
               hint={
                 draft.thinkingEnabled && derivedHistory
-                  ? `Ollama context window. History limits assume ${derivedHistory.effectiveNumPredict} generation tokens (reply + reasoning).`
+                  ? `Ollama context window. History limits assume ${derivedHistory.numPredict} generation tokens (${derivedHistory.thinkingNumPredict} thinking + ${derivedHistory.replyNumPredict} reply).`
                   : "Ollama context window. Chat history limits are derived from this and max reply tokens."
               }
               value={draft.numCtx}
@@ -612,7 +612,7 @@ export function SettingsPage() {
                 characters, replies stored to{" "}
                 {derivedHistory.historyMaxReplyChars.toLocaleString()} chars
                 {draft.thinkingEnabled
-                  ? ` (generation budget: ${derivedHistory.effectiveNumPredict} tokens = ${draft.numPredict} reply + ${derivedHistory.thinkingNumPredictBump} reasoning)`
+                  ? ` (reply budget: ${derivedHistory.replyNumPredict} tokens of ${derivedHistory.numPredict} total)`
                   : ""}
                 .
               </p>

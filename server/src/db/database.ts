@@ -19,7 +19,10 @@ import {
   configurePersonalityAccess,
   getPersonalityById,
 } from "./personalities.js";
-import { validateSettingsFields } from "../settings-limits.js";
+import {
+  normalizeTokenBudget,
+  validateSettingsFields,
+} from "../settings-limits.js";
 import { bindMoodDatabase, configureMoodAccess } from "./mood.js";
 
 export interface Settings {
@@ -60,6 +63,8 @@ export interface Settings {
   moodCooldownMinutes: number;
   /** Enable Ollama thinking mode for reasoning models (separate chain-of-thought). */
   thinkingEnabled: boolean;
+  /** Tokens from num_predict reserved for reasoning (remainder is reply). */
+  thinkingNumPredict: number;
   /** Send model thinking to Telegram as a message before the reply (replies only). */
   sendThinkingEnabled: boolean;
 }
@@ -94,6 +99,7 @@ const DEFAULT_SETTINGS: Settings = {
   stickerReplyChance: 70,
   moodCooldownMinutes: 120,
   thinkingEnabled: false,
+  thinkingNumPredict: 384,
   sendThinkingEnabled: false,
 };
 
@@ -202,6 +208,7 @@ export function getSettings(): Settings {
     stickerReplyChance: getSetting<number>("stickerReplyChance"),
     moodCooldownMinutes: getSetting<number>("moodCooldownMinutes"),
     thinkingEnabled: getSetting<boolean>("thinkingEnabled"),
+    thinkingNumPredict: getSetting<number>("thinkingNumPredict"),
     sendThinkingEnabled: getSetting<boolean>("sendThinkingEnabled"),
   };
 }
@@ -223,16 +230,17 @@ export function updateSettings(partial: Partial<Settings>): Settings {
   if (partial.topK !== undefined) {
     next.topK = Math.round(partial.topK);
   }
-  validateSettingsFields(next);
+  const normalized = normalizeTokenBudget(next);
+  validateSettingsFields(normalized);
 
-  if (next.activePersonalityId > 0 && !getPersonalityById(next.activePersonalityId)) {
+  if (normalized.activePersonalityId > 0 && !getPersonalityById(normalized.activePersonalityId)) {
     throw new Error("activePersonalityId does not match a saved personality");
   }
 
-  for (const key of Object.keys(next) as (keyof Settings)[]) {
-    setSetting(key, next[key]);
+  for (const key of Object.keys(normalized) as (keyof Settings)[]) {
+    setSetting(key, normalized[key]);
   }
-  return next;
+  return normalized;
 }
 
 function incrementStat(key: keyof Stats): void {

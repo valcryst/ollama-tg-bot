@@ -1,39 +1,78 @@
 import type { Settings } from "./db/database.js";
 
+export const MIN_NUM_PREDICT = 32;
 export const MAX_NUM_PREDICT = 2048;
-
-/** Extra num_predict reserved for reasoning when thinking mode is on. */
-export const THINKING_NUM_PREDICT_BUMP = 1024;
+export const NUM_PREDICT_STEP = 32;
+export const MIN_THINKING_TOKENS = 32;
+export const MIN_REPLY_TOKENS = 32;
+export const DEFAULT_THINKING_NUM_PREDICT = 384;
 
 export interface HistoryLimits {
   historyMaxMessages: number;
   historyMaxChars: number;
   historyMaxReplyChars: number;
-  /** num_predict sent to Ollama when thinking is enabled (reply + reasoning). */
-  effectiveNumPredict: number;
-  /** Reasoning reserve included in effectiveNumPredict (0 when thinking is off). */
-  thinkingNumPredictBump: number;
+  /** Total num_predict (reply + thinking when thinking is on). */
+  numPredict: number;
+  thinkingNumPredict: number;
+  replyNumPredict: number;
 }
 
-export function getThinkingNumPredictBump(settings: Settings): number {
-  return settings.thinkingEnabled ? THINKING_NUM_PREDICT_BUMP : 0;
+export function snapNumPredict(value: number): number {
+  const snapped = Math.round(value / NUM_PREDICT_STEP) * NUM_PREDICT_STEP;
+  return Math.min(MAX_NUM_PREDICT, Math.max(MIN_NUM_PREDICT, snapped));
 }
 
-/** Ollama num_predict for a request, including the thinking reserve when applicable. */
+export function clampThinkingSplit(
+  total: number,
+  thinking: number,
+): { total: number; thinking: number } {
+  const snappedTotal = snapNumPredict(total);
+  let snappedThinking = snapNumPredict(thinking);
+  snappedThinking = Math.min(
+    snappedTotal - MIN_REPLY_TOKENS,
+    Math.max(MIN_THINKING_TOKENS, snappedThinking),
+  );
+  return { total: snappedTotal, thinking: snappedThinking };
+}
+
+export function defaultThinkingForTotal(total: number): number {
+  const snappedTotal = snapNumPredict(total);
+  return Math.min(
+    DEFAULT_THINKING_NUM_PREDICT,
+    Math.max(MIN_THINKING_TOKENS, snappedTotal - MIN_REPLY_TOKENS),
+  );
+}
+
+export function getThinkingNumPredict(settings: Settings): number {
+  if (!settings.thinkingEnabled) return 0;
+  return settings.thinkingNumPredict;
+}
+
+export function getReplyNumPredict(settings: Settings): number {
+  if (!settings.thinkingEnabled) return settings.numPredict;
+  return settings.numPredict - getThinkingNumPredict(settings);
+}
+
+/** Ollama num_predict for a request (total generation budget). */
 export function getEffectiveNumPredict(
   settings: Settings,
-  options?: { think?: boolean; baseNumPredict?: number },
+  options?: { baseNumPredict?: number },
 ): number {
-  const base = options?.baseNumPredict ?? settings.numPredict;
-  const useThinking =
-    options?.think !== undefined
-      ? options.think && settings.thinkingEnabled
-      : settings.thinkingEnabled;
-  if (!useThinking) return base;
-  return Math.min(
-    MAX_NUM_PREDICT,
-    base + getThinkingNumPredictBump(settings),
-  );
+  return snapNumPredict(options?.baseNumPredict ?? settings.numPredict);
+}
+
+/** Normalize token budget fields after settings changes. */
+export function normalizeTokenBudget(settings: Settings): Settings {
+  const numPredict = snapNumPredict(settings.numPredict);
+  if (!settings.thinkingEnabled) {
+    return { ...settings, numPredict };
+  }
+  const split = clampThinkingSplit(numPredict, settings.thinkingNumPredict);
+  return {
+    ...settings,
+    numPredict: split.total,
+    thinkingNumPredict: split.thinking,
+  };
 }
 
 export interface ReplyLengthGuidance {
@@ -43,9 +82,9 @@ export interface ReplyLengthGuidance {
   formatHint: string;
 }
 
-/** Reply brevity instructions derived from num_predict and historyMaxReplyChars. */
+/** Reply brevity instructions derived from reply token budget. */
 export function getReplyLengthGuidance(settings: Settings): ReplyLengthGuidance {
-  const maxTokens = settings.numPredict;
+  const maxTokens = getReplyNumPredict(settings);
   const { historyMaxReplyChars } = getHistoryLimits(settings);
   const maxChars = historyMaxReplyChars;
 
@@ -63,13 +102,14 @@ export function getReplyLengthGuidance(settings: Settings): ReplyLengthGuidance 
 
 /** Derive chat history caps from Ollama context and generation token settings. */
 export function getHistoryLimits(settings: Settings): HistoryLimits {
-  const { numCtx, numPredict } = settings;
-  const thinkingNumPredictBump = getThinkingNumPredictBump(settings);
-  const effectiveNumPredict = getEffectiveNumPredict(settings, { think: true });
+  const { numCtx } = settings;
+  const normalized = normalizeTokenBudget(settings);
+  const thinkingNumPredict = getThinkingNumPredict(normalized);
+  const replyNumPredict = getReplyNumPredict(normalized);
 
   const historyTokenBudget = Math.max(
     256,
-    Math.floor((numCtx - effectiveNumPredict) * 0.45),
+    Math.floor((numCtx - normalized.numPredict) * 0.45),
   );
 
   return {
@@ -80,10 +120,11 @@ export function getHistoryLimits(settings: Settings): HistoryLimits {
     historyMaxMessages: Math.min(50, Math.max(4, Math.floor(numCtx / 512))),
     historyMaxReplyChars: Math.min(
       4000,
-      Math.max(100, Math.floor(numPredict * 0.85)),
+      Math.max(100, Math.floor(replyNumPredict * 0.85)),
     ),
-    effectiveNumPredict,
-    thinkingNumPredictBump,
+    numPredict: normalized.numPredict,
+    thinkingNumPredict,
+    replyNumPredict,
   };
 }
 
@@ -114,8 +155,20 @@ export function getChatTimeoutMs(settings: Settings): number {
 }
 
 export function validateSettingsFields(settings: Settings): void {
+  const normalized = normalizeTokenBudget(settings);
   const checks: [string, boolean][] = [
-    ["numPredict must be 32–2048", settings.numPredict >= 32 && settings.numPredict <= 2048],
+    [
+      "numPredict must be 32–2048",
+      normalized.numPredict >= MIN_NUM_PREDICT &&
+        normalized.numPredict <= MAX_NUM_PREDICT,
+    ],
+    [
+      "thinkingNumPredict must leave at least 32 tokens for reply",
+      !normalized.thinkingEnabled ||
+        (normalized.thinkingNumPredict >= MIN_THINKING_TOKENS &&
+          normalized.thinkingNumPredict <=
+            normalized.numPredict - MIN_REPLY_TOKENS),
+    ],
     ["numCtx must be 2048–32768", settings.numCtx >= 2048 && settings.numCtx <= 32768],
     ["temperature must be 0–2", settings.temperature >= 0 && settings.temperature <= 2],
     ["topP must be 0.05–1", settings.topP >= 0.05 && settings.topP <= 1],

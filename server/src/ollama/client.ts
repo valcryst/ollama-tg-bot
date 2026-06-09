@@ -202,12 +202,10 @@ export async function chatCompleteDetailed(
   const verboseLayout = options?.verboseLayout;
   const auxiliary = options?.auxiliary ?? false;
   const think = Boolean(options?.think && settings.thinkingEnabled);
-  const baseNumPredict = options?.numPredict ?? settings.numPredict;
 
   try {
     let numPredict = getEffectiveNumPredict(settings, {
-      think,
-      baseNumPredict,
+      baseNumPredict: options?.numPredict,
     });
     let lastData: OllamaChatResponse | null = null;
 
