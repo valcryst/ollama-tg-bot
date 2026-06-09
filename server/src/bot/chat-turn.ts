@@ -19,7 +19,9 @@ import {
   formatTavilyContext,
   formatTavilyFailure,
   isTavilyConfigured,
+  tavilySources,
   tavilySearch,
+  type TavilySource,
 } from "../tavily/client.js";
 import { resolveLinkFetchContext } from "./link-fetch.js";
 import { analyzeSearchNeed } from "./search-analyze.js";
@@ -101,6 +103,27 @@ function escapeHtml(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function formatSourceTitle(title: string): string {
+  const trimmed = title.replace(/\s+/g, " ").trim();
+  if (trimmed.length <= 100) return trimmed;
+  return `${trimmed.slice(0, 97).trimEnd()}...`;
+}
+
+function appendWebSearchSources(
+  reply: string,
+  sources: TavilySource[],
+): string {
+  if (sources.length === 0) return reply;
+
+  const lines = sources.map((source, i) => {
+    const title = escapeHtml(formatSourceTitle(source.title));
+    const url = escapeHtml(source.url);
+    return `${i + 1}. ${title}\n${url}`;
+  });
+
+  return `${reply.trim()}\n\nSources:\n${lines.join("\n")}`;
+}
+
 function buildReplyExtra(
   ctx: Context,
   options?: { messageThreadId?: number },
@@ -168,6 +191,7 @@ export async function runChatTurn(
     }
 
     let webSearchContext: string | null = null;
+    let webSearchSources: TavilySource[] = [];
     if (isTavilyConfigured() && !linkFetch.resolved) {
       const decision = await analyzeSearchNeed({
         userMessage: input.latestBody,
@@ -178,6 +202,7 @@ export async function runChatTurn(
         try {
           const payload = await tavilySearch(decision.query);
           webSearchContext = formatTavilyContext(decision.query, payload);
+          webSearchSources = tavilySources(payload);
           logEvent("web_search_done", {
             ...turnLog,
             sourceCount: payload.results.length,
@@ -299,14 +324,17 @@ export async function runChatTurn(
       throw new Error("Model response had no [REPLY] content");
     }
 
+    const replyWithSources = hasReply
+      ? appendWebSearchSources(replyBody, webSearchSources)
+      : replyBody;
     const historyText =
       hasReply && stickerEmoji
-        ? `${replyBody}\n[sticker: ${stickerEmoji}]`
+        ? `${replyWithSources}\n[sticker: ${stickerEmoji}]`
         : stickerEmoji
           ? `[sticker: ${stickerEmoji}]`
-          : replyBody;
+          : replyWithSources;
 
-    const reply = hasReply ? prepareTelegramHtml(replyBody) : "";
+    const reply = hasReply ? prepareTelegramHtml(replyWithSources) : "";
     recordExchange(
       input.convKey,
       input.userRole,
@@ -368,7 +396,7 @@ export async function runChatTurn(
     logEvent("reply_sent", {
       ...turnLog,
       chunkCount: chunks.length,
-      replyChars: hasReply ? visibleTelegramText(replyBody).length : 0,
+      replyChars: hasReply ? visibleTelegramText(replyWithSources).length : 0,
       sticker: stickerEmoji ?? undefined,
       skipUserHistory: Boolean(input.skipUserHistory),
     });

@@ -6,6 +6,11 @@ export interface TavilyResult {
   content: string;
 }
 
+export interface TavilySource {
+  title: string;
+  url: string;
+}
+
 interface TavilySearchResponse {
   query?: string;
   answer?: string;
@@ -102,10 +107,30 @@ export function formatTavilyContext(
 
   parts.push(
     "\nUse the summary and sources above in your reply. " +
-      "Do not tell the user to search themselves or that you cannot access the web.",
+      "Do not tell the user to search themselves or that you cannot access the web. " +
+      "Do not add a sources list yourself; the bot will append it automatically.",
   );
 
   return parts.join("\n");
+}
+
+export function tavilySources(
+  payload: { results: TavilyResult[] },
+): TavilySource[] {
+  const sources: TavilySource[] = [];
+  const seen = new Set<string>();
+
+  for (const result of payload.results) {
+    const url = result.url.trim();
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    sources.push({
+      title: result.title.trim() || url,
+      url,
+    });
+  }
+
+  return sources;
 }
 
 export function formatTavilyFailure(query: string, err: unknown): string {
