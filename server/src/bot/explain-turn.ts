@@ -1,4 +1,4 @@
-import type { Api, Context } from "grammy";
+import type { Context } from "grammy";
 import type { ChatMessage } from "../ollama/client.js";
 import { chatCompleteDetailed } from "../ollama/client.js";
 import {
@@ -22,8 +22,6 @@ import { sendThinkingMessages } from "./send-thinking.js";
 import { recordExchange } from "./conversation.js";
 import { replyParameters } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
-
-const TYPING_REFRESH_MS = 4000;
 
 export interface ExplainTurnInput {
   convKey: string;
@@ -49,23 +47,6 @@ async function replyHtml(
   } catch {
     return await ctx.reply(text, extra);
   }
-}
-
-function startTypingIndicator(
-  api: Api,
-  chatId: number,
-  messageThreadId?: number,
-): () => void {
-  const refresh = () => {
-    void api
-      .sendChatAction(chatId, "typing", {
-        ...(messageThreadId ? { message_thread_id: messageThreadId } : {}),
-      })
-      .catch(() => {});
-  };
-  refresh();
-  const timer = setInterval(refresh, TYPING_REFRESH_MS);
-  return () => clearInterval(timer);
 }
 
 function splitMessage(text: string, maxLen = 4000): string[] {
@@ -109,11 +90,6 @@ export async function runExplainTurn(
   input: ExplainTurnInput,
 ): Promise<void> {
   const settings = getSettings();
-  const stopTyping = startTypingIndicator(
-    ctx.api,
-    input.chatId,
-    input.messageThreadId,
-  );
 
   const turnLog = {
     chatId: input.chatId,
@@ -203,7 +179,13 @@ export async function runExplainTurn(
 
     for (let i = 0; i < chunks.length; i++) {
       if (i > 0) {
-        await ctx.api.sendChatAction(input.chatId, "typing");
+        await ctx.api.sendChatAction(
+          input.chatId,
+          "typing",
+          input.messageThreadId
+            ? { message_thread_id: input.messageThreadId }
+            : undefined,
+        ).catch(() => {});
       }
       await replyHtml(ctx, chunks[i], replyExtra);
     }
@@ -240,7 +222,5 @@ export async function runExplainTurn(
         errReplyExtra,
       ).catch((e) => console.error("Failed to send explain fallback reply:", e));
     });
-  } finally {
-    stopTyping();
   }
 }

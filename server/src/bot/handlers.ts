@@ -74,6 +74,7 @@ import {
 } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
 import { buildMoodCommandReply } from "./mood-command.js";
+import { startTypingIndicator } from "./typing.js";
 
 async function replyHtml(
   ctx: Context,
@@ -203,14 +204,20 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     const convKey = resolveConversationKey(ctx);
     if (!convKey) return;
 
-    const userId = resolveUserId(ctx);
-    const groupChatId = resolveGroupChatId(ctx);
-    const inGroupChat = isGroupChat(ctx);
-    const userMemoryFacts = userId ? getUserFacts(userId) : [];
-    const groupMemoryFacts = groupChatId ? getGroupFacts(groupChatId) : [];
-    const generalMemoryFacts = getGeneralFacts();
+    const messageThreadId = ctx.message?.message_thread_id;
+    const stopTyping = startTypingIndicator(
+      ctx.api,
+      chatId,
+      messageThreadId,
+    );
 
     try {
+      const userId = resolveUserId(ctx);
+      const groupChatId = resolveGroupChatId(ctx);
+      const inGroupChat = isGroupChat(ctx);
+      const userMemoryFacts = userId ? getUserFacts(userId) : [];
+      const groupMemoryFacts = groupChatId ? getGroupFacts(groupChatId) : [];
+      const generalMemoryFacts = getGeneralFacts();
       const botId = ctx.me?.id;
       const botUsername = ctx.me?.username;
       const speaker = inGroupChat ? currentSpeakerFromUser(ctx.from) : null;
@@ -398,7 +405,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         currentSpeakerIsOwner: inGroupChat ? isOwner(ctx) : false,
         replyContext,
         mentionedUsersContext,
-        messageThreadId: ctx.message?.message_thread_id,
+        messageThreadId,
         memoryInput: {
           userMessage: latestBody,
           replyContext,
@@ -410,6 +417,8 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       });
     } catch (err) {
       logEventError("handler_error", err, msgLog);
+    } finally {
+      stopTyping();
     }
   });
 
@@ -563,11 +572,17 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
     const convKey = resolveConversationKey(ctx);
     if (!convKey) return;
 
-    const userId = resolveUserId(ctx);
-    const groupChatId = resolveGroupChatId(ctx);
-    const inGroupChat = isGroupChat(ctx);
+    const messageThreadId = ctx.message?.message_thread_id;
+    const stopTyping = startTypingIndicator(
+      ctx.api,
+      chatId,
+      messageThreadId,
+    );
 
     try {
+      const userId = resolveUserId(ctx);
+      const groupChatId = resolveGroupChatId(ctx);
+      const inGroupChat = isGroupChat(ctx);
       await runExplainTurn(ctx, {
         convKey,
         chatId,
@@ -579,13 +594,15 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
         userMemoryFacts: userId ? getUserFacts(userId) : [],
         groupMemoryFacts: groupChatId ? getGroupFacts(groupChatId) : [],
         generalMemoryFacts: getGeneralFacts(),
-        messageThreadId: ctx.message?.message_thread_id,
+        messageThreadId,
       });
     } catch (err) {
       logEventError("explain_command_failed", err, {
         chatId,
-        userId,
+        userId: ctx.from?.id,
       });
+    } finally {
+      stopTyping();
     }
   });
 
