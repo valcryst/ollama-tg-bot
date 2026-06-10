@@ -1,5 +1,5 @@
-import { chatComplete } from "../model-api/client.js";
-import type { ChatMessage } from "../model-api/client.js";
+import { chatComplete } from "../llm/client.js";
+import type { ChatMessage } from "../llm/client.js";
 import { logEventError } from "../event-log.js";
 import { isReplyThreadContext } from "./replies.js";
 import {

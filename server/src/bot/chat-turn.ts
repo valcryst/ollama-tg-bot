@@ -1,6 +1,6 @@
 import type { Context } from "grammy";
-import type { ChatMessage } from "../model-api/client.js";
-import { chatCompleteDetailed } from "../model-api/client.js";
+import type { ChatMessage } from "../llm/client.js";
+import { chatCompleteDetailed } from "../llm/client.js";
 import {
   recordError,
   recordReply,
@@ -227,7 +227,7 @@ export async function runChatTurn(
       moodSummary: JSON.stringify(evaluatedMood),
     });
 
-    logEvent("modelApi_reply_started", turnLog);
+    logEvent("llm_reply_started", turnLog);
     const built = buildChatMessages(
       getActivePersonalityPrompt(),
       input.convKey,
@@ -284,7 +284,7 @@ export async function runChatTurn(
         },
       },
     );
-    logEvent("modelApi_reply_done", {
+    logEvent("llm_reply_done", {
       ...turnLog,
       outputChars: modelOutput.length,
     });
@@ -425,12 +425,12 @@ export async function runChatTurn(
     });
     await replyHtml(
       ctx,
-      `Sorry, I could not get a response from the model API.\n\n<code>${escapeHtml(msg)}</code>`,
+      `Sorry, I could not get a response from the LLM.\n\n<code>${escapeHtml(msg)}</code>`,
       errReplyExtra,
     ).catch(async () => {
       await replyHtml(
         ctx,
-        "Sorry, I could not get a response from the model API.",
+        "Sorry, I could not get a response from the LLM.",
         errReplyExtra,
       ).catch((e) => console.error("Failed to send fallback reply:", e));
     });

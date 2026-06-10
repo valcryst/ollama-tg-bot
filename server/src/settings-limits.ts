@@ -128,7 +128,7 @@ export function getReplyLengthGuidance(settings: Settings): ReplyLengthGuidance 
   return { maxTokens, maxChars, systemHint, formatHint };
 }
 
-/** Derive chat history caps from model API context and generation token settings. */
+/** Derive chat history caps from LLM context and generation token settings. */
 export function getHistoryLimits(settings: Settings): HistoryLimits {
   const { numCtx } = settings;
   const normalized = normalizeTokenBudget(settings);
@@ -164,6 +164,23 @@ export const LENGTH_RETRY_MIN_PREDICT = 512;
 
 export function getChatTimeoutMs(settings: Settings): number {
   return settings.chatTimeoutSec * 1000;
+}
+
+/**
+ * Provider-specific extensions for OpenAI-compatible chat completions.
+ * Many local backends (LocalAI, vLLM, etc.) read sampling fields under `options`.
+ * Strict cloud APIs ignore unknown fields.
+ */
+export function getProviderExtensions(
+  settings: Settings,
+): Record<string, unknown> {
+  return {
+    options: {
+      num_ctx: settings.numCtx,
+      top_k: settings.topK,
+      repeat_penalty: settings.repeatPenalty,
+    },
+  };
 }
 
 export function validateSettingsFields(settings: Settings): void {

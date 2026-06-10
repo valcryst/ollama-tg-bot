@@ -16,11 +16,11 @@ import {
   updateSettings,
   type Settings,
 } from "../db/database.js";
-import { checkHealth, listModels } from "../model-api/client.js";
+import { checkHealth, listModels } from "../llm/client.js";
 import { isTavilyConfigured } from "../tavily/client.js";
 import { buildBaseSystemPrompt } from "../prompts.js";
 import { config, getVramAvailableGb } from "../config.js";
-import { ensureModelContextCache } from "../model-api/model-context-cache.js";
+import { ensureModelContextCache } from "../llm/model-context-cache.js";
 import {
   getContextBudgetForSettings,
   getResolvedHistoryLimits,
@@ -432,7 +432,7 @@ export function createApiRouter(): Router {
     }
   });
 
-  router.get("/model-api/health", async (req, res) => {
+  router.get("/llm/health", async (req, res) => {
     try {
       const host =
         typeof req.query.host === "string" ? req.query.host : undefined;
@@ -441,7 +441,7 @@ export function createApiRouter(): Router {
     } catch (err) {
       res.status(400).json({
         ok: false,
-        error: err instanceof Error ? err.message : "Model API host is not configured",
+        error: err instanceof Error ? err.message : "LLM host is not configured",
       });
     }
   });

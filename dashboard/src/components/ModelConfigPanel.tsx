@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ModelApiModel, Settings } from "../api";
+import type { LlmModel, Settings } from "../api";
 import {
   calculateContextBudget,
   modelContextFromTags,
@@ -19,7 +19,7 @@ import { clampThinkingSplit } from "../tokenBudget";
 
 interface ModelConfigPanelProps {
   draft: Settings;
-  models: ModelApiModel[];
+  models: LlmModel[];
   vramAvailableGb: number | undefined;
   disabled?: boolean;
   onChange: (settings: Settings) => void;

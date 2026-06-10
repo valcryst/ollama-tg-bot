@@ -1,6 +1,6 @@
 import type { Context } from "grammy";
-import type { ChatMessage } from "../model-api/client.js";
-import { chatCompleteDetailed } from "../model-api/client.js";
+import type { ChatMessage } from "../llm/client.js";
+import { chatCompleteDetailed } from "../llm/client.js";
 import {
   getSettings,
   recordError,
@@ -125,7 +125,7 @@ export async function runExplainTurn(
       { role: "user", content: latestContent },
     ];
 
-    logEvent("modelApi_reply_started", { ...turnLog, mode: "explain" });
+    logEvent("llm_reply_started", { ...turnLog, mode: "explain" });
     const { raw: modelOutput, thinking } = await chatCompleteDetailed(messages, {
       think: true,
       verboseLabel: "explain",
@@ -135,7 +135,7 @@ export async function runExplainTurn(
         latest: latestContent,
       },
     });
-    logEvent("modelApi_reply_done", {
+    logEvent("llm_reply_done", {
       ...turnLog,
       mode: "explain",
       outputChars: modelOutput.length,
@@ -217,12 +217,12 @@ export async function runExplainTurn(
     });
     await replyHtml(
       ctx,
-      `Sorry, I could not get an explanation from the model API.\n\n<code>${escapeHtml(msg)}</code>`,
+      `Sorry, I could not get an explanation from the LLM.\n\n<code>${escapeHtml(msg)}</code>`,
       errReplyExtra,
     ).catch(async () => {
       await replyHtml(
         ctx,
-        "Sorry, I could not get an explanation from the model API.",
+        "Sorry, I could not get an explanation from the LLM.",
         errReplyExtra,
       ).catch((e) => console.error("Failed to send explain fallback reply:", e));
     });

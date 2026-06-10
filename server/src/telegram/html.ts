@@ -1,4 +1,4 @@
-import { sanitizeModelOutput } from "../model-api/sanitize.js";
+import { sanitizeModelOutput } from "../llm/sanitize.js";
 
 const PAIRED_TAGS = new Set([
   "b",

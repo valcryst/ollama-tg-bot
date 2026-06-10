@@ -248,7 +248,7 @@ export const MODEL_CONFIG_GROUPS = [
     id: "generation",
     title: "2. Generation budget",
     description:
-      "generation token caps total output per reply. With thinking mode, the slider splits that single model API budget.",
+      "generation token caps total output per reply. With thinking mode, the slider splits that single LLM budget.",
   },
   {
     id: "reasoning",
@@ -260,12 +260,12 @@ export const MODEL_CONFIG_GROUPS = [
     id: "sampling",
     title: "4. Sampling",
     description:
-      "Model API generation parameters for all model calls, including background passes.",
+      "LLM generation parameters for all model calls, including background passes.",
   },
   {
     id: "timeout",
     title: "5. Request timeout",
-    description: "How long to wait for the model API before failing the turn.",
+    description: "How long to wait for the LLM before failing the turn.",
   },
 ] as const;
 

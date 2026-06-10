@@ -20,16 +20,16 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_DOCKER_NETWORK:-proxy}"
-      - "traefik.http.routers.ollama-tg-bot.rule=Host(`${TRAEFIK_HOST:-ollama-tg-bot.example.com}`)"
-      - "traefik.http.routers.ollama-tg-bot.entrypoints=websecure"
-      - "traefik.http.routers.ollama-tg-bot.tls=true"
-      - "traefik.http.routers.ollama-tg-bot.tls.certresolver=cloudflare"
-      - "traefik.http.services.ollama-tg-bot.loadbalancer.server.port=${TRAEFIK_SERVICE_PORT:-3000}"
+      - "traefik.http.routers.llm-tg-bot.rule=Host(`${TRAEFIK_HOST:-llm-tg-bot.example.com}`)"
+      - "traefik.http.routers.llm-tg-bot.entrypoints=websecure"
+      - "traefik.http.routers.llm-tg-bot.tls=true"
+      - "traefik.http.routers.llm-tg-bot.tls.certresolver=cloudflare"
+      - "traefik.http.services.llm-tg-bot.loadbalancer.server.port=${TRAEFIK_SERVICE_PORT:-3000}"
 
       - "homepage.group=${HOMEPAGE_GROUP:-AI}"
-      - "homepage.name=Ollama TG Bot"
+      - "homepage.name=LLM TG Bot"
       - "homepage.icon="
-      - "homepage.href=https://${TRAEFIK_HOST:-ollama-tg-bot.example.com}"
+      - "homepage.href=https://${TRAEFIK_HOST:-llm-tg-bot.example.com}"
 
 volumes:
   bot-data:

@@ -102,6 +102,6 @@ export const config = {
   tavilyApiKey: resolveTavilyApiKey(),
   /** OpenAI-compatible API key from env (OPENAI_API_KEY). Local servers can leave it empty. */
   openAiApiKey: resolveOpenAiApiKey(),
-  /** ERROR = errors only; DEBUG = lifecycle events; VERBOSE = + model API I/O. */
+  /** ERROR = errors only; DEBUG = lifecycle events; VERBOSE = + LLM I/O. */
   loggingLevel: resolveLoggingLevel(),
 };

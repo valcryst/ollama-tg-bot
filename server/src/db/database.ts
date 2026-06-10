@@ -21,7 +21,7 @@ import {
 import {
   invalidateModelContextCache,
   refreshModelContextCache,
-} from "../model-api/model-context-cache.js";
+} from "../llm/model-context-cache.js";
 import { getResolvedSettings } from "../settings-runtime.js";
 import {
   normalizeTokenBudget,
@@ -38,18 +38,18 @@ export interface Settings {
   randomReplyChance: number;
   /** In groups, comment on photos/image files even when not addressed to the bot. */
   reactToEveryImage: boolean;
-  /** Max tokens model API may generate per reply (lower = faster). */
+  /** Max tokens LLM may generate per reply (lower = faster). */
   numPredict: number;
-  /** Context window size sent to model API. */
+  /** Context window size sent to LLM. */
   numCtx: number;
   temperature: number;
-  /** Nucleus sampling — lower = more focused (model API top_p). */
+  /** Nucleus sampling — lower = more focused (LLM top_p). */
   topP: number;
-  /** Limits candidate tokens per step (model API top_k). */
+  /** Limits candidate tokens per step (LLM top_k). */
   topK: number;
-  /** Penalizes repeated tokens (model API repeat_penalty). */
+  /** Penalizes repeated tokens (LLM repeat_penalty). */
   repeatPenalty: number;
-  /** model API request timeout in seconds. */
+  /** LLM request timeout in seconds. */
   chatTimeoutSec: number;
   /** Longest edge for vision images (pixels). */
   visionMaxDimension: number;
@@ -65,9 +65,9 @@ export interface Settings {
   stickerReplyChance: number;
   /** Minutes of inactivity until mood returns to the active personality's defaults. */
   moodCooldownMinutes: number;
-  /** Enable model API thinking mode for reasoning models (separate chain-of-thought). */
+  /** Enable LLM thinking mode for reasoning models (separate chain-of-thought). */
   thinkingEnabled: boolean;
-  /** Target thinking slice of generation token (soft; model API shares one generation budget). */
+  /** Target thinking slice of generation token (soft; LLM shares one generation budget). */
   thinkingNumPredict: number;
   /** Send model thinking to Telegram as a message before the reply (replies only). */
   sendThinkingEnabled: boolean;
@@ -82,7 +82,7 @@ export interface Stats {
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  apiBaseUrl: "http://host.docker.internal:8080",
+  apiBaseUrl: "",
   model: "gpt-4o-mini",
   activePersonalityId: 0,
   randomReplyEnabled: false,

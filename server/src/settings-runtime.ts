@@ -5,7 +5,7 @@ import {
   getEffectiveNumCtx,
   type ContextBudget,
 } from "./context-budget.js";
-import { getModelContextForBudget } from "./model-api/model-context-cache.js";
+import { getModelContextForBudget } from "./llm/model-context-cache.js";
 import {
   getHistoryLimits,
   normalizeTokenBudget,

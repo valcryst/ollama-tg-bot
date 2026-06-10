@@ -8,7 +8,7 @@ Telegram bot backed by **OpenAI-compatible API**, with a **React dashboard** for
 
 | Workspace | Role |
 |-----------|------|
-| `server/` | Bot, model API client, SQLite, REST API |
+| `server/` | Bot, LLM client, SQLite, REST API |
 | `dashboard/` | Vite + React admin UI |
 
 ## Commands
@@ -38,7 +38,9 @@ Docker: `docker compose up -d --build` (see `README.md`).
 | Variable | Purpose |
 |----------|---------|
 | `BOT_TOKEN` | Telegram bot token (required) |
-| `LOGGING_LEVEL` | `ERROR` (default), `DEBUG` (lifecycle events), or `VERBOSE` (+ model API I/O) |
+| `VRAM_AVAILABLE` | GPU VRAM in GB (required); derives context window budget |
+| `OPENAI_API_KEY` | Optional API key for authenticated OpenAI-compatible endpoints |
+| `LOGGING_LEVEL` | `ERROR` (default), `DEBUG` (lifecycle events), or `VERBOSE` (+ LLM I/O) |
 | `TAVILY_API_KEY` | Optional web search via Tavily |
 | `PORT` | Docker/production listen port only — not for local dev |
 | `DATABASE_PATH` | Optional SQLite path (default `data/bot.db`) |
@@ -48,7 +50,7 @@ API base URL, model, prompts, owner, and performance limits live in **dashboard 
 ## Architecture
 
 ```
-Telegram → Grammy handlers → chat-turn → model API
+Telegram → Grammy handlers → chat-turn → LLM
                 ↓
          SQLite (settings, history, memories, stats)
                 ↑
@@ -58,14 +60,14 @@ Telegram → Grammy handlers → chat-turn → model API
 ### Message flow
 
 1. **`server/src/bot/handlers.ts`** — Register **commands before** the catch-all `bot.on("message")`. Generic message handlers must not block command handlers (Grammy middleware order).
-2. **`server/src/bot/chat-turn.ts`** — One user turn: optional link fetch (Playwright), optional Tavily search, build messages, model API chat, Telegram reply, history + memory scheduling.
+2. **`server/src/bot/chat-turn.ts`** — One user turn: optional link fetch (Playwright), optional Tavily search, build messages, LLM chat, Telegram reply, history + memory scheduling.
 3. **`server/src/bot/conversation.ts`** — Assembles system prompt, history, reply context, group speaker wrapping.
 4. **`server/src/prompts.ts`** — Base system prompt; custom prompt from settings appended.
 
-### Model API
+### LLM
 
-- Client: `server/src/model-api/client.ts`
-- Chat options: `server/src/settings-limits.ts` (`context window`, `generation token`, `temperature`)
+- Client: `server/src/llm/client.ts` (OpenAI SDK → `/v1/chat/completions`)
+- Chat options: `server/src/settings-limits.ts` (`temperature`, `topP`, `topK`, `repeatPenalty`, `numCtx` via `getProviderExtensions()`)
 - **Chat history limits are derived** from `numCtx` and `numPredict` via `getHistoryLimits()` — not separate settings. Dashboard preview: `dashboard/src/derivedHistoryLimits.ts` (keep in sync with server).
 
 ### Memory
@@ -77,7 +79,7 @@ Three layers, extracted in a **background pass** (`server/src/memory-extract.ts`
 
 ### Group behavior
 
-- Bot responds when @mentioned, replied to, named (model API check), or on random/image toggles.
+- Bot responds when @mentioned, replied to, named (LLM check), or on random/image toggles.
 - Per-member history in groups (`conversationKey` includes `userId`).
 - Owner account: `ownerUsername` in settings; id resolved via Telegram API + `known_users` table.
 
@@ -91,7 +93,7 @@ Model replies use `[REPLY]…[/REPLY]` (Telegram HTML subset). Parser: `server/s
 |-------|---------|
 | `/` | Overview, stats, error log |
 | `/character` | Default + custom system prompts |
-| `/settings` | Model API, model, owner, performance, vision |
+| `/settings` | LLM, model, owner, performance, vision |
 | `/memories` | User / group / general facts |
 
 State: `dashboard/src/context/DashboardContext.tsx`. API client: `dashboard/src/api.ts`.
@@ -117,7 +119,7 @@ State: `dashboard/src/context/DashboardContext.tsx`. API client: `dashboard/src/
 | Bot entry | `server/src/bot/index.ts`, `handlers.ts` |
 | Settings DB | `server/src/db/database.ts`, `server/src/api/routes.ts` |
 | History | `server/src/db/history.ts` |
-| Vision | `server/src/bot/message-media.ts`, `server/src/model-api/images.ts` |
+| Vision | `server/src/bot/message-media.ts`, `server/src/llm/images.ts` |
 | Search | `server/src/bot/search-analyze.ts`, `server/src/tavily/client.ts` |
 | Link fetch | `server/src/bot/link-extract.ts`, `server/src/bot/link-fetch.ts`, `server/src/playwright/client.ts` |
 | HTML replies | `server/src/telegram/html.ts` |

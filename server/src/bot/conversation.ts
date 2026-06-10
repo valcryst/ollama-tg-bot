@@ -1,5 +1,5 @@
 import type { Context } from "grammy";
-import type { ChatMessage } from "../model-api/client.js";
+import type { ChatMessage } from "../llm/client.js";
 import {
   appendAssistantMessage,
   appendMessage,

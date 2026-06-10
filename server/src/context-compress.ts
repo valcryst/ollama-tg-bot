@@ -7,8 +7,8 @@ import {
   type StoredMessage,
 } from "./db/history.js";
 import { logEvent, logEventError } from "./event-log.js";
-import { chatComplete } from "./model-api/client.js";
-import type { ChatMessage } from "./model-api/client.js";
+import { chatComplete } from "./llm/client.js";
+import type { ChatMessage } from "./llm/client.js";
 import { getResolvedHistoryLimits } from "./settings-runtime.js";
 
 const HISTORY_COMPRESS_NUM_PREDICT = 512;

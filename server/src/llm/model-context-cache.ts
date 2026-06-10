@@ -4,7 +4,7 @@ import {
   modelContextInputFromTags,
   type ModelContextInput,
 } from "../context-budget.js";
-import { listModels, showModel, type ModelApiModel } from "./client.js";
+import { listModels, showModel, type LlmModel } from "./client.js";
 
 const CACHE_TTL_MS = 5 * 60_000;
 
@@ -31,7 +31,7 @@ async function fetchModelContext(
   host: string,
 ): Promise<ModelContextInput> {
   const [tags, show] = await Promise.all([
-    listModels(host).catch(() => [] as ModelApiModel[]),
+    listModels(host).catch(() => [] as LlmModel[]),
     showModel(model, host).catch(() => null),
   ]);
 

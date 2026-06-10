@@ -32,8 +32,13 @@ function formatFlatMessagesBody(
   model: string,
   maxTokens: number,
   messages: ChatMessage[],
+  samplingLine?: string,
 ): string {
-  const lines = [`model: ${model}`, `max_completion_tokens: ${maxTokens}`, ""];
+  const lines = [
+    `model: ${model}`,
+    `max_completion_tokens: ${maxTokens}`,
+    ...(samplingLine ? [samplingLine, ""] : [""]),
+  ];
   for (const [index, msg] of messages.entries()) {
     lines.push(formatChatMessage(index, msg));
     lines.push("");
@@ -45,6 +50,7 @@ function formatSectionedMessagesBody(
   model: string,
   maxTokens: number,
   layout: VerbosePromptLayout,
+  samplingLine?: string,
 ): string {
   const historyChars = layout.history.reduce(
     (n, m) => n + m.content.length,
@@ -52,8 +58,8 @@ function formatSectionedMessagesBody(
   );
   const lines = [
     `model: ${model}`,
-    `max_output_tokens: ${maxTokens}`,
-    "",
+    `max_completion_tokens: ${maxTokens}`,
+    ...(samplingLine ? [samplingLine, ""] : [""]),
     SECTION("SYSTEM"),
     layout.system,
     "",
@@ -91,10 +97,11 @@ export function logModelExchange(
   messages: ChatMessage[],
   response: ChatResponse,
   layout?: VerbosePromptLayout,
+  samplingLine?: string,
 ): void {
   const requestBody = layout
-    ? formatSectionedMessagesBody(model, maxTokens, layout)
-    : formatFlatMessagesBody(model, maxTokens, messages);
+    ? formatSectionedMessagesBody(model, maxTokens, layout, samplingLine)
+    : formatFlatMessagesBody(model, maxTokens, messages, samplingLine);
   logModelRequestBlock(label, requestBody);
   logModelAnswerBlock(label, formatResponseBody(response));
 }

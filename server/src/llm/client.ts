@@ -11,11 +11,12 @@ import type {
 import type { Model } from "openai/resources/models";
 import { config } from "../config.js";
 import { getSettings } from "../db/database.js";
-import { extractTelegramReply } from "../response-format.js";
+import type { Settings } from "../db/database.js";
 import {
   AUXILIARY_TEMPERATURE,
   getChatTimeoutMs,
   getEffectiveNumPredict,
+  getProviderExtensions,
   getReplyNumPredict,
   LENGTH_RETRY_MIN_PREDICT,
   maxNumPredictForContext,
@@ -26,7 +27,7 @@ import { logModelExchange } from "./verbose-log.js";
 
 const LIST_MODELS_TIMEOUT_MS = 60_000;
 
-export interface ModelApiModel {
+export interface LlmModel {
   name: string;
   modified_at?: string;
   size?: number;
@@ -71,7 +72,7 @@ interface ChatResponse {
 function resolveBaseUrl(hostOverride?: string): string {
   const host = (hostOverride ?? getSettings().apiBaseUrl).trim();
   if (!host) {
-    throw new Error("Model API base URL is not configured");
+    throw new Error("LLM base URL is not configured");
   }
   return host.replace(/\/$/, "");
 }
@@ -126,11 +127,11 @@ function emptyResponseError(
 
   const fields = Object.keys(data).sort().join(", ") || "none";
   return new Error(
-    `Model API returned an empty response (model: ${model}, finish_reason: ${reason}, tokens: ${evalCount}, fields: ${fields}). ${hint}`,
+    `LLM returned an empty response (model: ${model}, finish_reason: ${reason}, tokens: ${evalCount}, fields: ${fields}). ${hint}`,
   );
 }
 
-export async function listModels(hostOverride?: string): Promise<ModelApiModel[]> {
+export async function listModels(hostOverride?: string): Promise<LlmModel[]> {
   try {
     const page = await openAiClient(hostOverride).models.list({
       timeout: LIST_MODELS_TIMEOUT_MS,
@@ -141,7 +142,7 @@ export async function listModels(hostOverride?: string): Promise<ModelApiModel[]
   }
 }
 
-function normalizeModels(models: (OpenAiModel | Model)[]): ModelApiModel[] {
+function normalizeModels(models: (OpenAiModel | Model)[]): LlmModel[] {
   const seen = new Set<string>();
   return models
     .map((entry) => {
@@ -151,7 +152,7 @@ function normalizeModels(models: (OpenAiModel | Model)[]): ModelApiModel[] {
       seen.add(name);
       return { name };
     })
-    .filter((m): m is ModelApiModel => m !== null)
+    .filter((m): m is LlmModel => m !== null)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -225,11 +226,11 @@ async function requestChat(
       const body = apiErrorDetails(err);
       if (err.status === 400 && /image|audio file/i.test(body)) {
         throw new Error(
-          `Model API rejected the image (is "${model}" a vision model?). ${body}`,
+          `LLM rejected the image (is "${model}" a vision model?). ${body}`,
         );
       }
       throw new Error(
-        `Model API chat failed (${err.status ?? "unknown"}): ${body}`,
+        `LLM chat failed (${err.status ?? "unknown"}): ${body}`,
       );
     }
     throw err;
@@ -244,9 +245,27 @@ async function requestChat(
       prepared,
       data,
       verboseLayout,
+      formatVerboseSamplingLine(settings, auxiliary, think),
     );
   }
   return data;
+}
+
+function formatVerboseSamplingLine(
+  settings: Settings,
+  auxiliary: boolean,
+  think: boolean,
+): string {
+  const temp = auxiliary ? AUXILIARY_TEMPERATURE : settings.temperature;
+  const parts = [
+    `temperature: ${temp}`,
+    `top_p: ${settings.topP}`,
+    `top_k: ${settings.topK}`,
+    `repeat_penalty: ${settings.repeatPenalty}`,
+    `num_ctx: ${settings.numCtx}`,
+    think ? "reasoning_effort: medium" : null,
+  ].filter(Boolean);
+  return parts.join(", ");
 }
 
 function chatCompletionBody(
@@ -265,7 +284,8 @@ function chatCompletionBody(
     temperature: auxiliary ? AUXILIARY_TEMPERATURE : settings.temperature,
     top_p: settings.topP,
     ...(think ? { reasoning_effort: "medium" } : {}),
-  };
+    ...getProviderExtensions(settings),
+  } as ChatCompletionCreateParamsNonStreaming;
 }
 
 function toOpenAiMessage(msg: ChatMessage): ChatCompletionMessageParam {
@@ -422,20 +442,6 @@ export async function chatComplete(
   return raw;
 }
 
-export async function chat(
-  messages: ChatMessage[],
-  options?: ChatCompleteOptions,
-): Promise<string> {
-  const settings = getSettings();
-  const think = Boolean(options?.think && settings.thinkingEnabled);
-  const raw = await chatComplete(messages, options);
-  const reply = extractTelegramReply(raw, { thinkingMode: think });
-  if (!reply) {
-    throw new Error("Model response had no [REPLY] content");
-  }
-  return reply;
-}
-
 function wrapChatError(err: unknown, auxiliary = false): Error {
   const settings = getSettings();
   const apiUrl = resolveBaseUrl();
@@ -447,16 +453,16 @@ function wrapChatError(err: unknown, auxiliary = false): Error {
   ) {
     if (auxiliary) {
       return new Error(
-        `Model API auxiliary request timed out after ${timeoutSec}s (${apiUrl}). The bot will skip that side pass and continue where possible.`,
+        `LLM auxiliary request timed out after ${timeoutSec}s (${apiUrl}). The bot will skip that side pass and continue where possible.`,
       );
     }
     return new Error(
-      `Model API request timed out after ${timeoutSec}s (${apiUrl}). Check the API URL in dashboard Settings, confirm the server is running, and verify the model name matches GET /v1/models.`,
+      `LLM request timed out after ${timeoutSec}s (${apiUrl}). Check the API URL in dashboard Settings, confirm the server is running, and verify the model name matches GET /v1/models.`,
     );
   }
   if (err instanceof APIConnectionError) {
     return new Error(
-      `Model API connection failed (${apiUrl}): ${err.message}. Check the API URL in dashboard Settings.`,
+      `LLM connection failed (${apiUrl}): ${err.message}. Check the API URL in dashboard Settings.`,
     );
   }
   if (err instanceof Error) return err;

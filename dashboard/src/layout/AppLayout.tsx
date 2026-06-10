@@ -16,7 +16,7 @@ export function AppLayout() {
   const {
     apiOnline,
     stats,
-    modelApiOk,
+    llmOk,
     tavilyConfigured,
     apiUnreachable,
     sectionErrors,
@@ -28,7 +28,7 @@ export function AppLayout() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <h1>Model API Bot</h1>
+          <h1>LLM Bot</h1>
           <p className="subtitle">Dashboard</p>
         </div>
 
@@ -71,13 +71,13 @@ export function AppLayout() {
             </span>
             <span
               className={`badge ${
-                modelApiOk === true ? "ok" : modelApiOk === false ? "warn" : "warn"
+                llmOk === true ? "ok" : llmOk === false ? "warn" : "warn"
               }`}
             >
-              model API{" "}
-              {modelApiOk === true
+              LLM{" "}
+              {llmOk === true
                 ? "reachable"
-                : modelApiOk === false
+                : llmOk === false
                   ? "unreachable"
                   : "—"}
             </span>

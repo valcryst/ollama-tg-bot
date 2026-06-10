@@ -1,5 +1,5 @@
 import { getVramAvailableGb } from "./config.js";
-import type { ModelApiModel } from "./model-api/client.js";
+import type { LlmModel } from "./llm/client.js";
 import {
   ABSOLUTE_MAX_NUM_CTX,
   MIN_NUM_CTX,
@@ -88,7 +88,7 @@ function contextFromKvHeadroom(vramGb: number, weightGb: number): number {
 
 export function modelContextInputFromTags(
   modelName: string,
-  entry?: ModelApiModel | null,
+  entry?: LlmModel | null,
 ): ModelContextInput {
   return {
     name: modelName,

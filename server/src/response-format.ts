@@ -1,5 +1,5 @@
 import { stripEchoedHistoryMarkup } from "./bot/history-format.js";
-import { sanitizeModelOutput } from "./model-api/sanitize.js";
+import { sanitizeModelOutput } from "./llm/sanitize.js";
 
 /**
  * Structured assistant output. Only [REPLY] text is sent to Telegram.
@@ -124,7 +124,7 @@ function stripEmbeddedThinkingTrace(text: string): string {
     .trim();
 }
 
-/** User-facing reply text from model API message.content (never the thinking field). */
+/** User-facing reply text from LLM message.content (never the thinking field). */
 export function extractTelegramReply(
   content: string,
   options?: { thinkingMode?: boolean },

@@ -23,7 +23,7 @@ function sectionLine(kind: "BEGIN" | "END", part: "REQUEST" | "ANSWER", label: s
   return `---- ${kind} ${part} ${label} ----`;
 }
 
-/** VERBOSE: labeled request block (messages sent to the model API). */
+/** VERBOSE: labeled request block (messages sent to the LLM). */
 export function logModelRequestBlock(label: string, body: string): void {
   if (!isVerboseLogging()) return;
   console.log(sectionLine("BEGIN", "REQUEST", label));
@@ -32,7 +32,7 @@ export function logModelRequestBlock(label: string, body: string): void {
   console.log("");
 }
 
-/** VERBOSE: labeled answer block (response from the model API). */
+/** VERBOSE: labeled answer block (response from the LLM). */
 export function logModelAnswerBlock(label: string, body: string): void {
   if (!isVerboseLogging()) return;
   console.log(sectionLine("BEGIN", "ANSWER", label));

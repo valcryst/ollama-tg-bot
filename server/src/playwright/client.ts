@@ -12,7 +12,7 @@ const MAX_URLS_PER_TURN = 3;
 const MAX_PAGE_TEXT_CHARS = 12_000;
 
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; ModelAPITGBot/1.0; +https://github.com/model-api-tg-bot)";
+  "Mozilla/5.0 (compatible; LLMTGBot/1.0; +https://github.com/llm-tg-bot)";
 
 let browser: Browser | null = null;
 let browserInit: Promise<Browser> | null = null;

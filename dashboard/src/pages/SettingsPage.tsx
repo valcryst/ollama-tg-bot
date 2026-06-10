@@ -26,11 +26,11 @@ export function SettingsPage() {
     showModelSelection,
     modelOptions,
     verifiedApiBaseUrl,
-    testingModelApi,
+    testingLlm,
     modelsLoading,
     saving,
-    testModelApiConnection,
-    invalidateModelApiVerification,
+    testLlmConnection,
+    invalidateLlmVerification,
     fetchModelsForHost,
     save,
     load,
@@ -84,7 +84,7 @@ export function SettingsPage() {
       <header className="page-header">
         <h2>Settings</h2>
         <p className="page-desc">
-          Model API connection, model, owner account, and performance limits.
+          LLM connection, model, owner account, and performance limits.
         </p>
       </header>
 
@@ -108,7 +108,7 @@ export function SettingsPage() {
                   value={draft.apiBaseUrl}
                   onChange={(e) => {
                     const apiBaseUrl = e.target.value;
-                    invalidateModelApiVerification(apiBaseUrl);
+                    invalidateLlmVerification(apiBaseUrl);
                     setDraft({ ...draft, apiBaseUrl });
                   }}
                   placeholder="http://localhost:8080"
@@ -116,23 +116,23 @@ export function SettingsPage() {
                 <button
                   type="button"
                   className="secondary"
-                  onClick={() => void testModelApiConnection()}
-                  disabled={testingModelApi || modelsLoading || configBlocked}
+                  onClick={() => void testLlmConnection()}
+                  disabled={testingLlm || modelsLoading || configBlocked}
                 >
-                  {testingModelApi ? "Testing…" : "Test connection"}
+                  {testingLlm ? "Testing…" : "Test connection"}
                 </button>
               </div>
-              {sectionErrors.modelApi != null ? (
+              {sectionErrors.llm != null ? (
                 <ErrorBanner
-                  error={sectionErrors.modelApi}
+                  error={sectionErrors.llm}
                   compact
-                  onRetry={() => void testModelApiConnection()}
-                  onDismiss={() => setSectionError("modelApi", null)}
+                  onRetry={() => void testLlmConnection()}
+                  onDismiss={() => setSectionError("llm", null)}
                 />
               ) : null}
               {showModelSelection ? (
                 <p className="hint success-inline">
-                  Connected to model API at {verifiedApiBaseUrl}
+                  Connected to LLM at {verifiedApiBaseUrl}
                 </p>
               ) : (
                 <p className="hint">

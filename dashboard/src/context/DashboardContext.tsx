@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, type ModelApiModel, type Settings, type Stats } from "../api";
+import { api, type LlmModel, type Settings, type Stats } from "../api";
 import {
   calculateContextBudget,
   modelContextFromTags,
@@ -18,7 +18,7 @@ import {
 } from "../modelConfig";
 import { buildModelOptions, resolveModelSelection } from "../modelOptions";
 
-export type SectionKey = "settings" | "stats" | "modelApi" | "models" | "save";
+export type SectionKey = "settings" | "stats" | "llm" | "models" | "save";
 
 export function isValidApiBaseUrl(host: string): boolean {
   try {
@@ -34,23 +34,23 @@ interface DashboardContextValue {
   draft: Settings | null;
   setDraft: React.Dispatch<React.SetStateAction<Settings | null>>;
   stats: Stats | null;
-  models: ModelApiModel[];
+  models: LlmModel[];
   vramAvailableGb: number | undefined;
-  modelApiOk: boolean | null;
+  llmOk: boolean | null;
   tavilyConfigured: boolean | null;
   apiOnline: boolean | null;
   loading: boolean;
   saving: boolean;
   modelsLoading: boolean;
-  testingModelApi: boolean;
+  testingLlm: boolean;
   verifiedApiBaseUrl: string | null;
   sectionErrors: Partial<Record<SectionKey, unknown>>;
   saveOk: boolean;
   setSectionError: (key: SectionKey, err: unknown | null) => void;
   load: () => Promise<void>;
   fetchModelsForHost: (host: string) => Promise<void>;
-  testModelApiConnection: () => Promise<void>;
-  invalidateModelApiVerification: (newHost: string) => void;
+  testLlmConnection: () => Promise<void>;
+  invalidateLlmVerification: (newHost: string) => void;
   save: () => Promise<void>;
   modelOptions: ReturnType<typeof buildModelOptions>;
   showModelSelection: boolean;
@@ -65,11 +65,11 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Settings | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [models, setModels] = useState<ModelApiModel[]>([]);
+  const [models, setModels] = useState<LlmModel[]>([]);
   const [vramAvailableGb, setVramAvailableGb] = useState<number | undefined>(
     undefined,
   );
-  const [modelApiOk, setModelApiOk] = useState<boolean | null>(null);
+  const [llmOk, setLlmOk] = useState<boolean | null>(null);
   const [tavilyConfigured, setTavilyConfigured] = useState<boolean | null>(
     null,
   );
@@ -77,7 +77,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [testingModelApi, setTestingModelApi] = useState(false);
+  const [testingLlm, settestingLlm] = useState(false);
   const [verifiedApiBaseUrl, setVerifiedApiBaseUrl] = useState<string | null>(
     null,
   );
@@ -95,7 +95,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const applyModels = useCallback((list: ModelApiModel[]) => {
+  const applyModels = useCallback((list: LlmModel[]) => {
     setModels(list);
     setDraft((d) =>
       d ? { ...d, model: resolveModelSelection(list, d.model) } : d,
@@ -140,20 +140,20 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         ? settingsRes.value.apiBaseUrl.trim()
         : "";
 
-    let modelApiReachable = false;
+    let llmReachable = false;
     if (savedHost) {
       try {
-        modelApiReachable = await api.modelApiHealth(savedHost);
-        setModelApiOk(modelApiReachable);
+        llmReachable = await api.llmHealth(savedHost);
+        setLlmOk(llmReachable);
       } catch (err) {
-        setModelApiOk(false);
-        nextErrors.modelApi = err;
+        setLlmOk(false);
+        nextErrors.llm = err;
       }
     } else {
-      setModelApiOk(false);
+      setLlmOk(false);
     }
 
-    if (savedHost && modelApiReachable) {
+    if (savedHost && llmReachable) {
       try {
         const list = await api.getModels(savedHost);
         setVerifiedApiBaseUrl(savedHost);
@@ -204,16 +204,16 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const ok = await api.modelApiHealth();
-        setModelApiOk(ok);
+        const ok = await api.llmHealth();
+        setLlmOk(ok);
         setSectionErrors((prev) => {
           const next = { ...prev };
-          delete next.modelApi;
+          delete next.llm;
           return next;
         });
       } catch (err) {
-        setModelApiOk(false);
-        setSectionErrors((prev) => ({ ...prev, modelApi: err }));
+        setLlmOk(false);
+        setSectionErrors((prev) => ({ ...prev, llm: err }));
       }
 
       try {
@@ -246,61 +246,61 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const testModelApiConnection = async () => {
+  const testLlmConnection = async () => {
     if (!draft) return;
     const host = draft.apiBaseUrl.trim();
-    setSectionError("modelApi", null);
+    setSectionError("llm", null);
 
     if (!host) {
       setSectionError(
-        "modelApi",
-        new Error("Enter an Model API host URL before testing"),
+        "llm",
+        new Error("Enter an LLM host URL before testing"),
       );
       return;
     }
     if (!isValidApiBaseUrl(host)) {
       setSectionError(
-        "modelApi",
+        "llm",
         new Error("Host must be a valid http:// or https:// URL"),
       );
       return;
     }
 
-    setTestingModelApi(true);
+    settestingLlm(true);
     setVerifiedApiBaseUrl(null);
     setModels([]);
 
     try {
-      const ok = await api.modelApiHealth(host);
+      const ok = await api.llmHealth(host);
       if (!ok) {
         throw new Error(
-          "No OpenAI-compatible model API responded at this address.",
+          "No OpenAI-compatible LLM responded at this address.",
         );
       }
       setVerifiedApiBaseUrl(host);
-      setModelApiOk(true);
+      setLlmOk(true);
       await fetchModelsForHost(host);
       setSectionErrors((prev) => {
         const next = { ...prev };
-        delete next.modelApi;
+        delete next.llm;
         return next;
       });
     } catch (err) {
       setVerifiedApiBaseUrl(null);
       setModels([]);
-      setModelApiOk(false);
-      setSectionError("modelApi", err);
+      setLlmOk(false);
+      setSectionError("llm", err);
     } finally {
-      setTestingModelApi(false);
+      settestingLlm(false);
     }
   };
 
-  const invalidateModelApiVerification = (newHost: string) => {
+  const invalidateLlmVerification = (newHost: string) => {
     if (verifiedApiBaseUrl && newHost.trim() !== verifiedApiBaseUrl) {
       setVerifiedApiBaseUrl(null);
       setModels([]);
       setSectionError("models", null);
-      setSectionError("modelApi", null);
+      setSectionError("llm", null);
     }
   };
 
@@ -356,9 +356,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const draftHost = draft?.apiBaseUrl.trim() ?? "";
   const apiBaseUrlReady =
     draftHost.length > 0 && isValidApiBaseUrl(draftHost);
-  const modelApiVerified =
+  const llmVerified =
     apiBaseUrlReady && verifiedApiBaseUrl === draftHost;
-  const showModelSelection = modelApiVerified;
+  const showModelSelection = llmVerified;
 
   const apiUnreachable = apiOnline === false;
   const configBlocked = apiUnreachable || !!sectionErrors.settings;
@@ -373,21 +373,21 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     stats,
     models,
     vramAvailableGb,
-    modelApiOk,
+    llmOk,
     tavilyConfigured,
     apiOnline,
     loading,
     saving,
     modelsLoading,
-    testingModelApi,
+    testingLlm,
     verifiedApiBaseUrl,
     sectionErrors,
     saveOk,
     setSectionError,
     load,
     fetchModelsForHost,
-    testModelApiConnection,
-    invalidateModelApiVerification,
+    testLlmConnection,
+    invalidateLlmVerification,
     save,
     modelOptions,
     showModelSelection,

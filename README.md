@@ -1,6 +1,6 @@
 # OpenAI-compatible Telegram Bot
 
-Telegram bot backed by an OpenAI-compatible Responses API, with a web dashboard for configuration and stats.
+Telegram bot backed by any **OpenAI-compatible chat completions API** (LocalAI, Ollama, vLLM, OpenAI, etc.), with a web dashboard for configuration and stats.
 
 ## Docker
 
@@ -27,7 +27,10 @@ npm run dev
 | Variable | Where | Default |
 |----------|-------|---------|
 | `BOT_TOKEN` | everywhere | required |
+| `VRAM_AVAILABLE` | everywhere | required (GPU GB, e.g. `24`) |
+| `OPENAI_API_KEY` | optional | empty (local servers usually skip this) |
 | `TAVILY_API_KEY` | optional | empty (web search off) |
+| `LOGGING_LEVEL` | optional | `ERROR` (`DEBUG`, `VERBOSE`) |
 | `PORT` | Docker / Portainer only | `3000` |
 
 Do not put `PORT` in `.env` for local dev — it is only for `docker-compose.yml` (`PORT:PORT` mapping + app listen).
