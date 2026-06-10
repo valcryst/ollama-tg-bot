@@ -401,16 +401,8 @@ export async function chatCompleteDetailed(
       );
       const raw = pickAssistantContent(lastData);
       const reasoning = pickReasoning(lastData);
-      if (raw) {
-        return {
-          raw,
-          thinking: reasoning,
-        };
-      }
-
-      // Some OpenAI-compatible backends (e.g. LocalAI) return text in reasoning only.
-      if (reasoning) {
-        return { raw: reasoning, thinking: "" };
+      if (raw || reasoning) {
+        return { raw, thinking: reasoning };
       }
 
       const predictCap = maxNumPredictForContext(settings.numCtx);
@@ -438,8 +430,8 @@ export async function chatComplete(
   messages: ChatMessage[],
   options?: ChatCompleteOptions,
 ): Promise<string> {
-  const { raw } = await chatCompleteDetailed(messages, options);
-  return raw;
+  const { raw, thinking } = await chatCompleteDetailed(messages, options);
+  return raw || thinking;
 }
 
 function wrapChatError(err: unknown, auxiliary = false): Error {

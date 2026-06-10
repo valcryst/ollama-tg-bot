@@ -87,6 +87,17 @@ Three layers, extracted in a **background pass** (`server/src/memory-extract.ts`
 
 Model replies use `[REPLY]…[/REPLY]` (Telegram HTML subset). Parser: `server/src/response-format.ts`. Only `[REPLY]` is sent to users.
 
+**LLM response fields:** User-facing text comes from the API `content` field. Chain-of-thought / reasoning comes from the separate `reasoning` (or `reasoning_content`) field — sent to Telegram only when `sendThinkingEnabled` is on. Never merge reasoning into the reply body.
+
+## Code conventions
+
+- **ESM** throughout; server imports use `.js` extensions (`"type": "module"`).
+- **Minimal diffs** — match existing style, naming, and patterns in the file you edit.
+- **No drive-by refactors** or unrelated changes.
+- **Do not commit** unless the user asks. Do not put secrets in git (`.env`, tokens).
+- **No ad-hoc output heuristics** — do not strip or classify model text with hardcoded keyword lists, magic regex, or guessed “reasoning leak” patterns. Use API response fields (`content` vs `reasoning`) and the project’s structured block protocol (`[REPLY]`, `[SEARCH]`, `[STICKER]`, etc. — tag names in `response-format.ts` and each side-pass spec). Side passes parse **closed** blocks only.
+- **SQLite settings** — add new keys to `DEFAULT_SETTINGS` in `server/src/db/database.ts`, validation in `settings-limits.ts`, allowed PATCH keys in `server/src/api/routes.ts`, and dashboard `Settings` in `dashboard/src/api.ts`.
+
 ## Dashboard pages
 
 | Route | Purpose |
@@ -97,14 +108,6 @@ Model replies use `[REPLY]…[/REPLY]` (Telegram HTML subset). Parser: `server/s
 | `/memories` | User / group / general facts |
 
 State: `dashboard/src/context/DashboardContext.tsx`. API client: `dashboard/src/api.ts`.
-
-## Code conventions
-
-- **ESM** throughout; server imports use `.js` extensions (`"type": "module"`).
-- **Minimal diffs** — match existing style, naming, and patterns in the file you edit.
-- **No drive-by refactors** or unrelated changes.
-- **Do not commit** unless the user asks. Do not put secrets in git (`.env`, tokens).
-- **SQLite settings** — add new keys to `DEFAULT_SETTINGS` in `server/src/db/database.ts`, validation in `settings-limits.ts`, allowed PATCH keys in `server/src/api/routes.ts`, and dashboard `Settings` in `dashboard/src/api.ts`.
 
 ## Telegram specifics
 

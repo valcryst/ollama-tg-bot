@@ -289,9 +289,9 @@ export async function runChatTurn(
       outputChars: modelOutput.length,
     });
 
-    const replyBody = extractTelegramReply(modelOutput, {
-      thinkingMode: settings.thinkingEnabled,
-    });
+    const replyBody =
+      extractTelegramReply(modelOutput) ||
+      (thinking ? extractTelegramReply(thinking) : "");
     const hasReply = hasVisibleTelegramReply(replyBody);
 
     let stickerEmoji: string | null = null;

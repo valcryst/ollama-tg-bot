@@ -1,5 +1,10 @@
 import { stripEchoedHistoryMarkup } from "./bot/history-format.js";
-import { sanitizeModelOutput } from "./llm/sanitize.js";
+
+/** Tag names used in model output protocol (must match prompts and side-pass specs). */
+export const REPLY_TAG = "REPLY";
+export const MEMORY_TAG = "MEMORY";
+export const GROUP_MEMORY_TAG = "GROUP_MEMORY";
+export const GENERAL_MEMORY_TAG = "GENERAL_MEMORY";
 
 /**
  * Structured assistant output. Only [REPLY] text is sent to Telegram.
@@ -8,17 +13,17 @@ import { sanitizeModelOutput } from "./llm/sanitize.js";
 export function buildReplyFormatSpec(formatHint: string): string {
   return `Reply ONLY using this block (no text outside it):
 
-[REPLY]
+[${REPLY_TAG}]
 ${formatHint}
-[/REPLY]
+[/${REPLY_TAG}]
 
-Rules: always include [REPLY]. Do not output [MEMORY], [GROUP_MEMORY], or [GENERAL_MEMORY] in your reply — memory is handled separately.
-Never include internal chat-history tags in [REPLY] (e.g. [assistant said], [user:… said], [sticker: …], [compressed]) — those are metadata, not spoken text.
+Rules: always include [${REPLY_TAG}]. Do not output [${MEMORY_TAG}], [${GROUP_MEMORY_TAG}], or [${GENERAL_MEMORY_TAG}] in your reply — memory is handled separately.
+Never include internal chat-history tags in [${REPLY_TAG}] (e.g. [assistant said], [user:… said], [sticker: …], [compressed]) — those are metadata, not spoken text.
 Formatting: HTML tags are optional — reply in plain text unless a tag genuinely adds emphasis. Never send empty tags (e.g. <b></b>).`;
 }
 
 /** Used by the dedicated memory extraction pass. */
-export const MEMORY_EXTRACT_FORMAT_SPEC = `Output ONLY [MEMORY], [GROUP_MEMORY], and [GENERAL_MEMORY] blocks as specified.`;
+export const MEMORY_EXTRACT_FORMAT_SPEC = `Output ONLY [${MEMORY_TAG}], [${GROUP_MEMORY_TAG}], and [${GENERAL_MEMORY_TAG}] blocks as specified.`;
 
 export interface ParsedAssistantResponse {
   memoryFacts: string[];
@@ -55,27 +60,14 @@ export function stripStructuredMarkup(text: string): string {
   return result.trim();
 }
 
-function extractFirstBlock(text: string, tag: string): string | null {
+/** Extract a closed [TAG]…[/TAG] block only (no partial/unclosed match). */
+export function extractClosedBlock(text: string, tag: string): string | null {
   const closed = new RegExp(
     `\\[${escapeRegExp(tag)}\\]\\s*([\\s\\S]*?)\\s*\\[\\/${escapeRegExp(tag)}\\]`,
     "i",
   );
   const match = closed.exec(text);
-  if (match?.[1]) return match[1].trim();
-
-  const partial = new RegExp(
-    `\\[${escapeRegExp(tag)}\\]\\s*([\\s\\S]+)`,
-    "i",
-  );
-  const partialMatch = partial.exec(text);
-  if (!partialMatch?.[1]) return null;
-
-  return stripStructuredMarkup(
-    partialMatch[1].replace(
-      new RegExp(`\\[\\/?${escapeRegExp(tag)}\\]`, "gi"),
-      "",
-    ),
-  );
+  return match?.[1]?.trim() ?? null;
 }
 
 function parseMemoryLines(block: string): string[] {
@@ -89,55 +81,28 @@ function parseMemoryLines(block: string): string[] {
 }
 
 export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
-  const memoryFacts = parseMemoryLines(extractFirstBlock(raw, "MEMORY") ?? "");
+  const memoryFacts = parseMemoryLines(
+    extractClosedBlock(raw, MEMORY_TAG) ?? "",
+  );
   const groupMemoryFacts = parseMemoryLines(
-    extractFirstBlock(raw, "GROUP_MEMORY") ?? "",
+    extractClosedBlock(raw, GROUP_MEMORY_TAG) ?? "",
   );
   const generalMemoryFacts = parseMemoryLines(
-    extractFirstBlock(raw, "GENERAL_MEMORY") ?? "",
+    extractClosedBlock(raw, GENERAL_MEMORY_TAG) ?? "",
   );
 
-  let reply = extractFirstBlock(raw, "REPLY") ?? "";
-  if (!reply) {
-    const closed = raw.match(/\[REPLY\]\s*([\s\S]*?)\s*\[\/REPLY\]/i);
-    if (closed?.[1]) reply = closed[1].trim();
-  }
-  if (!reply) {
-    const partial = raw.match(/\[REPLY\]\s*([\s\S]+)/i);
-    reply = partial?.[1] ? stripStructuredMarkup(partial[1]) : "";
-  }
-
-  reply = stripEchoedHistoryMarkup(stripStructuredMarkup(reply));
+  const reply = extractClosedBlock(raw, REPLY_TAG) ?? "";
+  const cleanedReply = stripEchoedHistoryMarkup(stripStructuredMarkup(reply));
 
   return {
     memoryFacts,
     groupMemoryFacts,
     generalMemoryFacts,
-    reply,
+    reply: cleanedReply,
   };
 }
 
-function stripEmbeddedThinkingTrace(text: string): string {
-  return text
-    .replace(/`?<think>[\s\S]*?<\/think>`?/gi, "")
-    .replace(/`?<think>[\s\S]*$/gi, "")
-    .trim();
-}
-
-/** User-facing reply text from LLM message.content (never the thinking field). */
-export function extractTelegramReply(
-  content: string,
-  options?: { thinkingMode?: boolean },
-): string {
-  const cleaned = stripEmbeddedThinkingTrace(content);
-  const { reply } = parseStructuredResponse(cleaned);
-  if (reply.trim()) return reply.trim();
-
-  if (options?.thinkingMode) {
-    return sanitizeModelOutput(cleaned);
-  }
-
-  const legacy = stripEchoedHistoryMarkup(stripStructuredMarkup(cleaned));
-  if (legacy) return legacy;
-  return sanitizeModelOutput(cleaned);
+/** User-facing reply: only a closed [REPLY]…[/REPLY] block (never the reasoning field). */
+export function extractTelegramReply(content: string): string {
+  return parseStructuredResponse(content).reply.trim();
 }
