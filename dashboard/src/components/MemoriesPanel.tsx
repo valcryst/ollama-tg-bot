@@ -43,7 +43,7 @@ const COPY: Record<
     clearLabel: "Clear user",
     confirmClear: (id, count) =>
       `Remove all ${count} memories for user ${id}?`,
-    addHint: "Add a fact for a user that already has memories in this list.",
+    addHint: "Create or replace memory content for any Telegram user ID.",
   },
   group: {
     title: "Group memories",
@@ -54,7 +54,7 @@ const COPY: Record<
     clearLabel: "Clear group",
     confirmClear: (id, count) =>
       `Remove all ${count} memories for group ${id}?`,
-    addHint: "Add a fact for a group that already has memories in this list.",
+    addHint: "Create or replace memory content for any Telegram group ID.",
   },
 };
 
@@ -129,24 +129,6 @@ export function MemoriesPanel({
       .sort((a, b) => a.groupId.localeCompare(b.groupId));
   }, [groupFacts]);
 
-  const entityIds = useMemo(
-    () =>
-      kind === "user"
-        ? userGroups.map((g) => g.userId)
-        : chatGroups.map((g) => g.groupId),
-    [kind, userGroups, chatGroups],
-  );
-
-  useEffect(() => {
-    if (entityIds.length === 0) {
-      setAddEntityId("");
-      return;
-    }
-    if (!addEntityId || !entityIds.includes(addEntityId)) {
-      setAddEntityId(entityIds[0]);
-    }
-  }, [entityIds, addEntityId]);
-
   const upsertUserFact = (record: UserMemoryFact) => {
     setUserFacts((prev) => {
       const idx = prev.findIndex((f) => f.id === record.id);
@@ -211,17 +193,19 @@ export function MemoriesPanel({
 
   const addFact = async () => {
     const trimmed = addFactText.trim();
-    if (!addEntityId || trimmed.length < 2) return;
+    const entityId = addEntityId.trim();
+    if (!entityId || trimmed.length < 2) return;
 
     setSavingId("new");
     try {
       if (kind === "user") {
-        const { fact } = await api.createMemory(addEntityId, trimmed);
+        const { fact } = await api.createMemory(entityId, trimmed);
         upsertUserFact(fact);
       } else {
-        const { fact } = await api.createGroupMemory(addEntityId, trimmed);
+        const { fact } = await api.createGroupMemory(entityId, trimmed);
         upsertGroupFact(fact);
       }
+      setAddEntityId("");
       setAddFactText("");
       setError(null);
     } catch (err) {
@@ -334,10 +318,9 @@ export function MemoriesPanel({
           {isEditing ? (
             <textarea
               className="memory-edit-input"
-              rows={2}
+              rows={6}
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
-              maxLength={500}
             />
           ) : (
             <p className="memory-fact">{item.fact}</p>
@@ -416,37 +399,34 @@ export function MemoriesPanel({
         />
       ) : null}
 
-      {entityIds.length > 0 ? (
-        <form
-          className="memory-add-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void addFact();
-          }}
-        >
+      <form
+        className="memory-add-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void addFact();
+        }}
+      >
           <p className="hint memory-add-hint">{copy.addHint}</p>
           <div className="memory-add-row">
             <label className="memory-add-field">
               <span>{copy.entityLabel} ID</span>
-              <select
-                value={addEntityId}
-                onChange={(e) => setAddEntityId(e.target.value)}
-              >
-                {entityIds.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="memory-add-field memory-add-fact-field">
-              <span>Fact</span>
               <input
                 type="text"
+                value={addEntityId}
+                onChange={(e) => setAddEntityId(e.target.value)}
+                placeholder={
+                  kind === "user" ? "Telegram user ID" : "Telegram group ID"
+                }
+              />
+            </label>
+            <label className="memory-add-field memory-add-fact-field">
+              <span>Memory</span>
+              <textarea
+                className="memory-edit-input"
+                rows={3}
                 value={addFactText}
                 onChange={(e) => setAddFactText(e.target.value)}
                 placeholder="New fact to store…"
-                maxLength={500}
               />
             </label>
             <button
@@ -455,14 +435,13 @@ export function MemoriesPanel({
               disabled={
                 savingId === "new" ||
                 addFactText.trim().length < 2 ||
-                !addEntityId
+                !addEntityId.trim()
               }
             >
               {savingId === "new" ? "…" : "Add"}
             </button>
-          </div>
-        </form>
-      ) : null}
+        </div>
+      </form>
 
       {loading && facts.length === 0 ? (
         <p className="hint">Loading memories…</p>
@@ -470,8 +449,8 @@ export function MemoriesPanel({
 
       {!loading && facts.length === 0 && error == null ? (
         <p className="hint">
-          No memories stored yet. Chat with the bot first so user/group IDs
-          appear here.
+          No memories stored yet. Create one above or let the bot learn from
+          chat.
         </p>
       ) : null}
 

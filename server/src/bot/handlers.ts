@@ -20,11 +20,6 @@ import {
   getUserFacts,
 } from "../db/user-memory.js";
 import {
-  scheduleGeneralMemoryCompression,
-  scheduleGroupMemoryCompression,
-  scheduleUserMemoryCompression,
-} from "../context-compress.js";
-import {
   getSettings,
   recordMessageReceived,
   recordReply,
@@ -630,17 +625,14 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
       const record = createUserFact(target.userId, fact);
       saved = record != null;
       targetLabel = `user memory for ${target.label}`;
-      if (saved) scheduleUserMemoryCompression(target.userId);
     } else if (target.kind === "group") {
       const record = createGroupFact(target.groupId, fact);
       saved = record != null;
       targetLabel = "group memory";
-      if (saved) scheduleGroupMemoryCompression(target.groupId);
     } else {
       const record = createGeneralFact(fact);
       saved = record != null;
       targetLabel = "general memory";
-      if (saved) scheduleGeneralMemoryCompression();
     }
 
     if (!saved) {

@@ -52,21 +52,21 @@ const TABLE_CONFIGS: Record<string, TableConfig> = {
     countQuery: "SELECT COUNT(*) AS n FROM chat_messages",
     timeColumns: ["created_at"],
   },
-  user_facts: {
-    label: "User facts",
-    columns: ["id", "user_id", "fact", "created_at"],
-    query: `SELECT id, user_id, fact, created_at
-            FROM user_facts ORDER BY id DESC LIMIT ?`,
-    countQuery: "SELECT COUNT(*) AS n FROM user_facts",
-    timeColumns: ["created_at"],
+  user_memories: {
+    label: "User memories",
+    columns: ["id", "user_id", "content", "created_at", "updated_at"],
+    query: `SELECT id, user_id, content, created_at, updated_at
+            FROM user_memories ORDER BY id DESC LIMIT ?`,
+    countQuery: "SELECT COUNT(*) AS n FROM user_memories",
+    timeColumns: ["created_at", "updated_at"],
   },
-  group_facts: {
-    label: "Group facts",
-    columns: ["id", "group_id", "fact", "created_at"],
-    query: `SELECT id, group_id, fact, created_at
-            FROM group_facts ORDER BY id DESC LIMIT ?`,
-    countQuery: "SELECT COUNT(*) AS n FROM group_facts",
-    timeColumns: ["created_at"],
+  group_memories: {
+    label: "Group memories",
+    columns: ["id", "group_id", "content", "created_at", "updated_at"],
+    query: `SELECT id, group_id, content, created_at, updated_at
+            FROM group_memories ORDER BY id DESC LIMIT ?`,
+    countQuery: "SELECT COUNT(*) AS n FROM group_memories",
+    timeColumns: ["created_at", "updated_at"],
   },
   general_facts: {
     label: "General facts",
@@ -107,8 +107,8 @@ const TABLE_ORDER = [
   "stats",
   "stats_meta",
   "chat_messages",
-  "user_facts",
-  "group_facts",
+  "user_memories",
+  "group_memories",
   "general_facts",
   "personalities",
   "known_users",

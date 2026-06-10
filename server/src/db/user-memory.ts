@@ -1,21 +1,22 @@
 import type { DatabaseSync } from "node:sqlite";
 import { normalizeFactText } from "./memory-facts.js";
 
-const MAX_FACTS_PER_USER = 64;
+const MAX_MEMORY_CHARS = 12000;
 
 let db: DatabaseSync;
 
 export function bindUserMemoryDatabase(database: DatabaseSync): void {
   db = database;
   db.exec(`
-    CREATE TABLE IF NOT EXISTS user_facts (
+    CREATE TABLE IF NOT EXISTS user_memories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id TEXT NOT NULL,
-      fact TEXT NOT NULL,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      user_id TEXT NOT NULL UNIQUE,
+      content TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
-    CREATE INDEX IF NOT EXISTS idx_user_facts_user
-      ON user_facts (user_id, id);
+    CREATE INDEX IF NOT EXISTS idx_user_memories_user
+      ON user_memories (user_id);
   `);
 }
 
@@ -27,69 +28,77 @@ export interface UserFactRecord {
 }
 
 export function getUserFacts(userId: string): string[] {
-  return listUserFacts(userId).map((r) => r.fact);
+  const content = getUserMemoryContent(userId);
+  return content ? [content] : [];
+}
+
+export function getUserMemoryContent(userId: string): string {
+  const row = db
+    .prepare(`SELECT content FROM user_memories WHERE user_id = ?`)
+    .get(userId) as { content: string } | undefined;
+  return row?.content ?? "";
 }
 
 export function listAllUserFacts(): UserFactRecord[] {
   const rows = db
     .prepare(
-      `SELECT id, user_id, fact, created_at FROM user_facts
-       ORDER BY user_id ASC, id ASC`,
+      `SELECT id, user_id, content, updated_at FROM user_memories
+       ORDER BY user_id ASC`,
     )
     .all() as unknown as {
     id: number;
     user_id: string;
-    fact: string;
-    created_at: number;
+    content: string;
+    updated_at: number;
   }[];
 
   return rows.map(rowToUserFactRecord);
 }
 
 export function listUserFacts(userId: string): UserFactRecord[] {
-  const rows = db
-    .prepare(
-      `SELECT id, user_id, fact, created_at FROM user_facts
-       WHERE user_id = ?
-       ORDER BY id ASC`,
-    )
-    .all(userId) as unknown as {
-    id: number;
-    user_id: string;
-    fact: string;
-    created_at: number;
-  }[];
-
-  return rows.map(rowToUserFactRecord);
+  const row = getUserMemoryRecord(userId);
+  return row ? [row] : [];
 }
 
 function rowToUserFactRecord(r: {
   id: number;
   user_id: string;
-  fact: string;
-  created_at: number;
+  content: string;
+  updated_at: number;
 }): UserFactRecord {
   return {
     id: r.id,
     userId: r.user_id,
-    fact: r.fact,
-    createdAt: new Date(r.created_at * 1000).toISOString(),
+    fact: r.content,
+    createdAt: new Date(r.updated_at * 1000).toISOString(),
   };
 }
 
 export function getUserFactById(id: number): UserFactRecord | null {
   const row = db
     .prepare(
-      `SELECT id, user_id, fact, created_at FROM user_facts WHERE id = ?`,
+      `SELECT id, user_id, content, updated_at FROM user_memories WHERE id = ?`,
     )
     .get(id) as
-    | { id: number; user_id: string; fact: string; created_at: number }
+    | { id: number; user_id: string; content: string; updated_at: number }
+    | undefined;
+  return row ? rowToUserFactRecord(row) : null;
+}
+
+function getUserMemoryRecord(userId: string): UserFactRecord | null {
+  const row = db
+    .prepare(
+      `SELECT id, user_id, content, updated_at FROM user_memories
+       WHERE user_id = ?`,
+    )
+    .get(userId) as
+    | { id: number; user_id: string; content: string; updated_at: number }
     | undefined;
   return row ? rowToUserFactRecord(row) : null;
 }
 
 export function deleteUserFactById(id: number): boolean {
-  const result = db.prepare(`DELETE FROM user_facts WHERE id = ?`).run(id);
+  const result = db.prepare(`DELETE FROM user_memories WHERE id = ?`).run(id);
   return result.changes > 0;
 }
 
@@ -99,113 +108,101 @@ export function createUserFact(
 ): UserFactRecord | null {
   const normalized = normalizeFactText(fact);
   if (!normalized) return null;
-
-  const existing = new Set(
-    getUserFacts(userId).map((f) => f.toLowerCase()),
-  );
-  if (existing.has(normalized.toLowerCase())) {
-    const row = db
-      .prepare(
-        `SELECT id, user_id, fact, created_at FROM user_facts
-         WHERE user_id = ? AND lower(fact) = lower(?)`,
-      )
-      .get(userId, normalized) as
-      | { id: number; user_id: string; fact: string; created_at: number }
-      | undefined;
-    return row ? rowToUserFactRecord(row) : null;
-  }
-
-  const result = db
-    .prepare(`INSERT INTO user_facts (user_id, fact) VALUES (?, ?)`)
-    .run(userId, normalized);
-  pruneUserFacts(userId);
-  return getUserFactById(Number(result.lastInsertRowid));
+  const existing = getUserMemoryContent(userId);
+  const content = appendUniqueLine(existing, normalized);
+  replaceUserMemory(userId, content);
+  return getUserMemoryRecord(userId);
 }
 
 export function updateUserFactById(
   id: number,
   fact: string,
 ): UserFactRecord | "duplicate" | null {
-  const normalized = normalizeFactText(fact);
+  const normalized = normalizeMemoryContent(fact);
   if (!normalized) return null;
 
   const current = getUserFactById(id);
   if (!current) return null;
 
-  const duplicate = db
-    .prepare(
-      `SELECT 1 FROM user_facts
-       WHERE user_id = ? AND lower(fact) = lower(?) AND id != ?`,
-    )
-    .get(current.userId, normalized, id);
-  if (duplicate) return "duplicate";
-
-  db.prepare(`UPDATE user_facts SET fact = ? WHERE id = ?`).run(
-    normalized,
-    id,
-  );
-  return getUserFactById(id);
+  replaceUserMemory(current.userId, normalized);
+  return getUserMemoryRecord(current.userId);
 }
 
 export function clearUserFactsForUser(userId: string): number {
   const result = db
-    .prepare(`DELETE FROM user_facts WHERE user_id = ?`)
+    .prepare(`DELETE FROM user_memories WHERE user_id = ?`)
     .run(userId);
   return Number(result.changes);
 }
 
 export function addUserFacts(userId: string, facts: string[]): number {
-  const existing = new Set(
-    getUserFacts(userId).map((f) => f.toLowerCase()),
-  );
-  const insert = db.prepare(
-    `INSERT INTO user_facts (user_id, fact) VALUES (?, ?)`,
-  );
+  const existing = getUserMemoryContent(userId);
+  let content = existing;
   let added = 0;
 
   for (const fact of facts) {
     const normalized = normalizeFactText(fact);
     if (!normalized) continue;
-    const key = normalized.toLowerCase();
-    if (existing.has(key)) continue;
-    existing.add(key);
-    insert.run(userId, normalized);
+    const next = appendUniqueLine(content, normalized);
+    if (next === content) continue;
+    content = next;
     added++;
   }
 
-  pruneUserFacts(userId);
+  if (added > 0) replaceUserMemory(userId, content);
   return added;
 }
 
 export function clearUserMemory(userId: string): void {
-  db.prepare(`DELETE FROM user_facts WHERE user_id = ?`).run(userId);
-}
-
-function pruneUserFacts(userId: string): void {
-  db.prepare(
-    `DELETE FROM user_facts
-     WHERE user_id = ? AND id NOT IN (
-       SELECT id FROM user_facts
-       WHERE user_id = ?
-       ORDER BY id DESC
-       LIMIT ?
-     )`,
-  ).run(userId, userId, MAX_FACTS_PER_USER);
+  db.prepare(`DELETE FROM user_memories WHERE user_id = ?`).run(userId);
 }
 
 export function formatUserMemoryForPrompt(facts: string[]): string {
-  if (facts.length === 0) {
+  const content = facts.join("\n").trim();
+  if (!content) {
     return "No stored facts yet about this user.";
   }
-  return facts.map((f) => `- ${f}`).join("\n");
+  return content;
 }
 
 export function userMemoryTotalChars(facts: string[]): number {
   return facts.reduce((n, f) => n + f.length, 0);
 }
 
-/** Replace all facts for a user (e.g. after LLM merge/compression). */
 export function replaceUserFacts(userId: string, facts: string[]): void {
-  clearUserMemory(userId);
-  if (facts.length > 0) addUserFacts(userId, facts);
+  replaceUserMemory(userId, facts.join("\n").trim());
+}
+
+export function replaceUserMemory(userId: string, content: string): void {
+  const normalized = normalizeMemoryContent(content);
+  if (!normalized) {
+    clearUserMemory(userId);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO user_memories (user_id, content, updated_at)
+     VALUES (?, ?, unixepoch())
+     ON CONFLICT(user_id) DO UPDATE SET
+       content = excluded.content,
+       updated_at = excluded.updated_at`,
+  ).run(userId, normalized);
+}
+
+function appendUniqueLine(existing: string, fact: string): string {
+  const lines = existing
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const key = fact.toLowerCase();
+  if (lines.some((line) => line.toLowerCase() === key)) {
+    return existing.trim();
+  }
+  return [...lines, fact].join("\n").slice(0, MAX_MEMORY_CHARS);
+}
+
+function normalizeMemoryContent(content: unknown): string | null {
+  if (typeof content !== "string") return null;
+  const normalized = content.trim();
+  if (normalized.length < 2) return null;
+  return normalized.slice(0, MAX_MEMORY_CHARS);
 }

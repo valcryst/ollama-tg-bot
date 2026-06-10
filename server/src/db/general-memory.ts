@@ -162,13 +162,3 @@ export function formatGeneralMemoryForPrompt(facts: string[]): string {
   }
   return facts.map((f) => `- ${f}`).join("\n");
 }
-
-export function generalMemoryTotalChars(facts: string[]): number {
-  return facts.reduce((n, f) => n + f.length, 0);
-}
-
-/** Replace all general facts (e.g. after LLM merge/compression). */
-export function replaceGeneralFacts(facts: string[]): void {
-  clearAllGeneralFacts();
-  if (facts.length > 0) addGeneralFacts(facts);
-}

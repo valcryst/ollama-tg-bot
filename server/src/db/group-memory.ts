@@ -1,21 +1,22 @@
 import type { DatabaseSync } from "node:sqlite";
 import { normalizeFactText } from "./memory-facts.js";
 
-const MAX_FACTS_PER_GROUP = 64;
+const MAX_MEMORY_CHARS = 12000;
 
 let db: DatabaseSync;
 
 export function bindGroupMemoryDatabase(database: DatabaseSync): void {
   db = database;
   db.exec(`
-    CREATE TABLE IF NOT EXISTS group_facts (
+    CREATE TABLE IF NOT EXISTS group_memories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      group_id TEXT NOT NULL,
-      fact TEXT NOT NULL,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      group_id TEXT NOT NULL UNIQUE,
+      content TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
-    CREATE INDEX IF NOT EXISTS idx_group_facts_group
-      ON group_facts (group_id, id);
+    CREATE INDEX IF NOT EXISTS idx_group_memories_group
+      ON group_memories (group_id);
   `);
 }
 
@@ -27,69 +28,77 @@ export interface GroupFactRecord {
 }
 
 export function getGroupFacts(groupId: string): string[] {
-  return listGroupFacts(groupId).map((r) => r.fact);
+  const content = getGroupMemoryContent(groupId);
+  return content ? [content] : [];
+}
+
+export function getGroupMemoryContent(groupId: string): string {
+  const row = db
+    .prepare(`SELECT content FROM group_memories WHERE group_id = ?`)
+    .get(groupId) as { content: string } | undefined;
+  return row?.content ?? "";
 }
 
 export function listAllGroupFacts(): GroupFactRecord[] {
   const rows = db
     .prepare(
-      `SELECT id, group_id, fact, created_at FROM group_facts
-       ORDER BY group_id ASC, id ASC`,
+      `SELECT id, group_id, content, updated_at FROM group_memories
+       ORDER BY group_id ASC`,
     )
     .all() as unknown as {
     id: number;
     group_id: string;
-    fact: string;
-    created_at: number;
+    content: string;
+    updated_at: number;
   }[];
 
   return rows.map(rowToGroupFactRecord);
 }
 
 export function listGroupFacts(groupId: string): GroupFactRecord[] {
-  const rows = db
-    .prepare(
-      `SELECT id, group_id, fact, created_at FROM group_facts
-       WHERE group_id = ?
-       ORDER BY id ASC`,
-    )
-    .all(groupId) as unknown as {
-    id: number;
-    group_id: string;
-    fact: string;
-    created_at: number;
-  }[];
-
-  return rows.map(rowToGroupFactRecord);
+  const row = getGroupMemoryRecord(groupId);
+  return row ? [row] : [];
 }
 
 function rowToGroupFactRecord(r: {
   id: number;
   group_id: string;
-  fact: string;
-  created_at: number;
+  content: string;
+  updated_at: number;
 }): GroupFactRecord {
   return {
     id: r.id,
     groupId: r.group_id,
-    fact: r.fact,
-    createdAt: new Date(r.created_at * 1000).toISOString(),
+    fact: r.content,
+    createdAt: new Date(r.updated_at * 1000).toISOString(),
   };
 }
 
 export function getGroupFactById(id: number): GroupFactRecord | null {
   const row = db
     .prepare(
-      `SELECT id, group_id, fact, created_at FROM group_facts WHERE id = ?`,
+      `SELECT id, group_id, content, updated_at FROM group_memories WHERE id = ?`,
     )
     .get(id) as
-    | { id: number; group_id: string; fact: string; created_at: number }
+    | { id: number; group_id: string; content: string; updated_at: number }
+    | undefined;
+  return row ? rowToGroupFactRecord(row) : null;
+}
+
+function getGroupMemoryRecord(groupId: string): GroupFactRecord | null {
+  const row = db
+    .prepare(
+      `SELECT id, group_id, content, updated_at FROM group_memories
+       WHERE group_id = ?`,
+    )
+    .get(groupId) as
+    | { id: number; group_id: string; content: string; updated_at: number }
     | undefined;
   return row ? rowToGroupFactRecord(row) : null;
 }
 
 export function deleteGroupFactById(id: number): boolean {
-  const result = db.prepare(`DELETE FROM group_facts WHERE id = ?`).run(id);
+  const result = db.prepare(`DELETE FROM group_memories WHERE id = ?`).run(id);
   return result.changes > 0;
 }
 
@@ -99,113 +108,101 @@ export function createGroupFact(
 ): GroupFactRecord | null {
   const normalized = normalizeFactText(fact);
   if (!normalized) return null;
-
-  const existing = new Set(
-    getGroupFacts(groupId).map((f) => f.toLowerCase()),
-  );
-  if (existing.has(normalized.toLowerCase())) {
-    const row = db
-      .prepare(
-        `SELECT id, group_id, fact, created_at FROM group_facts
-         WHERE group_id = ? AND lower(fact) = lower(?)`,
-      )
-      .get(groupId, normalized) as
-      | { id: number; group_id: string; fact: string; created_at: number }
-      | undefined;
-    return row ? rowToGroupFactRecord(row) : null;
-  }
-
-  const result = db
-    .prepare(`INSERT INTO group_facts (group_id, fact) VALUES (?, ?)`)
-    .run(groupId, normalized);
-  pruneGroupFacts(groupId);
-  return getGroupFactById(Number(result.lastInsertRowid));
+  const existing = getGroupMemoryContent(groupId);
+  const content = appendUniqueLine(existing, normalized);
+  replaceGroupMemory(groupId, content);
+  return getGroupMemoryRecord(groupId);
 }
 
 export function updateGroupFactById(
   id: number,
   fact: string,
 ): GroupFactRecord | "duplicate" | null {
-  const normalized = normalizeFactText(fact);
+  const normalized = normalizeMemoryContent(fact);
   if (!normalized) return null;
 
   const current = getGroupFactById(id);
   if (!current) return null;
 
-  const duplicate = db
-    .prepare(
-      `SELECT 1 FROM group_facts
-       WHERE group_id = ? AND lower(fact) = lower(?) AND id != ?`,
-    )
-    .get(current.groupId, normalized, id);
-  if (duplicate) return "duplicate";
-
-  db.prepare(`UPDATE group_facts SET fact = ? WHERE id = ?`).run(
-    normalized,
-    id,
-  );
-  return getGroupFactById(id);
+  replaceGroupMemory(current.groupId, normalized);
+  return getGroupMemoryRecord(current.groupId);
 }
 
 export function clearGroupFactsForGroup(groupId: string): number {
   const result = db
-    .prepare(`DELETE FROM group_facts WHERE group_id = ?`)
+    .prepare(`DELETE FROM group_memories WHERE group_id = ?`)
     .run(groupId);
   return Number(result.changes);
 }
 
 export function addGroupFacts(groupId: string, facts: string[]): number {
-  const existing = new Set(
-    getGroupFacts(groupId).map((f) => f.toLowerCase()),
-  );
-  const insert = db.prepare(
-    `INSERT INTO group_facts (group_id, fact) VALUES (?, ?)`,
-  );
+  const existing = getGroupMemoryContent(groupId);
+  let content = existing;
   let added = 0;
 
   for (const fact of facts) {
     const normalized = normalizeFactText(fact);
     if (!normalized) continue;
-    const key = normalized.toLowerCase();
-    if (existing.has(key)) continue;
-    existing.add(key);
-    insert.run(groupId, normalized);
+    const next = appendUniqueLine(content, normalized);
+    if (next === content) continue;
+    content = next;
     added++;
   }
 
-  pruneGroupFacts(groupId);
+  if (added > 0) replaceGroupMemory(groupId, content);
   return added;
 }
 
 export function clearGroupMemory(groupId: string): void {
-  db.prepare(`DELETE FROM group_facts WHERE group_id = ?`).run(groupId);
-}
-
-function pruneGroupFacts(groupId: string): void {
-  db.prepare(
-    `DELETE FROM group_facts
-     WHERE group_id = ? AND id NOT IN (
-       SELECT id FROM group_facts
-       WHERE group_id = ?
-       ORDER BY id DESC
-       LIMIT ?
-     )`,
-  ).run(groupId, groupId, MAX_FACTS_PER_GROUP);
+  db.prepare(`DELETE FROM group_memories WHERE group_id = ?`).run(groupId);
 }
 
 export function formatGroupMemoryForPrompt(facts: string[]): string {
-  if (facts.length === 0) {
+  const content = facts.join("\n").trim();
+  if (!content) {
     return "No stored facts yet about this group.";
   }
-  return facts.map((f) => `- ${f}`).join("\n");
+  return content;
 }
 
 export function groupMemoryTotalChars(facts: string[]): number {
   return facts.reduce((n, f) => n + f.length, 0);
 }
 
-/** Replace all facts for a group (e.g. after LLM merge/compression). */
 export function replaceGroupFacts(groupId: string, facts: string[]): void {
-  clearGroupMemory(groupId);
-  if (facts.length > 0) addGroupFacts(groupId, facts);
+  replaceGroupMemory(groupId, facts.join("\n").trim());
+}
+
+export function replaceGroupMemory(groupId: string, content: string): void {
+  const normalized = normalizeMemoryContent(content);
+  if (!normalized) {
+    clearGroupMemory(groupId);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO group_memories (group_id, content, updated_at)
+     VALUES (?, ?, unixepoch())
+     ON CONFLICT(group_id) DO UPDATE SET
+       content = excluded.content,
+       updated_at = excluded.updated_at`,
+  ).run(groupId, normalized);
+}
+
+function appendUniqueLine(existing: string, fact: string): string {
+  const lines = existing
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const key = fact.toLowerCase();
+  if (lines.some((line) => line.toLowerCase() === key)) {
+    return existing.trim();
+  }
+  return [...lines, fact].join("\n").slice(0, MAX_MEMORY_CHARS);
+}
+
+function normalizeMemoryContent(content: unknown): string | null {
+  if (typeof content !== "string") return null;
+  const normalized = content.trim();
+  if (normalized.length < 2) return null;
+  return normalized.slice(0, MAX_MEMORY_CHARS);
 }

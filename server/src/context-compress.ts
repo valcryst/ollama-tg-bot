@@ -1,15 +1,4 @@
 import { getSettings } from "./db/database.js";
-import { getResolvedHistoryLimits } from "./settings-runtime.js";
-import {
-  getGeneralFacts,
-  generalMemoryTotalChars,
-  replaceGeneralFacts,
-} from "./db/general-memory.js";
-import {
-  getGroupFacts,
-  groupMemoryTotalChars,
-  replaceGroupFacts,
-} from "./db/group-memory.js";
 import {
   COMPRESSED_ROLE,
   getHistoryForCompression,
@@ -17,44 +6,18 @@ import {
   replaceHistory,
   type StoredMessage,
 } from "./db/history.js";
-import {
-  getUserFacts,
-  replaceUserFacts,
-  userMemoryTotalChars,
-} from "./db/user-memory.js";
+import { logEvent, logEventError } from "./event-log.js";
 import { chatComplete } from "./ollama/client.js";
 import type { ChatMessage } from "./ollama/client.js";
-import { normalizeFactText } from "./db/memory-facts.js";
-import { logEvent, logEventError } from "./event-log.js";
+import { getResolvedHistoryLimits } from "./settings-runtime.js";
 
 const HISTORY_COMPRESS_NUM_PREDICT = 512;
-const MEMORY_COMPRESS_NUM_PREDICT = 512;
-
-const MEMORY_COMPRESS_MIN_FACTS = 28;
-const MEMORY_COMPRESS_MIN_CHARS = 1800;
-const MEMORY_TARGET_MAX_FACTS = 24;
 
 const HISTORY_COMPRESS_SYSTEM = `You compress Telegram chat history into one short narrative paragraph.
 
 Use participant tags exactly like [user:username:id] and [assistant said] for the bot.
-Mention replies ("replied to"), media ("sent an image which depicts…"), and key topics.
-Output ONLY the summary text — no markdown, no labels.`;
-
-const MEMORY_COMPRESS_SYSTEM = `You merge a list of stored long-term facts into a shorter list without losing durable information.
-
-Rules:
-- Combine duplicates and near-duplicates into one clearer line
-- Drop ephemeral or redundant items
-- Keep facts that would still matter in a future session
-- One fact per line inside the block
-- If nothing worth keeping, write "none"
-
-Output ONLY:
-
-[FACTS]
-fact one
-fact two
-[/FACTS]`;
+Mention replies ("replied to"), media ("sent an image which depicts..."), and key topics.
+Output ONLY the summary text - no markdown, no labels.`;
 
 const inFlight = new Set<string>();
 let compressionQueue: Promise<void> = Promise.resolve();
@@ -77,50 +40,10 @@ export function historyNeedsCompression(chatKey: string): boolean {
   );
 }
 
-export function userMemoryNeedsCompression(userId: string): boolean {
-  const facts = getUserFacts(userId);
-  if (facts.length < MEMORY_COMPRESS_MIN_FACTS) return false;
-  return userMemoryTotalChars(facts) >= MEMORY_COMPRESS_MIN_CHARS;
-}
-
-export function groupMemoryNeedsCompression(groupId: string): boolean {
-  const facts = getGroupFacts(groupId);
-  if (facts.length < MEMORY_COMPRESS_MIN_FACTS) return false;
-  return groupMemoryTotalChars(facts) >= MEMORY_COMPRESS_MIN_CHARS;
-}
-
-export function generalMemoryNeedsCompression(): boolean {
-  const facts = getGeneralFacts();
-  if (facts.length < MEMORY_COMPRESS_MIN_FACTS) return false;
-  return generalMemoryTotalChars(facts) >= MEMORY_COMPRESS_MIN_CHARS;
-}
-
 export function scheduleHistoryCompression(chatKey: string): void {
   const key = `history:${chatKey}`;
   enqueueCompression(key, () => compressHistoryIfNeeded(chatKey), (err) =>
     logEventError("history_compression_failed", err, { convKey: chatKey }),
-  );
-}
-
-export function scheduleUserMemoryCompression(userId: string): void {
-  const key = `user:${userId}`;
-  enqueueCompression(key, () => compressUserMemoryIfNeeded(userId), (err) =>
-    logEventError("user_memory_compression_failed", err, { userId }),
-  );
-}
-
-export function scheduleGroupMemoryCompression(groupId: string): void {
-  const key = `group:${groupId}`;
-  enqueueCompression(key, () => compressGroupMemoryIfNeeded(groupId), (err) =>
-    logEventError("group_memory_compression_failed", err, { groupId }),
-  );
-}
-
-export function scheduleGeneralMemoryCompression(): void {
-  const key = "general";
-  if (inFlight.has(key)) return;
-  enqueueCompression(key, compressGeneralMemoryIfNeeded, (err) =>
-    logEventError("general_memory_compression_failed", err),
   );
 }
 
@@ -182,68 +105,6 @@ async function compressHistoryIfNeeded(chatKey: string): Promise<void> {
   });
 }
 
-async function compressUserMemoryIfNeeded(userId: string): Promise<void> {
-  if (!userMemoryNeedsCompression(userId)) return;
-  const facts = getUserFacts(userId);
-  const merged = await compressFactsWithModel(facts, "user");
-  if (merged.length === 0) return;
-  replaceUserFacts(userId, merged);
-  logEvent("user_memory_compressed", {
-    userId,
-    factCountBefore: facts.length,
-    factCountAfter: merged.length,
-  });
-}
-
-async function compressGroupMemoryIfNeeded(groupId: string): Promise<void> {
-  if (!groupMemoryNeedsCompression(groupId)) return;
-  const facts = getGroupFacts(groupId);
-  const merged = await compressFactsWithModel(facts, "group");
-  if (merged.length === 0) return;
-  replaceGroupFacts(groupId, merged);
-  logEvent("group_memory_compressed", {
-    groupId,
-    factCountBefore: facts.length,
-    factCountAfter: merged.length,
-  });
-}
-
-async function compressGeneralMemoryIfNeeded(): Promise<void> {
-  if (!generalMemoryNeedsCompression()) return;
-  const facts = getGeneralFacts();
-  const merged = await compressFactsWithModel(facts, "general");
-  if (merged.length === 0) return;
-  replaceGeneralFacts(merged);
-  logEvent("general_memory_compressed", {
-    factCountBefore: facts.length,
-    factCountAfter: merged.length,
-  });
-}
-
-async function compressFactsWithModel(
-  facts: string[],
-  kind: "user" | "group" | "general",
-): Promise<string[]> {
-  const lines = facts.map((f) => `- ${f}`).join("\n");
-  const messages: ChatMessage[] = [
-    { role: "system", content: MEMORY_COMPRESS_SYSTEM },
-    {
-      role: "user",
-      content:
-        `Target: at most ${MEMORY_TARGET_MAX_FACTS} facts.\n` +
-        `Kind: ${kind} long-term memory.\n\n` +
-        `Current facts:\n${lines}`,
-    },
-  ];
-
-  const raw = await chatComplete(messages, {
-    numPredict: MEMORY_COMPRESS_NUM_PREDICT,
-    auxiliary: true,
-    verboseLabel: `${kind} memory compression`,
-  });
-  return parseFactsBlock(raw).slice(0, MEMORY_TARGET_MAX_FACTS);
-}
-
 function clampSummaryText(raw: string, maxChars: number): string {
   let text = raw.trim();
   text = text.replace(/^\[REPLY\][\s\S]*?\[\/REPLY\]/i, "").trim();
@@ -251,28 +112,5 @@ function clampSummaryText(raw: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   const cut = text.slice(0, maxChars);
   const lastSpace = cut.lastIndexOf(" ");
-  return `${lastSpace > maxChars * 0.6 ? cut.slice(0, lastSpace) : cut}…`;
-}
-
-const FACTS_BLOCK = /\[FACTS\]\s*([\s\S]*?)\s*\[\/FACTS\]/i;
-
-function parseFactsBlock(raw: string): string[] {
-  const match = raw.match(FACTS_BLOCK);
-  const block = (match?.[1] ?? raw).trim();
-  if (!block || /^none$/i.test(block)) return [];
-
-  const out: string[] = [];
-  const seen = new Set<string>();
-
-  for (const line of block.split("\n")) {
-    const cleaned = line.replace(/^[-*•]\s*/, "").trim();
-    const normalized = normalizeFactText(cleaned);
-    if (!normalized) continue;
-    const key = normalized.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(normalized);
-  }
-
-  return out;
+  return `${lastSpace > maxChars * 0.6 ? cut.slice(0, lastSpace) : cut}...`;
 }

@@ -28,9 +28,10 @@ import {
 } from "../settings-runtime.js";
 import {
   clearGroupFactsForGroup,
-  createGroupFact,
   deleteGroupFactById,
   listAllGroupFacts,
+  listGroupFacts,
+  replaceGroupMemory,
   updateGroupFactById,
 } from "../db/group-memory.js";
 import {
@@ -48,9 +49,10 @@ import {
 } from "../db/general-memory.js";
 import {
   clearUserFactsForUser,
-  createUserFact,
   deleteUserFactById,
   listAllUserFacts,
+  listUserFacts,
+  replaceUserMemory,
   updateUserFactById,
 } from "../db/user-memory.js";
 import { listRecentErrors } from "../db/error-log.js";
@@ -91,6 +93,12 @@ function stickerCatalogResponse() {
     loaded: catalog.loaded,
     error: catalog.error,
   };
+}
+
+function normalizeMemoryContent(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length >= MIN_FACT_LENGTH ? trimmed : null;
 }
 
 export function createApiRouter(): Router {
@@ -454,18 +462,19 @@ export function createApiRouter(): Router {
       const userId = normalizeEntityId(
         (req.body as { userId?: string })?.userId,
       );
-      const fact = normalizeFactText((req.body as { fact?: string })?.fact);
+      const fact = normalizeMemoryContent((req.body as { fact?: string })?.fact);
       if (!userId) {
         res.status(400).json({ error: "userId is required" });
         return;
       }
       if (!fact) {
         res.status(400).json({
-          error: `fact must be ${MIN_FACT_LENGTH}–${MAX_FACT_LENGTH} characters`,
+          error: "memory content must be at least 2 characters",
         });
         return;
       }
-      const created = createUserFact(userId, fact);
+      replaceUserMemory(userId, fact);
+      const created = listUserFacts(userId)[0] ?? null;
       if (!created) {
         res.status(400).json({ error: "Could not create memory" });
         return;
@@ -485,10 +494,10 @@ export function createApiRouter(): Router {
         res.status(400).json({ error: "Invalid memory id" });
         return;
       }
-      const fact = normalizeFactText((req.body as { fact?: string })?.fact);
+      const fact = normalizeMemoryContent((req.body as { fact?: string })?.fact);
       if (!fact) {
         res.status(400).json({
-          error: `fact must be ${MIN_FACT_LENGTH}–${MAX_FACT_LENGTH} characters`,
+          error: "memory content must be at least 2 characters",
         });
         return;
       }
@@ -561,18 +570,19 @@ export function createApiRouter(): Router {
       const groupId = normalizeEntityId(
         (req.body as { groupId?: string })?.groupId,
       );
-      const fact = normalizeFactText((req.body as { fact?: string })?.fact);
+      const fact = normalizeMemoryContent((req.body as { fact?: string })?.fact);
       if (!groupId) {
         res.status(400).json({ error: "groupId is required" });
         return;
       }
       if (!fact) {
         res.status(400).json({
-          error: `fact must be ${MIN_FACT_LENGTH}–${MAX_FACT_LENGTH} characters`,
+          error: "memory content must be at least 2 characters",
         });
         return;
       }
-      const created = createGroupFact(groupId, fact);
+      replaceGroupMemory(groupId, fact);
+      const created = listGroupFacts(groupId)[0] ?? null;
       if (!created) {
         res.status(400).json({ error: "Could not create memory" });
         return;
@@ -593,10 +603,10 @@ export function createApiRouter(): Router {
         res.status(400).json({ error: "Invalid memory id" });
         return;
       }
-      const fact = normalizeFactText((req.body as { fact?: string })?.fact);
+      const fact = normalizeMemoryContent((req.body as { fact?: string })?.fact);
       if (!fact) {
         res.status(400).json({
-          error: `fact must be ${MIN_FACT_LENGTH}–${MAX_FACT_LENGTH} characters`,
+          error: "memory content must be at least 2 characters",
         });
         return;
       }

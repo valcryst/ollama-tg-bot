@@ -1,19 +1,15 @@
-import {
-  scheduleGeneralMemoryCompression,
-  scheduleGroupMemoryCompression,
-  scheduleUserMemoryCompression,
-} from "./context-compress.js";
 import { addGeneralFacts } from "./db/general-memory.js";
-import { addGroupFacts } from "./db/group-memory.js";
-import { addUserFacts } from "./db/user-memory.js";
+import { replaceGroupFacts } from "./db/group-memory.js";
+import { replaceUserFacts } from "./db/user-memory.js";
+import { logEvent, logEventError } from "./event-log.js";
 import { chatComplete } from "./ollama/client.js";
 import type { ChatMessage } from "./ollama/client.js";
 import { parseStructuredResponse } from "./response-format.js";
-import { logEvent, logEventError } from "./event-log.js";
 
 const MEMORY_EXTRACT_NUM_PREDICT = 384;
+const MEMORY_MERGE_NUM_PREDICT = 768;
 
-const EXTRACTOR_SYSTEM = `You extract durable facts worth storing long-term from a single Telegram chat turn.
+const EXTRACTOR_SYSTEM = `You extract durable facts, terms, and useful long-term information from one addressed Telegram bot turn.
 
 Output ONLY these blocks (no other text):
 
@@ -27,26 +23,46 @@ none
 none
 [/GENERAL_MEMORY]
 
-[MEMORY] = new facts about the current speaker only (name, preferences, role, timezone, how they want to be addressed). One fact per line. "none" if nothing new. In group chats, never store other members' traits here.
+[MEMORY] = new information about the current speaker only: identity, preferences, role, timezone, standing instructions, how they want to be addressed. One item per line. "none" if nothing new. In group chats, never store other members' traits here.
 
-[GROUP_MEMORY] = new facts about the group/chat itself (purpose of the group, rules, recurring topics, in-jokes, what this chat is for). Not facts about individual users. "none" if nothing new or not a group chat.
+[GROUP_MEMORY] = new information about the group/chat itself: purpose, rules, recurring topics, in-jokes, ongoing shared context, what this chat is for. Not facts about individual users. "none" if nothing new or not a group chat.
 
-[GENERAL_MEMORY] = new facts that apply across all chats: glossary terms, definitions, project/domain facts, standing instructions not tied to one person or group. "none" if nothing new.
+[GENERAL_MEMORY] = facts that apply across all chats: glossary terms, definitions, project/domain facts, standing instructions not tied to one person or group. "none" if nothing new.
 
-Decide on your own — the user does not need to say "remember". Store facts that would still matter in a future session.
+Decide on your own. The user does not need to say "remember". Store information that would still matter in a future session.
 
 Store when the user shares:
 - who they are, preferences, standing instructions
 - what this group is for, norms, ongoing context
-- definitions, acronyms, or knowledge meant for every conversation
+- definitions, acronyms, terms, or useful domain/project knowledge
 - corrections to prior assumptions
 
 Do NOT store:
 - greetings, jokes, sarcasm, or the assistant's own banter
-- one-off questions, transient moods, or message meta ("user replied to…")
+- one-off questions, transient moods, or message metadata
 - facts already listed under "Already stored"
 - duplicates rephrased slightly
 - user-specific traits in [GENERAL_MEMORY] or group-only context in [GENERAL_MEMORY]`;
+
+const MEMORY_MERGE_SYSTEM = `You update one long-term memory document for an entity.
+
+Inputs:
+- Existing memory for this entity
+- Newly extracted durable information
+
+Task:
+- Merge new information into the existing memory.
+- Preserve all durable details. This must be lossless unless an old detail is a duplicate, contradicted by newer information, or clearly ephemeral.
+- Compact wording where possible.
+- Keep the result readable as short lines or compact paragraphs.
+- Do not invent facts.
+- If there is no useful memory left, write "none".
+
+Output ONLY:
+
+[MEMORY]
+updated memory text
+[/MEMORY]`;
 
 export interface MemoryExtractInput {
   userMessage: string;
@@ -70,7 +86,7 @@ export async function extractMemoriesFromTurn(
   const userBlock = formatStored("user", input.existingUserFacts);
   const groupBlock = input.isGroupChat
     ? formatStored("group", input.existingGroupFacts)
-    : "Not a group chat — always write none in [GROUP_MEMORY].";
+    : "Not a group chat - always write none in [GROUP_MEMORY].";
   const generalBlock = formatStored("general", input.existingGeneralFacts);
 
   const replyContext = input.replyContext?.trim() ?? "";
@@ -121,8 +137,9 @@ export async function extractMemoriesFromTurn(
 }
 
 function formatStored(kind: string, facts: string[]): string {
-  if (facts.length === 0) return `(none yet for this ${kind})`;
-  return facts.map((f) => `- ${f}`).join("\n");
+  const content = facts.join("\n").trim();
+  if (!content) return `(none yet for this ${kind})`;
+  return content;
 }
 
 export interface MemoryPersistContext {
@@ -156,34 +173,34 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
   const extracted = await extractMemoriesFromTurn(ctx.input);
   let anyUpdated = false;
 
-  if (ctx.userId) {
-    const userNew = newFactsOnly(ctx.input.existingUserFacts, extracted.userFacts);
-    if (userNew.length > 0) {
-      addUserFacts(ctx.userId, userNew);
-      scheduleUserMemoryCompression(ctx.userId);
-      logEvent("memory_updated", {
-        scope: "user",
-        userId: ctx.userId,
-        factCount: userNew.length,
-      });
-      anyUpdated = true;
-    }
+  if (ctx.userId && extracted.userFacts.length > 0) {
+    const merged = await mergeMemoryDocument({
+      kind: "user",
+      existing: ctx.input.existingUserFacts,
+      incoming: extracted.userFacts,
+    });
+    replaceUserFacts(ctx.userId, merged ? [merged] : []);
+    logEvent("memory_updated", {
+      scope: "user",
+      userId: ctx.userId,
+      factCount: extracted.userFacts.length,
+    });
+    anyUpdated = true;
   }
-  if (ctx.groupChatId) {
-    const groupNew = newFactsOnly(
-      ctx.input.existingGroupFacts,
-      extracted.groupFacts,
-    );
-    if (groupNew.length > 0) {
-      addGroupFacts(ctx.groupChatId, groupNew);
-      scheduleGroupMemoryCompression(ctx.groupChatId);
-      logEvent("memory_updated", {
-        scope: "group",
-        groupId: ctx.groupChatId,
-        factCount: groupNew.length,
-      });
-      anyUpdated = true;
-    }
+
+  if (ctx.groupChatId && extracted.groupFacts.length > 0) {
+    const merged = await mergeMemoryDocument({
+      kind: "group",
+      existing: ctx.input.existingGroupFacts,
+      incoming: extracted.groupFacts,
+    });
+    replaceGroupFacts(ctx.groupChatId, merged ? [merged] : []);
+    logEvent("memory_updated", {
+      scope: "group",
+      groupId: ctx.groupChatId,
+      factCount: extracted.groupFacts.length,
+    });
+    anyUpdated = true;
   }
 
   const generalNew = newFactsOnly(
@@ -192,7 +209,6 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
   );
   if (generalNew.length > 0) {
     addGeneralFacts(generalNew);
-    scheduleGeneralMemoryCompression();
     logEvent("memory_updated", {
       scope: "general",
       factCount: generalNew.length,
@@ -206,6 +222,46 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
       groupId: ctx.groupChatId,
     });
   }
+}
+
+async function mergeMemoryDocument(input: {
+  kind: "user" | "group";
+  existing: string[];
+  incoming: string[];
+}): Promise<string> {
+  const existing = input.existing.join("\n").trim() || "(none yet)";
+  const incoming = input.incoming.map((f) => `- ${f}`).join("\n");
+  const messages: ChatMessage[] = [
+    { role: "system", content: MEMORY_MERGE_SYSTEM },
+    {
+      role: "user",
+      content:
+        `Entity kind: ${input.kind}\n\n` +
+        `Existing memory:\n${existing}\n\n` +
+        `Newly extracted information:\n${incoming}`,
+    },
+  ];
+
+  const raw = await chatComplete(messages, {
+    numPredict: MEMORY_MERGE_NUM_PREDICT,
+    auxiliary: true,
+    think: true,
+    verboseLabel: `${input.kind} memory merge`,
+  });
+
+  return parseMemoryBlock(raw);
+}
+
+const MEMORY_BLOCK = /\[MEMORY\]\s*([\s\S]*?)\s*\[\/MEMORY\]/i;
+
+function parseMemoryBlock(raw: string): string {
+  const block = (raw.match(MEMORY_BLOCK)?.[1] ?? raw).trim();
+  if (!block || /^none$/i.test(block)) return "";
+  return block
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** Facts in incoming that are not already stored (case-insensitive). */
