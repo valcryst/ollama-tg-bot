@@ -11,6 +11,7 @@ import {
   getOllamaRequestTimeoutMs,
   getReplyNumPredict,
   LENGTH_RETRY_MIN_PREDICT,
+  AUXILIARY_TEMPERATURE,
   maxNumPredictForContext,
 } from "../settings-limits.js";
 export interface OllamaModel {
@@ -45,12 +46,57 @@ interface OllamaChatResponse {
     content?: string;
     thinking?: string;
   };
+  response?: string;
+  content?: string;
+  choices?: OpenAiChatResponse["choices"];
+  usage?: OpenAiChatResponse["usage"];
   done_reason?: string;
   eval_count?: number;
 }
 
+interface OpenAiModel {
+  id?: string;
+  name?: string;
+  object?: string;
+  created?: number;
+}
+
+interface OpenAiChatResponse {
+  choices?: {
+    delta?: {
+      role?: string;
+      content?: string | null;
+      reasoning?: string | null;
+    };
+    finish_reason?: string;
+    text?: string | null;
+    message?: {
+      role?: string;
+      content?: string | OpenAiContentPart[] | null;
+      reasoning?: string | null;
+      reasoning_content?: string | null;
+    };
+  }[];
+  usage?: {
+    completion_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+  };
+}
+
+interface OpenAiContentPart {
+  type?: string;
+  text?: string;
+}
+
 function pickAssistantContent(data: OllamaChatResponse): string {
-  return data.message?.content?.trim() ?? "";
+  return (
+    data.message?.content?.trim() ||
+    data.response?.trim() ||
+    data.content?.trim() ||
+    openAiChoiceText(data.choices?.[0]) ||
+    ""
+  );
 }
 
 function emptyResponseError(
@@ -80,8 +126,9 @@ function emptyResponseError(
       "This model returned thinking output but no final answer. Restart the server and retry, or switch models.";
   }
 
+  const fields = Object.keys(data).sort().join(", ") || "none";
   return new Error(
-    `Ollama returned an empty response (model: ${model}, done_reason: ${reason}, tokens: ${evalCount}). ${hint}`,
+    `Ollama returned an empty response (model: ${model}, done_reason: ${reason}, tokens: ${evalCount}, fields: ${fields}). ${hint}`,
   );
 }
 
@@ -100,21 +147,57 @@ function baseUrl(): string {
 type TagsModel = OllamaModel & { model?: string };
 
 export async function listModels(hostOverride?: string): Promise<OllamaModel[]> {
-  const res = await fetch(`${resolveBaseUrl(hostOverride)}/api/tags`, {
+  const host = resolveBaseUrl(hostOverride);
+  let ollamaRes: Response | null = null;
+  let ollamaError = "";
+  try {
+    ollamaRes = await fetch(`${host}/api/tags`, {
+      signal: AbortSignal.timeout(LIST_MODELS_TIMEOUT_MS),
+    });
+    if (ollamaRes.ok) {
+      const data = (await ollamaRes.json()) as { models?: TagsModel[] };
+      return normalizeOllamaModels(data.models ?? []);
+    }
+    ollamaError = `${ollamaRes.status}: ${await ollamaRes.text()}`;
+  } catch (err) {
+    ollamaError = err instanceof Error ? err.message : String(err);
+  }
+
+  const openai = await fetch(`${host}/v1/models`, {
     signal: AbortSignal.timeout(LIST_MODELS_TIMEOUT_MS),
   });
-  if (!res.ok) {
-    throw new Error(`Ollama returned ${res.status}: ${await res.text()}`);
+  if (!openai.ok) {
+    throw new Error(
+      `Model listing failed. Ollama /api/tags returned ${ollamaError}; OpenAI /v1/models returned ${openai.status}: ${await openai.text()}`,
+    );
   }
-  const data = (await res.json()) as { models?: TagsModel[] };
+
+  const data = (await openai.json()) as { data?: OpenAiModel[] };
+  return normalizeOpenAiModels(data.data ?? []);
+}
+
+function normalizeOllamaModels(models: TagsModel[]): OllamaModel[] {
   const seen = new Set<string>();
 
-  return (data.models ?? [])
+  return models
     .map((entry) => {
       const name = (entry.name ?? entry.model ?? "").trim();
       if (!name || seen.has(name)) return null;
       seen.add(name);
       return { ...entry, name };
+    })
+    .filter((m): m is OllamaModel => m !== null)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function normalizeOpenAiModels(models: OpenAiModel[]): OllamaModel[] {
+  const seen = new Set<string>();
+  return models
+    .map((entry) => {
+      const name = (entry.id ?? entry.name ?? "").trim();
+      if (!name || seen.has(name)) return null;
+      seen.add(name);
+      return { name };
     })
     .filter((m): m is OllamaModel => m !== null)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -205,6 +288,16 @@ async function requestChat(
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    if (looksLikeOpenAiCompatibleError(body)) {
+      return requestOpenAiChat(
+        model,
+        prepared,
+        numPredict,
+        auxiliary,
+        verboseLabel,
+        verboseLayout,
+      );
+    }
     if (res.status === 400 && /image|audio file/i.test(body)) {
       throw new Error(
         `Ollama rejected the image (is "${model}" a vision model?). ${body}`,
@@ -214,6 +307,16 @@ async function requestChat(
   }
 
   const data = (await res.json()) as OllamaChatResponse;
+  if (shouldRetryOpenAiAfterEmpty(data)) {
+    return requestOpenAiChat(
+      model,
+      prepared,
+      numPredict,
+      auxiliary,
+      verboseLabel,
+      verboseLayout,
+    );
+  }
   if (verboseLabel) {
     logOllamaExchange(
       verboseLabel,
@@ -225,6 +328,143 @@ async function requestChat(
     );
   }
   return data;
+}
+
+function shouldRetryOpenAiAfterEmpty(data: OllamaChatResponse): boolean {
+  return (
+    !pickAssistantContent(data) &&
+    data.done_reason === "stop" &&
+    (data.eval_count ?? 0) > 0
+  );
+}
+
+async function requestOpenAiChat(
+  model: string,
+  prepared: ChatMessage[],
+  numPredict: number,
+  auxiliary: boolean,
+  verboseLabel?: string,
+  verboseLayout?: VerbosePromptLayout,
+): Promise<OllamaChatResponse> {
+  const candidates = model.endsWith(":latest")
+    ? [model, model.slice(0, -":latest".length)]
+    : [model];
+  let lastError = "";
+
+  for (const candidate of candidates) {
+    const res = await fetch(`${baseUrl()}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(
+        getOllamaRequestTimeoutMs(getResolvedSettings(), { auxiliary }),
+      ),
+      body: JSON.stringify(openAiChatBody(candidate, prepared, numPredict, auxiliary)),
+    });
+
+    if (!res.ok) {
+      lastError = await res.text().catch(() => "");
+      if (res.status === 404 && candidate !== candidates[candidates.length - 1]) {
+        continue;
+      }
+      throw new Error(`LocalAI chat failed (${res.status}): ${lastError}`);
+    }
+
+    const data = openAiToOllamaResponse((await res.json()) as OpenAiChatResponse);
+    if (verboseLabel) {
+      logOllamaExchange(
+        verboseLabel,
+        candidate,
+        numPredict,
+        prepared,
+        data,
+        verboseLayout,
+      );
+    }
+    return data;
+  }
+
+  throw new Error(`LocalAI chat failed: ${lastError || "model not found"}`);
+}
+
+function openAiChatBody(
+  model: string,
+  messages: ChatMessage[],
+  numPredict: number,
+  auxiliary: boolean,
+) {
+  const settings = getResolvedSettings();
+  return {
+    model,
+    messages: messages.map(openAiMessage),
+    stream: false,
+    max_tokens: numPredict,
+    temperature: auxiliary ? AUXILIARY_TEMPERATURE : settings.temperature,
+    top_p: settings.topP,
+  };
+}
+
+function openAiMessage(msg: ChatMessage) {
+  if (!msg.images?.length) {
+    return { role: msg.role, content: msg.content };
+  }
+  return {
+    role: msg.role,
+    content: [
+      { type: "text", text: msg.content },
+      ...msg.images.map((image) => ({
+        type: "image_url",
+        image_url: { url: `data:image/jpeg;base64,${image}` },
+      })),
+    ],
+  };
+}
+
+function openAiToOllamaResponse(data: OpenAiChatResponse): OllamaChatResponse {
+  const choice = data.choices?.[0];
+  return {
+    message: {
+      role: choice?.message?.role ?? choice?.delta?.role,
+      content: openAiChoiceText(choice),
+    },
+    done_reason: choice?.finish_reason,
+    eval_count:
+      data.usage?.completion_tokens ??
+      data.usage?.output_tokens ??
+      data.usage?.total_tokens,
+  };
+}
+
+function openAiChoiceText(
+  choice: OpenAiChatResponse["choices"] extends (infer T)[] | undefined
+    ? T | undefined
+    : never,
+): string {
+  return (
+    openAiTextContent(choice?.message?.content) ||
+    choice?.message?.reasoning?.trim() ||
+    choice?.text?.trim() ||
+    choice?.delta?.content?.trim() ||
+    choice?.delta?.reasoning?.trim() ||
+    choice?.message?.reasoning_content?.trim() ||
+    ""
+  );
+}
+
+function openAiTextContent(
+  content: string | OpenAiContentPart[] | null | undefined,
+): string {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => part.text?.trim() ?? "")
+    .filter(Boolean)
+    .join("\n");
+}
+
+function looksLikeOpenAiCompatibleError(body: string): boolean {
+  return /"type"\s*:\s*"invalid_request_error"|\/v1\/models|chat.completions|LocalAI/i.test(
+    body,
+  );
 }
 
 export interface ChatCompleteResult {
@@ -335,10 +575,15 @@ function wrapChatError(err: unknown, auxiliary = false): Error {
 
 export async function checkHealth(hostOverride?: string): Promise<boolean> {
   try {
-    const res = await fetch(`${resolveBaseUrl(hostOverride)}/api/tags`, {
+    const host = resolveBaseUrl(hostOverride);
+    const res = await fetch(`${host}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });
-    return res.ok;
+    if (res.ok) return true;
+    const openai = await fetch(`${host}/v1/models`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    return openai.ok;
   } catch {
     return false;
   }
