@@ -1,5 +1,5 @@
 import type { Context } from "grammy";
-import type { ChatMessage } from "../ollama/client.js";
+import type { ChatMessage } from "../model-api/client.js";
 import {
   appendAssistantMessage,
   appendMessage,

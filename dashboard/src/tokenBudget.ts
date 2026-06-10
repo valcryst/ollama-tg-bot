@@ -33,7 +33,7 @@ export function maxNumPredictForContext(numCtx: number): number {
   );
 }
 
-/** Smallest num_ctx that fits the current generation budget plus prompt headroom. */
+/** Smallest context window that fits the current generation budget plus prompt headroom. */
 export function minNumCtxForPredict(numPredict: number): number {
   return snapNumCtx(snapNumPredict(numPredict) + NUM_CTX_GENERATION_HEADROOM);
 }

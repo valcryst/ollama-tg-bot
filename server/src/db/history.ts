@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { ChatMessage } from "../ollama/client.js";
+import type { ChatMessage } from "../model-api/client.js";
 import { stripAssistantHistoryEnvelope } from "../bot/history-format.js";
 import type { Settings } from "./database.js";
 import { getHistoryLimits } from "../settings-limits.js";

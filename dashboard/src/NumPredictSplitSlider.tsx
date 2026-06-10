@@ -93,7 +93,7 @@ export function NumPredictSplitSlider({
       className={`field slider-field num-predict-split${error ? " field-invalid" : ""}`}
     >
       <label>
-        Max generation tokens (num_predict)
+        Max generation tokens (generation token)
         <span className="slider-value">{split.total}</span>
       </label>
 
@@ -209,7 +209,7 @@ export function NumPredictSplitSlider({
       )}
       {thinkingEnabled ? (
         <p className="hint">
-          Thinking and reply share one Ollama num_predict budget — the split
+          Thinking and reply share one model API generation token budget — the split
           guides prompts and history sizing; the model may still spend most of
           it on reasoning.
         </p>

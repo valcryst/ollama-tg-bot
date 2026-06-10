@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { OllamaModel, Settings } from "../api";
+import type { ModelApiModel, Settings } from "../api";
 import {
   calculateContextBudget,
   modelContextFromTags,
@@ -19,7 +19,7 @@ import { clampThinkingSplit } from "../tokenBudget";
 
 interface ModelConfigPanelProps {
   draft: Settings;
-  models: OllamaModel[];
+  models: ModelApiModel[];
   vramAvailableGb: number | undefined;
   disabled?: boolean;
   onChange: (settings: Settings) => void;
@@ -119,7 +119,7 @@ export function ModelConfigPanel({
         </p>
         <div className="context-budget-card">
           <div className="context-budget-value">
-            <span className="context-budget-label">num_ctx</span>
+            <span className="context-budget-label">Context window</span>
             <strong>{contextBudget.effectiveNumCtx.toLocaleString()}</strong>
             <span className="context-budget-unit">tokens</span>
           </div>

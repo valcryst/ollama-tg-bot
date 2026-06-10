@@ -1,4 +1,4 @@
-import { sanitizeModelOutput } from "../ollama/sanitize.js";
+import { sanitizeModelOutput } from "../model-api/sanitize.js";
 
 const PAIRED_TAGS = new Set([
   "b",

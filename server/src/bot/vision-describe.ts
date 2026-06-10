@@ -1,5 +1,5 @@
-import { chatComplete } from "../ollama/client.js";
-import type { ChatMessage } from "../ollama/client.js";
+import { chatComplete } from "../model-api/client.js";
+import type { ChatMessage } from "../model-api/client.js";
 import { logEvent, logEventError, type EventFields } from "../event-log.js";
 import type { ImagePayload } from "./files.js";
 

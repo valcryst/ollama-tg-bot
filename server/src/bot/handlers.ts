@@ -440,7 +440,7 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
       ctx,
       (inGroup
         ? groupSetupMessage(botUsername) + "\n\n"
-        : `Hi! I'm connected to Ollama.\n\n`) +
+        : `Hi! I'm connected to the model API.\n\n`) +
         (inGroup
           ? ""
           : `• Send me anything in private chat\n` +

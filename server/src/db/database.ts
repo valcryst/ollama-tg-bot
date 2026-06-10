@@ -21,7 +21,7 @@ import {
 import {
   invalidateModelContextCache,
   refreshModelContextCache,
-} from "../ollama/model-context-cache.js";
+} from "../model-api/model-context-cache.js";
 import { getResolvedSettings } from "../settings-runtime.js";
 import {
   normalizeTokenBudget,
@@ -30,7 +30,7 @@ import {
 import { bindMoodDatabase, configureMoodAccess } from "./mood.js";
 
 export interface Settings {
-  ollamaHost: string;
+  apiBaseUrl: string;
   model: string;
   /** Id of the personality whose prompt is layered on the base system prompt (0 = none). */
   activePersonalityId: number;
@@ -38,18 +38,18 @@ export interface Settings {
   randomReplyChance: number;
   /** In groups, comment on photos/image files even when not addressed to the bot. */
   reactToEveryImage: boolean;
-  /** Max tokens Ollama may generate per reply (lower = faster). */
+  /** Max tokens model API may generate per reply (lower = faster). */
   numPredict: number;
-  /** Context window size sent to Ollama. */
+  /** Context window size sent to model API. */
   numCtx: number;
   temperature: number;
-  /** Nucleus sampling — lower = more focused (Ollama top_p). */
+  /** Nucleus sampling — lower = more focused (model API top_p). */
   topP: number;
-  /** Limits candidate tokens per step (Ollama top_k). */
+  /** Limits candidate tokens per step (model API top_k). */
   topK: number;
-  /** Penalizes repeated tokens (Ollama repeat_penalty). */
+  /** Penalizes repeated tokens (model API repeat_penalty). */
   repeatPenalty: number;
-  /** Ollama request timeout in seconds. */
+  /** model API request timeout in seconds. */
   chatTimeoutSec: number;
   /** Longest edge for vision images (pixels). */
   visionMaxDimension: number;
@@ -65,9 +65,9 @@ export interface Settings {
   stickerReplyChance: number;
   /** Minutes of inactivity until mood returns to the active personality's defaults. */
   moodCooldownMinutes: number;
-  /** Enable Ollama thinking mode for reasoning models (separate chain-of-thought). */
+  /** Enable model API thinking mode for reasoning models (separate chain-of-thought). */
   thinkingEnabled: boolean;
-  /** Target thinking slice of num_predict (soft; Ollama shares one generation budget). */
+  /** Target thinking slice of generation token (soft; model API shares one generation budget). */
   thinkingNumPredict: number;
   /** Send model thinking to Telegram as a message before the reply (replies only). */
   sendThinkingEnabled: boolean;
@@ -82,8 +82,8 @@ export interface Stats {
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  ollamaHost: "http://host.docker.internal:11434",
-  model: "llama3.2",
+  apiBaseUrl: "http://host.docker.internal:8080",
+  model: "gpt-4o-mini",
   activePersonalityId: 0,
   randomReplyEnabled: false,
   randomReplyChance: 5,
@@ -193,7 +193,7 @@ function setSetting<K extends keyof Settings>(key: K, value: Settings[K]): void 
 
 export function getSettings(): Settings {
   return {
-    ollamaHost: getSetting<string>("ollamaHost"),
+    apiBaseUrl: getSetting<string>("apiBaseUrl"),
     model: getSetting<string>("model"),
     activePersonalityId: getSetting<number>("activePersonalityId"),
     randomReplyEnabled: getSetting<boolean>("randomReplyEnabled"),
@@ -237,7 +237,7 @@ export function updateSettings(partial: Partial<Settings>): Settings {
   if (partial.topK !== undefined) {
     next.topK = Math.round(partial.topK);
   }
-  if (partial.model !== undefined || partial.ollamaHost !== undefined) {
+  if (partial.model !== undefined || partial.apiBaseUrl !== undefined) {
     invalidateModelContextCache();
   }
 
@@ -253,7 +253,7 @@ export function updateSettings(partial: Partial<Settings>): Settings {
     setSetting(key, resolved[key]);
   }
 
-  void refreshModelContextCache(resolved.model, resolved.ollamaHost);
+  void refreshModelContextCache(resolved.model, resolved.apiBaseUrl);
   return resolved;
 }
 

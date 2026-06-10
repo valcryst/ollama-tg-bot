@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, type OllamaModel, type Settings, type Stats } from "../api";
+import { api, type ModelApiModel, type Settings, type Stats } from "../api";
 import {
   calculateContextBudget,
   modelContextFromTags,
@@ -18,9 +18,9 @@ import {
 } from "../modelConfig";
 import { buildModelOptions, resolveModelSelection } from "../modelOptions";
 
-export type SectionKey = "settings" | "stats" | "ollama" | "models" | "save";
+export type SectionKey = "settings" | "stats" | "modelApi" | "models" | "save";
 
-export function isValidOllamaHost(host: string): boolean {
+export function isValidApiBaseUrl(host: string): boolean {
   try {
     const url = new URL(host.trim());
     return url.protocol === "http:" || url.protocol === "https:";
@@ -34,23 +34,23 @@ interface DashboardContextValue {
   draft: Settings | null;
   setDraft: React.Dispatch<React.SetStateAction<Settings | null>>;
   stats: Stats | null;
-  models: OllamaModel[];
+  models: ModelApiModel[];
   vramAvailableGb: number | undefined;
-  ollamaOk: boolean | null;
+  modelApiOk: boolean | null;
   tavilyConfigured: boolean | null;
   apiOnline: boolean | null;
   loading: boolean;
   saving: boolean;
   modelsLoading: boolean;
-  testingOllama: boolean;
-  verifiedOllamaHost: string | null;
+  testingModelApi: boolean;
+  verifiedApiBaseUrl: string | null;
   sectionErrors: Partial<Record<SectionKey, unknown>>;
   saveOk: boolean;
   setSectionError: (key: SectionKey, err: unknown | null) => void;
   load: () => Promise<void>;
   fetchModelsForHost: (host: string) => Promise<void>;
-  testOllamaConnection: () => Promise<void>;
-  invalidateOllamaVerification: (newHost: string) => void;
+  testModelApiConnection: () => Promise<void>;
+  invalidateModelApiVerification: (newHost: string) => void;
   save: () => Promise<void>;
   modelOptions: ReturnType<typeof buildModelOptions>;
   showModelSelection: boolean;
@@ -65,11 +65,11 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Settings | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [models, setModels] = useState<OllamaModel[]>([]);
+  const [models, setModels] = useState<ModelApiModel[]>([]);
   const [vramAvailableGb, setVramAvailableGb] = useState<number | undefined>(
     undefined,
   );
-  const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
+  const [modelApiOk, setModelApiOk] = useState<boolean | null>(null);
   const [tavilyConfigured, setTavilyConfigured] = useState<boolean | null>(
     null,
   );
@@ -77,8 +77,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [testingOllama, setTestingOllama] = useState(false);
-  const [verifiedOllamaHost, setVerifiedOllamaHost] = useState<string | null>(
+  const [testingModelApi, setTestingModelApi] = useState(false);
+  const [verifiedApiBaseUrl, setVerifiedApiBaseUrl] = useState<string | null>(
     null,
   );
   const [sectionErrors, setSectionErrors] = useState<
@@ -95,7 +95,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const applyModels = useCallback((list: OllamaModel[]) => {
+  const applyModels = useCallback((list: ModelApiModel[]) => {
     setModels(list);
     setDraft((d) =>
       d ? { ...d, model: resolveModelSelection(list, d.model) } : d,
@@ -137,34 +137,34 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     const savedHost =
       settingsRes.status === "fulfilled"
-        ? settingsRes.value.ollamaHost.trim()
+        ? settingsRes.value.apiBaseUrl.trim()
         : "";
 
-    let ollamaReachable = false;
+    let modelApiReachable = false;
     if (savedHost) {
       try {
-        ollamaReachable = await api.ollamaHealth(savedHost);
-        setOllamaOk(ollamaReachable);
+        modelApiReachable = await api.modelApiHealth(savedHost);
+        setModelApiOk(modelApiReachable);
       } catch (err) {
-        setOllamaOk(false);
-        nextErrors.ollama = err;
+        setModelApiOk(false);
+        nextErrors.modelApi = err;
       }
     } else {
-      setOllamaOk(false);
+      setModelApiOk(false);
     }
 
-    if (savedHost && ollamaReachable) {
+    if (savedHost && modelApiReachable) {
       try {
         const list = await api.getModels(savedHost);
-        setVerifiedOllamaHost(savedHost);
+        setVerifiedApiBaseUrl(savedHost);
         applyModels(list);
       } catch (err) {
-        setVerifiedOllamaHost(null);
+        setVerifiedApiBaseUrl(null);
         setModels([]);
         nextErrors.models = err;
       }
     } else {
-      setVerifiedOllamaHost(null);
+      setVerifiedApiBaseUrl(null);
       setModels([]);
     }
 
@@ -204,16 +204,16 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const ok = await api.ollamaHealth();
-        setOllamaOk(ok);
+        const ok = await api.modelApiHealth();
+        setModelApiOk(ok);
         setSectionErrors((prev) => {
           const next = { ...prev };
-          delete next.ollama;
+          delete next.modelApi;
           return next;
         });
       } catch (err) {
-        setOllamaOk(false);
-        setSectionErrors((prev) => ({ ...prev, ollama: err }));
+        setModelApiOk(false);
+        setSectionErrors((prev) => ({ ...prev, modelApi: err }));
       }
 
       try {
@@ -246,61 +246,61 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const testOllamaConnection = async () => {
+  const testModelApiConnection = async () => {
     if (!draft) return;
-    const host = draft.ollamaHost.trim();
-    setSectionError("ollama", null);
+    const host = draft.apiBaseUrl.trim();
+    setSectionError("modelApi", null);
 
     if (!host) {
       setSectionError(
-        "ollama",
-        new Error("Enter an Ollama host URL before testing"),
+        "modelApi",
+        new Error("Enter an Model API host URL before testing"),
       );
       return;
     }
-    if (!isValidOllamaHost(host)) {
+    if (!isValidApiBaseUrl(host)) {
       setSectionError(
-        "ollama",
+        "modelApi",
         new Error("Host must be a valid http:// or https:// URL"),
       );
       return;
     }
 
-    setTestingOllama(true);
-    setVerifiedOllamaHost(null);
+    setTestingModelApi(true);
+    setVerifiedApiBaseUrl(null);
     setModels([]);
 
     try {
-      const ok = await api.ollamaHealth(host);
+      const ok = await api.modelApiHealth(host);
       if (!ok) {
         throw new Error(
-          "Ollama did not respond at this address. Is ollama serve running?",
+          "No OpenAI-compatible model API responded at this address.",
         );
       }
-      setVerifiedOllamaHost(host);
-      setOllamaOk(true);
+      setVerifiedApiBaseUrl(host);
+      setModelApiOk(true);
       await fetchModelsForHost(host);
       setSectionErrors((prev) => {
         const next = { ...prev };
-        delete next.ollama;
+        delete next.modelApi;
         return next;
       });
     } catch (err) {
-      setVerifiedOllamaHost(null);
+      setVerifiedApiBaseUrl(null);
       setModels([]);
-      setOllamaOk(false);
-      setSectionError("ollama", err);
+      setModelApiOk(false);
+      setSectionError("modelApi", err);
     } finally {
-      setTestingOllama(false);
+      setTestingModelApi(false);
     }
   };
 
-  const invalidateOllamaVerification = (newHost: string) => {
-    if (verifiedOllamaHost && newHost.trim() !== verifiedOllamaHost) {
-      setVerifiedOllamaHost(null);
+  const invalidateModelApiVerification = (newHost: string) => {
+    if (verifiedApiBaseUrl && newHost.trim() !== verifiedApiBaseUrl) {
+      setVerifiedApiBaseUrl(null);
       setModels([]);
       setSectionError("models", null);
-      setSectionError("ollama", null);
+      setSectionError("modelApi", null);
     }
   };
 
@@ -353,12 +353,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   const modelOptions = useMemo(() => buildModelOptions(models), [models]);
 
-  const draftHost = draft?.ollamaHost.trim() ?? "";
-  const ollamaHostReady =
-    draftHost.length > 0 && isValidOllamaHost(draftHost);
-  const ollamaVerified =
-    ollamaHostReady && verifiedOllamaHost === draftHost;
-  const showModelSelection = ollamaVerified;
+  const draftHost = draft?.apiBaseUrl.trim() ?? "";
+  const apiBaseUrlReady =
+    draftHost.length > 0 && isValidApiBaseUrl(draftHost);
+  const modelApiVerified =
+    apiBaseUrlReady && verifiedApiBaseUrl === draftHost;
+  const showModelSelection = modelApiVerified;
 
   const apiUnreachable = apiOnline === false;
   const configBlocked = apiUnreachable || !!sectionErrors.settings;
@@ -373,21 +373,21 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     stats,
     models,
     vramAvailableGb,
-    ollamaOk,
+    modelApiOk,
     tavilyConfigured,
     apiOnline,
     loading,
     saving,
     modelsLoading,
-    testingOllama,
-    verifiedOllamaHost,
+    testingModelApi,
+    verifiedApiBaseUrl,
     sectionErrors,
     saveOk,
     setSectionError,
     load,
     fetchModelsForHost,
-    testOllamaConnection,
-    invalidateOllamaVerification,
+    testModelApiConnection,
+    invalidateModelApiVerification,
     save,
     modelOptions,
     showModelSelection,

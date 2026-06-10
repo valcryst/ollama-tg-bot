@@ -2,8 +2,8 @@ import { addGeneralFacts } from "./db/general-memory.js";
 import { replaceGroupFacts } from "./db/group-memory.js";
 import { replaceUserFacts } from "./db/user-memory.js";
 import { logEvent, logEventError } from "./event-log.js";
-import { chatComplete } from "./ollama/client.js";
-import type { ChatMessage } from "./ollama/client.js";
+import { chatComplete } from "./model-api/client.js";
+import type { ChatMessage } from "./model-api/client.js";
 import { parseStructuredResponse } from "./response-format.js";
 
 const MEMORY_EXTRACT_NUM_PREDICT = 384;

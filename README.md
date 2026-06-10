@@ -1,6 +1,6 @@
-# Ollama Telegram Bot
+# OpenAI-compatible Telegram Bot
 
-Telegram bot backed by [Ollama](https://ollama.com), with a web dashboard for configuration and stats.
+Telegram bot backed by an OpenAI-compatible chat completions API, with a web dashboard for configuration and stats.
 
 ## Docker
 
@@ -9,7 +9,7 @@ Telegram bot backed by [Ollama](https://ollama.com), with a web dashboard for co
 docker compose up -d --build
 ```
 
-Open `http://localhost:3000` (or your `PORT`). Ollama on the host: `http://host.docker.internal:11434`.
+Open `http://localhost:3000` (or your `PORT`). Configure an OpenAI-compatible API base URL in Settings.
 
 ## Local dev
 
@@ -32,7 +32,7 @@ npm run dev
 
 Do not put `PORT` in `.env` for local dev — it is only for `docker-compose.yml` (`PORT:PORT` mapping + app listen).
 
-Ollama host is set in the **dashboard** (Settings). Tavily is configured via **`TAVILY_API_KEY`** in `.env`.
+API base URL is set in the **dashboard** (Settings). Tavily is configured via **`TAVILY_API_KEY`** in `.env`.
 
 ### Web search (Tavily)
 
@@ -47,7 +47,7 @@ When an addressed message contains `http(s)` links, the bot detects them, opens 
 - Group & private chats, vision (images/stickers), optional random group replies
 - Optional web search via Tavily (model decides when to search)
 - Opens links in addressed messages via Playwright (auto-detected URLs)
-- Dashboard: Ollama host, model, prompts, stats
+- Dashboard: API base URL, model, prompts, stats
 
 ## Stack
 

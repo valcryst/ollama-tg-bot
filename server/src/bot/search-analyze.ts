@@ -1,5 +1,5 @@
-import { chatComplete } from "../ollama/client.js";
-import type { ChatMessage } from "../ollama/client.js";
+import { chatComplete } from "../model-api/client.js";
+import type { ChatMessage } from "../model-api/client.js";
 import { logEventError } from "../event-log.js";
 import { isReplyThreadContext } from "./replies.js";
 import { isTavilyConfigured } from "../tavily/client.js";

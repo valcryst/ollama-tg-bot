@@ -1,5 +1,5 @@
 import { getVramAvailableGb } from "./config.js";
-import type { OllamaModel } from "./ollama/client.js";
+import type { ModelApiModel } from "./model-api/client.js";
 import {
   ABSOLUTE_MAX_NUM_CTX,
   MIN_NUM_CTX,
@@ -13,7 +13,7 @@ function minRequiredCtxForPredict(numPredict: number): number {
   return snapNumCtx(snapNumPredict(numPredict) + NUM_CTX_GENERATION_HEADROOM);
 }
 
-/** Ollama default context tiers by VRAM (https://docs.ollama.com/context-length). */
+/** Context tiers derived from configured VRAM. */
 const VRAM_TIER_4K = 4096;
 const VRAM_TIER_32K = 32768;
 const VRAM_TIER_256K = ABSOLUTE_MAX_NUM_CTX;
@@ -88,7 +88,7 @@ function contextFromKvHeadroom(vramGb: number, weightGb: number): number {
 
 export function modelContextInputFromTags(
   modelName: string,
-  entry?: OllamaModel | null,
+  entry?: ModelApiModel | null,
 ): ModelContextInput {
   return {
     name: modelName,

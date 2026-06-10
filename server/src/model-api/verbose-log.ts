@@ -1,10 +1,10 @@
-import { logOllamaAnswerBlock, logOllamaRequestBlock } from "../logging.js";
+import { logModelAnswerBlock, logModelRequestBlock } from "../logging.js";
 import type { ChatMessage, VerbosePromptLayout } from "./client.js";
 
-interface OllamaChatResponse {
+interface ChatResponse {
   message?: {
     content?: string;
-    thinking?: string;
+    reasoning?: string;
   };
   done_reason?: string;
   eval_count?: number;
@@ -30,10 +30,10 @@ function formatMessageList(messages: ChatMessage[]): string {
 
 function formatFlatMessagesBody(
   model: string,
-  numPredict: number,
+  maxTokens: number,
   messages: ChatMessage[],
 ): string {
-  const lines = [`model: ${model}`, `num_predict: ${numPredict}`, ""];
+  const lines = [`model: ${model}`, `max_completion_tokens: ${maxTokens}`, ""];
   for (const [index, msg] of messages.entries()) {
     lines.push(formatChatMessage(index, msg));
     lines.push("");
@@ -43,7 +43,7 @@ function formatFlatMessagesBody(
 
 function formatSectionedMessagesBody(
   model: string,
-  numPredict: number,
+  maxTokens: number,
   layout: VerbosePromptLayout,
 ): string {
   const historyChars = layout.history.reduce(
@@ -52,7 +52,7 @@ function formatSectionedMessagesBody(
   );
   const lines = [
     `model: ${model}`,
-    `num_predict: ${numPredict}`,
+    `max_completion_tokens: ${maxTokens}`,
     "",
     SECTION("SYSTEM"),
     layout.system,
@@ -68,33 +68,33 @@ function formatSectionedMessagesBody(
   return lines.join("\n").trimEnd();
 }
 
-function formatResponseBody(data: OllamaChatResponse): string {
+function formatResponseBody(data: ChatResponse): string {
   const lines = [
     `done_reason: ${data.done_reason ?? "unknown"}`,
     `eval_count: ${data.eval_count ?? 0}`,
   ];
   const content = data.message?.content ?? "";
-  const thinking = data.message?.thinking ?? "";
+  const reasoning = data.message?.reasoning ?? "";
   if (content) {
     lines.push("", "content:", content);
   }
-  if (thinking) {
-    lines.push("", "thinking:", thinking);
+  if (reasoning) {
+    lines.push("", "reasoning:", reasoning);
   }
   return lines.join("\n");
 }
 
-export function logOllamaExchange(
+export function logModelExchange(
   label: string,
   model: string,
-  numPredict: number,
+  maxTokens: number,
   messages: ChatMessage[],
-  response: OllamaChatResponse,
+  response: ChatResponse,
   layout?: VerbosePromptLayout,
 ): void {
   const requestBody = layout
-    ? formatSectionedMessagesBody(model, numPredict, layout)
-    : formatFlatMessagesBody(model, numPredict, messages);
-  logOllamaRequestBlock(label, requestBody);
-  logOllamaAnswerBlock(label, formatResponseBody(response));
+    ? formatSectionedMessagesBody(model, maxTokens, layout)
+    : formatFlatMessagesBody(model, maxTokens, messages);
+  logModelRequestBlock(label, requestBody);
+  logModelAnswerBlock(label, formatResponseBody(response));
 }

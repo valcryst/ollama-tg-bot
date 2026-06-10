@@ -23,8 +23,8 @@ function sectionLine(kind: "BEGIN" | "END", part: "REQUEST" | "ANSWER", label: s
   return `---- ${kind} ${part} ${label} ----`;
 }
 
-/** VERBOSE: labeled request block (messages sent to Ollama). */
-export function logOllamaRequestBlock(label: string, body: string): void {
+/** VERBOSE: labeled request block (messages sent to the model API). */
+export function logModelRequestBlock(label: string, body: string): void {
   if (!isVerboseLogging()) return;
   console.log(sectionLine("BEGIN", "REQUEST", label));
   console.log(body);
@@ -32,8 +32,8 @@ export function logOllamaRequestBlock(label: string, body: string): void {
   console.log("");
 }
 
-/** VERBOSE: labeled answer block (response from Ollama). */
-export function logOllamaAnswerBlock(label: string, body: string): void {
+/** VERBOSE: labeled answer block (response from the model API). */
+export function logModelAnswerBlock(label: string, body: string): void {
   if (!isVerboseLogging()) return;
   console.log(sectionLine("BEGIN", "ANSWER", label));
   console.log(body);

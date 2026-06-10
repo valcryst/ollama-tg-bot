@@ -5,7 +5,7 @@ import cors from "cors";
 import { config, requireStartupEnv } from "./config.js";
 import { logInfo } from "./logging.js";
 import { initDatabase, getSettings } from "./db/database.js";
-import { refreshModelContextCache } from "./ollama/model-context-cache.js";
+import { refreshModelContextCache } from "./model-api/model-context-cache.js";
 import { createApiRouter } from "./api/routes.js";
 import { startBot, stopBot } from "./bot/index.js";
 import { closePlaywrightBrowser } from "./playwright/client.js";
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
 
   initDatabase();
   const bootSettings = getSettings();
-  void refreshModelContextCache(bootSettings.model, bootSettings.ollamaHost);
+  void refreshModelContextCache(bootSettings.model, bootSettings.apiBaseUrl);
   startMoodCooldownWorker();
 
   const app = express();

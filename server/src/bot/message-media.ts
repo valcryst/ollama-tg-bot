@@ -14,7 +14,7 @@ export interface LoadedVisionMedia {
   unavailableText?: string;
 }
 
-/** Download photo, image document, or sticker from a Telegram message for Ollama vision. */
+/** Download photo, image document, or sticker from a Telegram message for model API vision. */
 export async function loadVisionFromMessage(
   token: string,
   message: Message,

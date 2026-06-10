@@ -31,7 +31,7 @@ export function OfflinePage({ primaryLoadError, onRetry }: OfflinePageProps) {
     <div className="layout layout-narrow">
       <header className="header">
         <div>
-          <h1>Ollama Telegram Bot</h1>
+          <h1>OpenAI-compatible Telegram Bot</h1>
           <p className="subtitle">Dashboard</p>
         </div>
         <span className="badge danger">{badgeLabel}</span>

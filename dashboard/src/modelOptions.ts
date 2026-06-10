@@ -1,4 +1,4 @@
-import type { OllamaModel } from "./api";
+import type { ModelApiModel } from "./api";
 
 export interface ModelOption {
   value: string;
@@ -11,7 +11,7 @@ export function formatModelSize(bytes?: number): string {
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / 1e6).toFixed(0)} MB`;
 }
 
-export function buildModelOptions(models: OllamaModel[]): ModelOption[] {
+export function buildModelOptions(models: ModelApiModel[]): ModelOption[] {
   return models.map((m) => {
     const size = formatModelSize(m.size);
     const family = m.details?.parameter_size;
@@ -25,7 +25,7 @@ export function buildModelOptions(models: OllamaModel[]): ModelOption[] {
 
 /** Pick a saved model name that exists in the pulled list (handles tag mismatches). */
 export function resolveModelSelection(
-  models: OllamaModel[],
+  models: ModelApiModel[],
   current: string,
 ): string {
   if (models.length === 0) return current;

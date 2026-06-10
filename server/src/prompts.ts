@@ -89,7 +89,7 @@ export function buildExplainSystemPrompt(options: ExplainPromptOptions): string 
     : "Not applicable (private chat).";
 
   return (
-    `You are a meta assistant for a Telegram Ollama bot. The user asks why the bot would behave or reply a certain way.\n\n` +
+    `You are a meta assistant for a Telegram model API bot. The user asks why the bot would behave or reply a certain way.\n\n` +
     `Rules:\n` +
     `- Do NOT roleplay. Do NOT speak as the bot's character.\n` +
     `- Give a direct, honest explanation grounded in the configuration below.\n` +

@@ -1,6 +1,6 @@
 import type { Context } from "grammy";
-import { chatComplete } from "../ollama/client.js";
-import type { ChatMessage } from "../ollama/client.js";
+import { chatComplete } from "../model-api/client.js";
+import type { ChatMessage } from "../model-api/client.js";
 import {
   getBotIdentity,
   messageReferencesBotByName,
@@ -78,7 +78,7 @@ function formatBotNamesForAnalyzer(bot: BotIdentity): string {
 
 /**
  * Whether the bot should treat this message as addressed.
- * Private chats: always true. Groups: @mention/reply/command, name match, then LLM.
+ * Private chats: always true. Groups: @mention/reply/command, name match, then model API.
  */
 export async function isMessageAddressedToBot(ctx: Context): Promise<boolean> {
   const baseLog = {

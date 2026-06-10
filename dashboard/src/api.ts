@@ -1,5 +1,5 @@
 export interface Settings {
-  ollamaHost: string;
+  apiBaseUrl: string;
   model: string;
   activePersonalityId: number;
   baseSystemPrompt?: string;
@@ -176,7 +176,7 @@ export interface StickerCatalog {
   error: string | null;
 }
 
-export interface OllamaModel {
+export interface ModelApiModel {
   name: string;
   size?: number;
   modelMaxCtx?: number;
@@ -253,9 +253,9 @@ function hintForPath(path: string, status: number): string | undefined {
   if (path === "/api/tavily/status") {
     return undefined;
   }
-  if (path === "/api/models" || path === "/api/ollama/health") {
+  if (path === "/api/models" || path === "/api/model-api/health") {
     if (status === 502) {
-      return "Could not reach Ollama. Open Settings and verify the Ollama host URL, then ensure ollama serve is running.";
+      return "Could not reach the model API. Open Settings and verify the OpenAI-compatible API base URL.";
     }
   }
   return undefined;
@@ -337,7 +337,7 @@ export const api = {
       body: JSON.stringify(patch),
     }),
   getModels: (host?: string) =>
-    request<{ models: OllamaModel[] }>(withHostQuery("/api/models", host)).then(
+    request<{ models: ModelApiModel[] }>(withHostQuery("/api/models", host)).then(
       (r) => r.models,
     ),
   getStats: () => request<Stats>("/api/stats"),
@@ -405,8 +405,8 @@ export const api = {
     request<{ ok: boolean; deleted: number }>("/api/general-memories", {
       method: "DELETE",
     }),
-  ollamaHealth: (host?: string) =>
-    request<{ ok: boolean }>(withHostQuery("/api/ollama/health", host)).then(
+  modelApiHealth: (host?: string) =>
+    request<{ ok: boolean }>(withHostQuery("/api/model-api/health", host)).then(
       (r) => r.ok,
     ),
   tavilyStatus: () =>

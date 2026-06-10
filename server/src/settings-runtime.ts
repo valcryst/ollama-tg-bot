@@ -5,7 +5,7 @@ import {
   getEffectiveNumCtx,
   type ContextBudget,
 } from "./context-budget.js";
-import { getModelContextForBudget } from "./ollama/model-context-cache.js";
+import { getModelContextForBudget } from "./model-api/model-context-cache.js";
 import {
   getHistoryLimits,
   normalizeTokenBudget,
@@ -16,7 +16,7 @@ export function getResolvedSettings(settings: Settings = getSettings()): Setting
   const normalized = normalizeTokenBudget(settings);
   const model = getModelContextForBudget(
     normalized.model,
-    normalized.ollamaHost,
+    normalized.apiBaseUrl,
   );
   const numCtx = getEffectiveNumCtx(normalized, model);
   return { ...normalized, numCtx };
@@ -34,7 +34,7 @@ export function getContextBudgetForSettings(
   const normalized = normalizeTokenBudget(settings);
   const model = getModelContextForBudget(
     normalized.model,
-    normalized.ollamaHost,
+    normalized.apiBaseUrl,
   );
   return buildContextBudget(normalized, model);
 }

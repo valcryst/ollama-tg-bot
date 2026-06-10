@@ -1,11 +1,11 @@
 import type { Settings } from "./db/database.js";
 
 export const MIN_NUM_PREDICT = 32;
-/** Hard cap on num_predict; also limited by num_ctx minus prompt headroom. */
+/** Hard cap on generated tokens; also limited by context size minus prompt headroom. */
 export const MAX_NUM_PREDICT = 8192;
 export const NUM_CTX_GENERATION_HEADROOM = 512;
 export const MIN_NUM_CTX = 2048;
-/** Upper bound for derived num_ctx (256k VRAM tier). */
+/** Upper bound for derived context window (256k VRAM tier). */
 export const ABSOLUTE_MAX_NUM_CTX = 262144;
 export const MAX_NUM_CTX = ABSOLUTE_MAX_NUM_CTX;
 export const NUM_CTX_STEP = 512;
@@ -19,7 +19,7 @@ export interface HistoryLimits {
   historyMaxMessages: number;
   historyMaxChars: number;
   historyMaxReplyChars: number;
-  /** Total num_predict (reply + thinking when thinking is on). */
+  /** Total generated-token budget (reply + thinking when thinking is on). */
   numPredict: number;
   thinkingNumPredict: number;
   replyNumPredict: number;
@@ -30,7 +30,7 @@ export function snapNumPredict(value: number): number {
   return Math.min(MAX_NUM_PREDICT, Math.max(MIN_NUM_PREDICT, snapped));
 }
 
-/** Largest num_predict allowed for a given context window. */
+/** Largest generated-token budget allowed for a given context window. */
 export function snapNumCtx(value: number): number {
   const snapped = Math.round(value / NUM_CTX_STEP) * NUM_CTX_STEP;
   return Math.min(MAX_NUM_CTX, Math.max(MIN_NUM_CTX, snapped));
@@ -81,7 +81,7 @@ export function getReplyNumPredict(settings: Settings): number {
   return settings.numPredict - getThinkingNumPredict(settings);
 }
 
-/** Ollama num_predict for a request (total generation budget). */
+/** max_completion_tokens for a request (total generation budget). */
 export function getEffectiveNumPredict(
   settings: Settings,
   options?: { baseNumPredict?: number },
@@ -128,7 +128,7 @@ export function getReplyLengthGuidance(settings: Settings): ReplyLengthGuidance 
   return { maxTokens, maxChars, systemHint, formatHint };
 }
 
-/** Derive chat history caps from Ollama context and generation token settings. */
+/** Derive chat history caps from model API context and generation token settings. */
 export function getHistoryLimits(settings: Settings): HistoryLimits {
   const { numCtx } = settings;
   const normalized = normalizeTokenBudget(settings);
@@ -159,34 +159,11 @@ export function getHistoryLimits(settings: Settings): HistoryLimits {
 /** Low temperature for structured side passes (mood, memory, search, etc.). */
 export const AUXILIARY_TEMPERATURE = 0.2;
 
-export function getOllamaChatOptions(
-  settings: Settings,
-  overrides?: { numPredict?: number; auxiliary?: boolean },
-) {
-  return {
-    num_predict: overrides?.numPredict ?? settings.numPredict,
-    num_ctx: settings.numCtx,
-    temperature: overrides?.auxiliary
-      ? AUXILIARY_TEMPERATURE
-      : settings.temperature,
-    top_p: settings.topP,
-    top_k: settings.topK,
-    repeat_penalty: settings.repeatPenalty,
-  };
-}
-
-/** Minimum num_predict for a length-limit retry after an empty response. */
+/** Minimum generation token for a length-limit retry after an empty response. */
 export const LENGTH_RETRY_MIN_PREDICT = 512;
 
 export function getChatTimeoutMs(settings: Settings): number {
   return settings.chatTimeoutSec * 1000;
-}
-
-export function getOllamaRequestTimeoutMs(
-  settings: Settings,
-  _options?: { auxiliary?: boolean },
-): number {
-  return getChatTimeoutMs(settings);
 }
 
 export function validateSettingsFields(settings: Settings): void {
@@ -199,7 +176,7 @@ export function validateSettingsFields(settings: Settings): void {
     typeof value === "string";
 
   const checks: [string, boolean][] = [
-    ["ollamaHost must be a string", isString(settings.ollamaHost)],
+    ["apiBaseUrl must be a string", isString(settings.apiBaseUrl)],
     ["model must be a string", isString(settings.model)],
     ["randomReplyEnabled must be true or false", isBoolean(settings.randomReplyEnabled)],
     ["reactToEveryImage must be true or false", isBoolean(settings.reactToEveryImage)],

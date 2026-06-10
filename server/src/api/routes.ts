@@ -16,11 +16,11 @@ import {
   updateSettings,
   type Settings,
 } from "../db/database.js";
-import { checkHealth, listModels } from "../ollama/client.js";
+import { checkHealth, listModels } from "../model-api/client.js";
 import { isTavilyConfigured } from "../tavily/client.js";
 import { buildBaseSystemPrompt } from "../prompts.js";
 import { config, getVramAvailableGb } from "../config.js";
-import { ensureModelContextCache } from "../ollama/model-context-cache.js";
+import { ensureModelContextCache } from "../model-api/model-context-cache.js";
 import {
   getContextBudgetForSettings,
   getResolvedHistoryLimits,
@@ -111,7 +111,7 @@ export function createApiRouter(): Router {
   router.get("/settings", async (_req, res) => {
     try {
       const settings = getSettings();
-      await ensureModelContextCache(settings.model, settings.ollamaHost);
+      await ensureModelContextCache(settings.model, settings.apiBaseUrl);
       const resolved = getResolvedSettings(settings);
       res.json({
         ...resolved,
@@ -131,7 +131,7 @@ export function createApiRouter(): Router {
     try {
       const body = req.body as Partial<Settings>;
       const allowed: (keyof Settings)[] = [
-        "ollamaHost",
+        "apiBaseUrl",
         "model",
         "activePersonalityId",
         "randomReplyEnabled",
@@ -170,7 +170,7 @@ export function createApiRouter(): Router {
       }
 
       const updated = updateSettings(patch);
-      await ensureModelContextCache(updated.model, updated.ollamaHost);
+      await ensureModelContextCache(updated.model, updated.apiBaseUrl);
 
       if (
         body.stickersEnabled !== undefined ||
@@ -432,7 +432,7 @@ export function createApiRouter(): Router {
     }
   });
 
-  router.get("/ollama/health", async (req, res) => {
+  router.get("/model-api/health", async (req, res) => {
     try {
       const host =
         typeof req.query.host === "string" ? req.query.host : undefined;
@@ -441,7 +441,7 @@ export function createApiRouter(): Router {
     } catch (err) {
       res.status(400).json({
         ok: false,
-        error: err instanceof Error ? err.message : "Ollama host is not configured",
+        error: err instanceof Error ? err.message : "Model API host is not configured",
       });
     }
   });

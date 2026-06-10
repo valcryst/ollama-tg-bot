@@ -242,13 +242,13 @@ export const MODEL_CONFIG_GROUPS = [
     id: "context",
     title: "1. Context window (auto)",
     description:
-      "num_ctx is derived from VRAM_AVAILABLE, the selected model size, and your generation budget.",
+      "context window is derived from VRAM_AVAILABLE, the selected model size, and your generation budget.",
   },
   {
     id: "generation",
     title: "2. Generation budget",
     description:
-      "num_predict caps total output per reply. With thinking mode, the slider splits that single Ollama budget.",
+      "generation token caps total output per reply. With thinking mode, the slider splits that single model API budget.",
   },
   {
     id: "reasoning",
@@ -260,12 +260,12 @@ export const MODEL_CONFIG_GROUPS = [
     id: "sampling",
     title: "4. Sampling",
     description:
-      "Ollama generation parameters for all model calls, including background passes.",
+      "Model API generation parameters for all model calls, including background passes.",
   },
   {
     id: "timeout",
     title: "5. Request timeout",
-    description: "How long to wait for Ollama before failing the turn.",
+    description: "How long to wait for the model API before failing the turn.",
   },
 ] as const;
 

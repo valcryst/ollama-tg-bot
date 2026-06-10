@@ -25,12 +25,12 @@ export function SettingsPage() {
     configBlocked,
     showModelSelection,
     modelOptions,
-    verifiedOllamaHost,
-    testingOllama,
+    verifiedApiBaseUrl,
+    testingModelApi,
     modelsLoading,
     saving,
-    testOllamaConnection,
-    invalidateOllamaVerification,
+    testModelApiConnection,
+    invalidateModelApiVerification,
     fetchModelsForHost,
     save,
     load,
@@ -84,7 +84,7 @@ export function SettingsPage() {
       <header className="page-header">
         <h2>Settings</h2>
         <p className="page-desc">
-          Ollama connection, model, owner account, and performance limits.
+          Model API connection, model, owner account, and performance limits.
         </p>
       </header>
 
@@ -100,43 +100,43 @@ export function SettingsPage() {
         {draft ? (
           <fieldset disabled={configBlocked} className="form-fieldset">
             <div className="field">
-              <label htmlFor="host">Ollama host</label>
+              <label htmlFor="host">API base URL</label>
               <div className="field row">
                 <input
                   id="host"
                   className="grow"
-                  value={draft.ollamaHost}
+                  value={draft.apiBaseUrl}
                   onChange={(e) => {
-                    const ollamaHost = e.target.value;
-                    invalidateOllamaVerification(ollamaHost);
-                    setDraft({ ...draft, ollamaHost });
+                    const apiBaseUrl = e.target.value;
+                    invalidateModelApiVerification(apiBaseUrl);
+                    setDraft({ ...draft, apiBaseUrl });
                   }}
-                  placeholder="http://localhost:11434"
+                  placeholder="http://localhost:8080"
                 />
                 <button
                   type="button"
                   className="secondary"
-                  onClick={() => void testOllamaConnection()}
-                  disabled={testingOllama || modelsLoading || configBlocked}
+                  onClick={() => void testModelApiConnection()}
+                  disabled={testingModelApi || modelsLoading || configBlocked}
                 >
-                  {testingOllama ? "Testing…" : "Test connection"}
+                  {testingModelApi ? "Testing…" : "Test connection"}
                 </button>
               </div>
-              {sectionErrors.ollama != null ? (
+              {sectionErrors.modelApi != null ? (
                 <ErrorBanner
-                  error={sectionErrors.ollama}
+                  error={sectionErrors.modelApi}
                   compact
-                  onRetry={() => void testOllamaConnection()}
-                  onDismiss={() => setSectionError("ollama", null)}
+                  onRetry={() => void testModelApiConnection()}
+                  onDismiss={() => setSectionError("modelApi", null)}
                 />
               ) : null}
               {showModelSelection ? (
                 <p className="hint success-inline">
-                  Connected to Ollama at {verifiedOllamaHost}
+                  Connected to model API at {verifiedApiBaseUrl}
                 </p>
               ) : (
                 <p className="hint">
-                  Enter your Ollama API URL and test the connection before
+                  Enter your OpenAI-compatible API URL and test the connection before
                   choosing a model.
                 </p>
               )}
@@ -183,11 +183,11 @@ export function SettingsPage() {
                     type="button"
                     className="secondary"
                     onClick={() =>
-                      verifiedOllamaHost &&
-                      void fetchModelsForHost(verifiedOllamaHost)
+                      verifiedApiBaseUrl &&
+                      void fetchModelsForHost(verifiedApiBaseUrl)
                     }
                     disabled={modelsLoading || configBlocked}
-                    title="Fetch models from Ollama (ollama list)"
+                    title="Fetch models from /v1/models"
                   >
                     {modelsLoading ? "…" : "Refresh"}
                   </button>
@@ -198,8 +198,8 @@ export function SettingsPage() {
                     error={sectionErrors.models}
                     compact
                     onRetry={() =>
-                      verifiedOllamaHost &&
-                      void fetchModelsForHost(verifiedOllamaHost)
+                      verifiedApiBaseUrl &&
+                      void fetchModelsForHost(verifiedApiBaseUrl)
                     }
                     onDismiss={() => setSectionError("models", null)}
                   />
@@ -209,8 +209,7 @@ export function SettingsPage() {
                   models.length === 0 &&
                   sectionErrors.models == null && (
                     <p className="hint warn">
-                      No models on this host. Pull one with{" "}
-                      <code>ollama pull llama3.2</code>, then Refresh.
+                      No models returned by this API base URL.
                     </p>
                   )}
 
