@@ -159,29 +159,15 @@ export function getHistoryLimits(settings: Settings): HistoryLimits {
 /** Low temperature for structured side passes (mood, memory, search, etc.). */
 export const AUXILIARY_TEMPERATURE = 0.2;
 
-/** Minimum generation token for a length-limit retry after an empty response. */
-export const LENGTH_RETRY_MIN_PREDICT = 512;
-
 export function getChatTimeoutMs(settings: Settings): number {
   return settings.chatTimeoutSec * 1000;
 }
 
 /**
- * Provider-specific extensions for OpenAI-compatible chat completions.
- * Many local backends (LocalAI, vLLM, etc.) read sampling fields under `options`.
- * Strict cloud APIs ignore unknown fields.
+ * LocalAI / llama.cpp backends read sampling and context via request `options`.
+ * @see server/src/llm/openai-compat.ts
  */
-export function getProviderExtensions(
-  settings: Settings,
-): Record<string, unknown> {
-  return {
-    options: {
-      num_ctx: settings.numCtx,
-      top_k: settings.topK,
-      repeat_penalty: settings.repeatPenalty,
-    },
-  };
-}
+export { localAiRequestExtensions as getProviderExtensions } from "./llm/openai-compat.js";
 
 export function validateSettingsFields(settings: Settings): void {
   const normalized = normalizeTokenBudget(settings);

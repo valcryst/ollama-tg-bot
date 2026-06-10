@@ -141,9 +141,7 @@ export async function runExplainTurn(
       outputChars: modelOutput.length,
     });
 
-    const replyBody =
-      extractTelegramReply(modelOutput) ||
-      (thinking ? extractTelegramReply(thinking) : "");
+    const replyBody = extractTelegramReply(modelOutput);
     if (!hasVisibleTelegramReply(replyBody)) {
       throw new Error("Model response had no [REPLY] content");
     }

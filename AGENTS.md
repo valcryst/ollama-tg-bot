@@ -67,8 +67,11 @@ Telegram → Grammy handlers → chat-turn → LLM
 ### LLM
 
 - Client: `server/src/llm/client.ts` (OpenAI SDK → `/v1/chat/completions`)
+- OpenAI-compatible parsing: `server/src/llm/openai-compat.ts` (LocalAI `content` vs `reasoning` / `reasoning_content`, request `options`)
 - Chat options: `server/src/settings-limits.ts` (`temperature`, `topP`, `topK`, `repeatPenalty`, `numCtx` via `getProviderExtensions()`)
 - **Chat history limits are derived** from `numCtx` and `numPredict` via `getHistoryLimits()` — not separate settings. Dashboard preview: `dashboard/src/derivedHistoryLimits.ts` (keep in sync with server).
+
+**LocalAI:** Every chat request sends `reasoning_effort: "none"` and `options.skip_special_tokens: false`. Gemma 4 on LocalAI intermittently mis-splits when thinking is enabled via API (`content` empty, answer in `reasoning`); structured `[REPLY]` replies require the full answer in `message.content`. Parse **`message.content`** for `[REPLY]` (Telegram reply). Parse **`message.reasoning_content`** / **`reasoning`** for chain-of-thought only — never for replies. Dashboard `thinkingEnabled` is the token-budget slider; it does not enable LocalAI reasoning split. Extensions: `localAiChatExtensions()` in `openai-compat.ts`.
 
 ### Memory
 
@@ -85,7 +88,7 @@ Three layers, extracted in a **background pass** (`server/src/memory-extract.ts`
 
 ### Response format
 
-Model replies use `[REPLY]…[/REPLY]` (Telegram HTML subset). Parser: `server/src/response-format.ts`. Only `[REPLY]` is sent to users.
+Model replies use `[REPLY]…[/REPLY]` (Telegram HTML subset). Parser: `server/src/response-format.ts` — accepts closed blocks, unclosed `[REPLY]` (Gemma often omits `[/REPLY]`), or spoken text before a trailing empty `[REPLY]` tag when the model echoes `[assistant said]`.
 
 **LLM response fields:** User-facing text comes from the API `content` field. Chain-of-thought / reasoning comes from the separate `reasoning` (or `reasoning_content`) field — sent to Telegram only when `sendThinkingEnabled` is on. Never merge reasoning into the reply body.
 
@@ -95,7 +98,7 @@ Model replies use `[REPLY]…[/REPLY]` (Telegram HTML subset). Parser: `server/s
 - **Minimal diffs** — match existing style, naming, and patterns in the file you edit.
 - **No drive-by refactors** or unrelated changes.
 - **Do not commit** unless the user asks. Do not put secrets in git (`.env`, tokens).
-- **No ad-hoc output heuristics** — do not strip or classify model text with hardcoded keyword lists, magic regex, or guessed “reasoning leak” patterns. Use API response fields (`content` vs `reasoning`) and the project’s structured block protocol (`[REPLY]`, `[SEARCH]`, `[STICKER]`, etc. — tag names in `response-format.ts` and each side-pass spec). Side passes parse **closed** blocks only.
+- **No ad-hoc output heuristics** — do not strip or classify model text with hardcoded keyword lists or guessed “reasoning leak” patterns. Use API response fields (`content` vs `reasoning_content` / `reasoning`) and the structured block protocol (`[REPLY]`, `[SEARCH]`, `[STICKER]`, etc.). Side passes parse **closed** blocks only.
 - **SQLite settings** — add new keys to `DEFAULT_SETTINGS` in `server/src/db/database.ts`, validation in `settings-limits.ts`, allowed PATCH keys in `server/src/api/routes.ts`, and dashboard `Settings` in `dashboard/src/api.ts`.
 
 ## Dashboard pages
@@ -129,7 +132,9 @@ State: `dashboard/src/context/DashboardContext.tsx`. API client: `dashboard/src/
 
 ## Testing
 
-No automated test suite. After server changes: `npm run build -w server`. After dashboard changes: `npm run build -w dashboard`. Manually verify bot commands (`/start`, `/id`, `/reset`) and dashboard save/load.
+After server changes: `npm run build -w server`. After dashboard changes: `npm run build -w dashboard`. Manually verify bot commands (`/start`, `/id`, `/reset`) and dashboard save/load.
+
+Optional live LLM check: `npm run test:llm -w server` — requires `LLM_BASE_URL` and `LLM_MODEL`; optional `OPENAI_API_KEY`.
 
 ## Common pitfalls
 

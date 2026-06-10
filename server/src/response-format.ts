@@ -17,7 +17,7 @@ export function buildReplyFormatSpec(formatHint: string): string {
 ${formatHint}
 [/${REPLY_TAG}]
 
-Rules: always include [${REPLY_TAG}]. Do not output [${MEMORY_TAG}], [${GROUP_MEMORY_TAG}], or [${GENERAL_MEMORY_TAG}] in your reply — memory is handled separately.
+Rules: always include [${REPLY_TAG}] and [/${REPLY_TAG}] on their own lines. Do not output [${MEMORY_TAG}], [${GROUP_MEMORY_TAG}], or [${GENERAL_MEMORY_TAG}] in your reply — memory is handled separately.
 Never include internal chat-history tags in [${REPLY_TAG}] (e.g. [assistant said], [user:… said], [sticker: …], [compressed]) — those are metadata, not spoken text.
 Formatting: HTML tags are optional — reply in plain text unless a tag genuinely adds emphasis. Never send empty tags (e.g. <b></b>).`;
 }
@@ -70,6 +70,42 @@ export function extractClosedBlock(text: string, tag: string): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
+/** Text after an opening [TAG] when the model omits the closing tag (common on stop/length). */
+function extractUnclosedBlock(text: string, tag: string): string | null {
+  const unclosed = new RegExp(
+    `\\[${escapeRegExp(tag)}\\]\\s*([\\s\\S]*)`,
+    "i",
+  );
+  const match = unclosed.exec(text);
+  return match?.[1]?.trim() ?? null;
+}
+
+/** Cut echoed history metadata the model must not speak (see buildReplyFormatSpec). */
+function trimEchoedReplyTail(text: string): string {
+  const stickerIdx = text.search(/\[sticker:/i);
+  if (stickerIdx >= 0) return text.slice(0, stickerIdx).trim();
+  return text.trim();
+}
+
+function extractReplyBody(content: string): string {
+  let text = trimEchoedReplyTail(content.trim());
+  text = text.replace(/^\[assistant said\]\s*:?\s*/i, "").trim();
+
+  const closed = extractClosedBlock(text, REPLY_TAG);
+  if (closed !== null) return closed;
+
+  const unclosed = extractUnclosedBlock(text, REPLY_TAG);
+  if (unclosed !== null && unclosed.length > 0) {
+    return trimEchoedReplyTail(unclosed);
+  }
+
+  // Model echoed history prefix and put an empty [REPLY] at the end.
+  const withoutReplyTags = text.replace(/\[\/?REPLY\]/gi, "").trim();
+  if (withoutReplyTags.length > 0) return withoutReplyTags;
+
+  return "";
+}
+
 function parseMemoryLines(block: string): string[] {
   const trimmed = block.trim();
   if (!trimmed || /^none$/i.test(trimmed)) return [];
@@ -91,7 +127,7 @@ export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
     extractClosedBlock(raw, GENERAL_MEMORY_TAG) ?? "",
   );
 
-  const reply = extractClosedBlock(raw, REPLY_TAG) ?? "";
+  const reply = extractReplyBody(raw);
   const cleanedReply = stripEchoedHistoryMarkup(stripStructuredMarkup(reply));
 
   return {
@@ -102,7 +138,7 @@ export function parseStructuredResponse(raw: string): ParsedAssistantResponse {
   };
 }
 
-/** User-facing reply: only a closed [REPLY]…[/REPLY] block (never the reasoning field). */
+/** User-facing reply from API `message.content`. */
 export function extractTelegramReply(content: string): string {
   return parseStructuredResponse(content).reply.trim();
 }

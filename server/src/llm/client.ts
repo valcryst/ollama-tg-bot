@@ -16,13 +16,14 @@ import {
   AUXILIARY_TEMPERATURE,
   getChatTimeoutMs,
   getEffectiveNumPredict,
-  getProviderExtensions,
   getReplyNumPredict,
-  LENGTH_RETRY_MIN_PREDICT,
-  maxNumPredictForContext,
 } from "../settings-limits.js";
 import { getResolvedSettings } from "../settings-runtime.js";
 import { normalizeImageForChat } from "./images.js";
+import {
+  localAiChatExtensions,
+  parseAssistantMessage,
+} from "./openai-compat.js";
 import { logModelExchange } from "./verbose-log.js";
 
 const LIST_MODELS_TIMEOUT_MS = 60_000;
@@ -54,11 +55,6 @@ interface OpenAiModel {
   name?: string;
 }
 
-interface OpenAiContentPart {
-  type?: string;
-  text?: string;
-}
-
 interface ChatResponse {
   message?: {
     role?: string;
@@ -67,6 +63,22 @@ interface ChatResponse {
   };
   done_reason?: string;
   eval_count?: number;
+}
+
+function toChatResponse(
+  choice: ChatCompletion["choices"][number] | undefined,
+  usage: ChatCompletion["usage"],
+): ChatResponse {
+  const { content, reasoning } = parseAssistantMessage(choice);
+  return {
+    message: {
+      role: choice?.message?.role,
+      content,
+      reasoning,
+    },
+    done_reason: choice?.finish_reason ?? undefined,
+    eval_count: usage?.completion_tokens ?? usage?.total_tokens,
+  };
 }
 
 function resolveBaseUrl(hostOverride?: string): string {
@@ -122,7 +134,9 @@ function emptyResponseError(
     }
   } else if (hadReasoning) {
     hint =
-      "The model returned reasoning output but no message content. If this persists, try disabling thinking mode or switch models.";
+      "The API returned reasoning but left content empty. " +
+      "This bot uses reasoning_effort: none so the [REPLY] answer should be in content. " +
+      "Check the LocalAI model config (reasoning_parser: gemma4) or try /reset.";
   }
 
   const fields = Object.keys(data).sort().join(", ") || "none";
@@ -189,8 +203,8 @@ export interface ChatCompleteOptions {
   /** Use low temperature for structured side passes (mood, memory, search, etc.). */
   auxiliary?: boolean;
   /**
-   * Request model reasoning when settings.thinkingEnabled (main replies and
-   * memory extract only).
+   * Reserved for passes that run with settings.thinkingEnabled (verbose label only).
+   * LocalAI thinking is controlled via `reasoning_effort` in `localAiChatExtensions()`.
    */
   think?: boolean;
   /** VERBOSE log section label, e.g. "web search decision". */
@@ -204,7 +218,6 @@ async function requestChat(
   prepared: ChatMessage[],
   numPredict: number,
   auxiliary: boolean,
-  think: boolean,
   verboseLabel?: string,
   verboseLayout?: VerbosePromptLayout,
 ): Promise<ChatResponse> {
@@ -212,7 +225,7 @@ async function requestChat(
   let response: ChatCompletion;
   try {
     response = await openAiClient().chat.completions.create(
-      chatCompletionBody(model, prepared, numPredict, auxiliary, think),
+      chatCompletionBody(model, prepared, numPredict, auxiliary),
       { timeout: getChatTimeoutMs(settings) },
     );
   } catch (err) {
@@ -236,7 +249,7 @@ async function requestChat(
     throw err;
   }
 
-  const data = chatCompletionToChatResponse(response);
+  const data = toChatResponse(response.choices?.[0], response.usage);
   if (verboseLabel) {
     logModelExchange(
       verboseLabel,
@@ -245,7 +258,7 @@ async function requestChat(
       prepared,
       data,
       verboseLayout,
-      formatVerboseSamplingLine(settings, auxiliary, think),
+      formatVerboseSamplingLine(settings, auxiliary),
     );
   }
   return data;
@@ -254,18 +267,18 @@ async function requestChat(
 function formatVerboseSamplingLine(
   settings: Settings,
   auxiliary: boolean,
-  think: boolean,
 ): string {
   const temp = auxiliary ? AUXILIARY_TEMPERATURE : settings.temperature;
-  const parts = [
+  const reasoningEffort = localAiChatExtensions(settings, auxiliary)
+    .reasoning_effort;
+  return [
     `temperature: ${temp}`,
     `top_p: ${settings.topP}`,
     `top_k: ${settings.topK}`,
     `repeat_penalty: ${settings.repeatPenalty}`,
     `num_ctx: ${settings.numCtx}`,
-    think ? "reasoning_effort: medium" : null,
-  ].filter(Boolean);
-  return parts.join(", ");
+    `reasoning_effort: ${reasoningEffort}`,
+  ].join(", ");
 }
 
 function chatCompletionBody(
@@ -273,7 +286,6 @@ function chatCompletionBody(
   messages: ChatMessage[],
   numPredict: number,
   auxiliary: boolean,
-  think: boolean,
 ): ChatCompletionCreateParamsNonStreaming {
   const settings = getResolvedSettings();
   return {
@@ -283,8 +295,7 @@ function chatCompletionBody(
     max_completion_tokens: numPredict,
     temperature: auxiliary ? AUXILIARY_TEMPERATURE : settings.temperature,
     top_p: settings.topP,
-    ...(think ? { reasoning_effort: "medium" } : {}),
-    ...getProviderExtensions(settings),
+    ...localAiChatExtensions(settings, auxiliary),
   } as ChatCompletionCreateParamsNonStreaming;
 }
 
@@ -307,58 +318,6 @@ function toOpenAiMessage(msg: ChatMessage): ChatCompletionMessageParam {
   };
 }
 
-function chatCompletionToChatResponse(data: ChatCompletion): ChatResponse {
-  const choice = data.choices?.[0];
-  return {
-    message: {
-      role: choice?.message?.role,
-      content: openAiChoiceText(choice),
-      reasoning: openAiChoiceReasoning(choice),
-    },
-    done_reason: choice?.finish_reason ?? undefined,
-    eval_count:
-      data.usage?.completion_tokens ??
-      data.usage?.total_tokens,
-  };
-}
-
-function openAiChoiceText(
-  choice: ChatCompletion["choices"][number] | undefined,
-): string {
-  return (
-    openAiTextContent(choice?.message?.content) ||
-    choice?.message?.refusal?.trim() ||
-    ""
-  );
-}
-
-function openAiChoiceReasoning(
-  choice: ChatCompletion["choices"][number] | undefined,
-): string {
-  const message = choice?.message as
-    | (ChatCompletion["choices"][number]["message"] & {
-        reasoning?: string | null;
-        reasoning_content?: string | null;
-      })
-    | undefined;
-  return (
-    message?.reasoning?.trim() ||
-    message?.reasoning_content?.trim() ||
-    ""
-  );
-}
-
-function openAiTextContent(
-  content: string | OpenAiContentPart[] | null | undefined,
-): string {
-  if (typeof content === "string") return content.trim();
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((part) => part.text?.trim() ?? "")
-    .filter(Boolean)
-    .join("\n");
-}
-
 export interface ChatCompleteResult {
   /** Assistant final answer content. */
   raw: string;
@@ -377,50 +336,25 @@ export async function chatCompleteDetailed(
   const verboseLabel = options?.verboseLabel;
   const verboseLayout = options?.verboseLayout;
   const auxiliary = options?.auxiliary ?? false;
-  const think = Boolean(options?.think && settings.thinkingEnabled);
 
   try {
-    let numPredict = getEffectiveNumPredict(settings, {
+    const numPredict = getEffectiveNumPredict(settings, {
       baseNumPredict: options?.numPredict,
     });
-    let lastData: ChatResponse | null = null;
-
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const label =
-        verboseLabel && attempt > 0
-          ? `${verboseLabel} (retry ${attempt + 1})`
-          : verboseLabel;
-      lastData = await requestChat(
-        model,
-        prepared,
-        numPredict,
-        auxiliary,
-        think,
-        label,
-        verboseLayout,
-      );
-      const raw = pickAssistantContent(lastData);
-      const reasoning = pickReasoning(lastData);
-      if (raw || reasoning) {
-        return { raw, thinking: reasoning };
-      }
-
-      const predictCap = maxNumPredictForContext(settings.numCtx);
-      const canRetry =
-        attempt === 0 &&
-        lastData.done_reason === "length" &&
-        numPredict < predictCap &&
-        options?.numPredict == null;
-
-      if (!canRetry) break;
-
-      numPredict = Math.min(
-        predictCap,
-        Math.max(numPredict * 2, LENGTH_RETRY_MIN_PREDICT),
-      );
+    const data = await requestChat(
+      model,
+      prepared,
+      numPredict,
+      auxiliary,
+      verboseLabel,
+      verboseLayout,
+    );
+    const raw = pickAssistantContent(data);
+    const thinking = pickReasoning(data);
+    if (raw) {
+      return { raw, thinking };
     }
-
-    throw emptyResponseError(model, lastData!, numPredict);
+    throw emptyResponseError(model, data, numPredict);
   } catch (err) {
     throw wrapChatError(err, auxiliary);
   }
@@ -430,8 +364,8 @@ export async function chatComplete(
   messages: ChatMessage[],
   options?: ChatCompleteOptions,
 ): Promise<string> {
-  const { raw, thinking } = await chatCompleteDetailed(messages, options);
-  return raw || thinking;
+  const { raw } = await chatCompleteDetailed(messages, options);
+  return raw;
 }
 
 function wrapChatError(err: unknown, auxiliary = false): Error {
