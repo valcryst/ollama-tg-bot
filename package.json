@@ -2,7 +2,7 @@
   "name": "model-api-tg-bot",
   "version": "1.0.0",
   "private": true,
-  "description": "Telegram bot powered by an OpenAI-compatible chat completions API with a configuration dashboard",
+  "description": "Telegram bot powered by an OpenAI-compatible Responses API with a configuration dashboard",
   "engines": {
     "node": ">=22.13.0"
   },

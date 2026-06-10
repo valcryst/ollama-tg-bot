@@ -52,7 +52,7 @@ function formatSectionedMessagesBody(
   );
   const lines = [
     `model: ${model}`,
-    `max_completion_tokens: ${maxTokens}`,
+    `max_output_tokens: ${maxTokens}`,
     "",
     SECTION("SYSTEM"),
     layout.system,

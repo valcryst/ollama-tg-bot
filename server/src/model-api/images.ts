@@ -19,7 +19,7 @@ function parseBase64(input: string): Buffer {
 
 /**
  * Convert any Telegram image (WebP stickers, JPEG photos, etc.) to JPEG
- * so chat-completion vision backends accept it reliably.
+ * so OpenAI-compatible vision endpoints accept it reliably.
  */
 function isJpeg(buf: Buffer): boolean {
   return buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;

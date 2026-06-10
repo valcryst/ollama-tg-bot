@@ -1,3 +1,15 @@
+import OpenAI, {
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  APIError,
+} from "openai";
+import type {
+  ChatCompletion,
+  ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionMessageParam,
+} from "openai/resources/chat/completions";
+import type { Model } from "openai/resources/models";
+import { config } from "../config.js";
 import { getSettings } from "../db/database.js";
 import { extractTelegramReply } from "../response-format.js";
 import {
@@ -39,33 +51,6 @@ export interface ChatMessage {
 interface OpenAiModel {
   id?: string;
   name?: string;
-  object?: string;
-  created?: number;
-}
-
-interface OpenAiChatResponse {
-  choices?: OpenAiChoice[];
-  usage?: {
-    completion_tokens?: number;
-    output_tokens?: number;
-    total_tokens?: number;
-  };
-}
-
-interface OpenAiChoice {
-  delta?: {
-    role?: string;
-    content?: string | null;
-    reasoning?: string | null;
-  };
-  finish_reason?: string;
-  text?: string | null;
-  message?: {
-    role?: string;
-    content?: string | OpenAiContentPart[] | null;
-    reasoning?: string | null;
-    reasoning_content?: string | null;
-  };
 }
 
 interface OpenAiContentPart {
@@ -91,8 +76,17 @@ function resolveBaseUrl(hostOverride?: string): string {
   return host.replace(/\/$/, "");
 }
 
-function baseUrl(): string {
-  return resolveBaseUrl();
+function resolveOpenAiBaseUrl(hostOverride?: string): string {
+  const base = resolveBaseUrl(hostOverride);
+  return base.endsWith("/v1") ? base : `${base}/v1`;
+}
+
+function openAiClient(hostOverride?: string): OpenAI {
+  return new OpenAI({
+    apiKey: config.openAiApiKey || "not-needed",
+    baseURL: resolveOpenAiBaseUrl(hostOverride),
+    maxRetries: 0,
+  });
 }
 
 function pickAssistantContent(data: ChatResponse): string {
@@ -127,7 +121,7 @@ function emptyResponseError(
     }
   } else if (hadReasoning) {
     hint =
-      "This model returned reasoning output but no final answer. Restart the server and retry, or switch models.";
+      "The model returned reasoning output but no message content. If this persists, try disabling thinking mode or switch models.";
   }
 
   const fields = Object.keys(data).sort().join(", ") || "none";
@@ -137,21 +131,22 @@ function emptyResponseError(
 }
 
 export async function listModels(hostOverride?: string): Promise<ModelApiModel[]> {
-  const res = await fetch(`${resolveBaseUrl(hostOverride)}/v1/models`, {
-    signal: AbortSignal.timeout(LIST_MODELS_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    throw new Error(`Model listing failed (${res.status}): ${await res.text()}`);
+  try {
+    const page = await openAiClient(hostOverride).models.list({
+      timeout: LIST_MODELS_TIMEOUT_MS,
+    });
+    return normalizeModels(page.data ?? []);
+  } catch (err) {
+    throw wrapModelListError(err, hostOverride);
   }
-  const data = (await res.json()) as { data?: OpenAiModel[] };
-  return normalizeModels(data.data ?? []);
 }
 
-function normalizeModels(models: OpenAiModel[]): ModelApiModel[] {
+function normalizeModels(models: (OpenAiModel | Model)[]): ModelApiModel[] {
   const seen = new Set<string>();
   return models
     .map((entry) => {
-      const name = (entry.id ?? entry.name ?? "").trim();
+      const fallbackName = "name" in entry ? entry.name : "";
+      const name = (entry.id ?? fallbackName ?? "").trim();
       if (!name || seen.has(name)) return null;
       seen.add(name);
       return { name };
@@ -213,26 +208,34 @@ async function requestChat(
   verboseLayout?: VerbosePromptLayout,
 ): Promise<ChatResponse> {
   const settings = getResolvedSettings();
-  const res = await fetch(`${baseUrl()}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(getChatTimeoutMs(settings)),
-    body: JSON.stringify(
+  let response: ChatCompletion;
+  try {
+    response = await openAiClient().chat.completions.create(
       chatCompletionBody(model, prepared, numPredict, auxiliary, think),
-    ),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    if (res.status === 400 && /image|audio file/i.test(body)) {
+      { timeout: getChatTimeoutMs(settings) },
+    );
+  } catch (err) {
+    if (
+      err instanceof APIConnectionTimeoutError ||
+      err instanceof APIConnectionError
+    ) {
+      throw err;
+    }
+    if (err instanceof APIError) {
+      const body = apiErrorDetails(err);
+      if (err.status === 400 && /image|audio file/i.test(body)) {
+        throw new Error(
+          `Model API rejected the image (is "${model}" a vision model?). ${body}`,
+        );
+      }
       throw new Error(
-        `Model API rejected the image (is "${model}" a vision model?). ${body}`,
+        `Model API chat failed (${err.status ?? "unknown"}): ${body}`,
       );
     }
-    throw new Error(`Model API chat failed (${res.status}): ${body}`);
+    throw err;
   }
 
-  const data = openAiToChatResponse((await res.json()) as OpenAiChatResponse);
+  const data = chatCompletionToChatResponse(response);
   if (verboseLabel) {
     logModelExchange(
       verboseLabel,
@@ -252,7 +255,7 @@ function chatCompletionBody(
   numPredict: number,
   auxiliary: boolean,
   think: boolean,
-) {
+): ChatCompletionCreateParamsNonStreaming {
   const settings = getResolvedSettings();
   return {
     model,
@@ -265,52 +268,62 @@ function chatCompletionBody(
   };
 }
 
-function toOpenAiMessage(msg: ChatMessage) {
+function toOpenAiMessage(msg: ChatMessage): ChatCompletionMessageParam {
   if (!msg.images?.length) {
     return { role: msg.role, content: msg.content };
   }
+  if (msg.role !== "user") {
+    return { role: msg.role, content: msg.content };
+  }
   return {
-    role: msg.role,
+    role: "user",
     content: [
       { type: "text", text: msg.content },
       ...msg.images.map((image) => ({
-        type: "image_url",
+        type: "image_url" as const,
         image_url: { url: `data:image/jpeg;base64,${image}` },
       })),
     ],
   };
 }
 
-function openAiToChatResponse(data: OpenAiChatResponse): ChatResponse {
+function chatCompletionToChatResponse(data: ChatCompletion): ChatResponse {
   const choice = data.choices?.[0];
   return {
     message: {
-      role: choice?.message?.role ?? choice?.delta?.role,
+      role: choice?.message?.role,
       content: openAiChoiceText(choice),
       reasoning: openAiChoiceReasoning(choice),
     },
-    done_reason: choice?.finish_reason,
+    done_reason: choice?.finish_reason ?? undefined,
     eval_count:
       data.usage?.completion_tokens ??
-      data.usage?.output_tokens ??
       data.usage?.total_tokens,
   };
 }
 
-function openAiChoiceText(choice: OpenAiChoice | undefined): string {
+function openAiChoiceText(
+  choice: ChatCompletion["choices"][number] | undefined,
+): string {
   return (
     openAiTextContent(choice?.message?.content) ||
-    choice?.text?.trim() ||
-    choice?.delta?.content?.trim() ||
+    choice?.message?.refusal?.trim() ||
     ""
   );
 }
 
-function openAiChoiceReasoning(choice: OpenAiChoice | undefined): string {
+function openAiChoiceReasoning(
+  choice: ChatCompletion["choices"][number] | undefined,
+): string {
+  const message = choice?.message as
+    | (ChatCompletion["choices"][number]["message"] & {
+        reasoning?: string | null;
+        reasoning_content?: string | null;
+      })
+    | undefined;
   return (
-    choice?.message?.reasoning?.trim() ||
-    choice?.message?.reasoning_content?.trim() ||
-    choice?.delta?.reasoning?.trim() ||
+    message?.reasoning?.trim() ||
+    message?.reasoning_content?.trim() ||
     ""
   );
 }
@@ -367,11 +380,17 @@ export async function chatCompleteDetailed(
         verboseLayout,
       );
       const raw = pickAssistantContent(lastData);
+      const reasoning = pickReasoning(lastData);
       if (raw) {
         return {
           raw,
-          thinking: pickReasoning(lastData),
+          thinking: reasoning,
         };
+      }
+
+      // Some OpenAI-compatible backends (e.g. LocalAI) return text in reasoning only.
+      if (reasoning) {
+        return { raw: reasoning, thinking: "" };
       }
 
       const predictCap = maxNumPredictForContext(settings.numCtx);
@@ -418,14 +437,55 @@ export async function chat(
 }
 
 function wrapChatError(err: unknown, auxiliary = false): Error {
-  if (err instanceof Error && err.name === "TimeoutError") {
+  const settings = getSettings();
+  const apiUrl = resolveBaseUrl();
+  const timeoutSec = settings.chatTimeoutSec;
+
+  if (
+    err instanceof APIConnectionTimeoutError ||
+    (err instanceof Error && err.name === "TimeoutError")
+  ) {
     if (auxiliary) {
       return new Error(
-        `Model API auxiliary request timed out (${getSettings().chatTimeoutSec}s). The bot will skip that side pass and continue where possible.`,
+        `Model API auxiliary request timed out after ${timeoutSec}s (${apiUrl}). The bot will skip that side pass and continue where possible.`,
       );
     }
     return new Error(
-      `Model API request timed out (${getSettings().chatTimeoutSec}s). Try a smaller model, fewer chat history (/reset), or lower timeout in dashboard.`,
+      `Model API request timed out after ${timeoutSec}s (${apiUrl}). Check the API URL in dashboard Settings, confirm the server is running, and verify the model name matches GET /v1/models.`,
+    );
+  }
+  if (err instanceof APIConnectionError) {
+    return new Error(
+      `Model API connection failed (${apiUrl}): ${err.message}. Check the API URL in dashboard Settings.`,
+    );
+  }
+  if (err instanceof Error) return err;
+  return new Error(String(err));
+}
+
+function apiErrorDetails(err: APIError): string {
+  if (typeof err.error === "string") return err.error;
+  if (err.error && Object.keys(err.error).length > 0) {
+    return JSON.stringify(err.error);
+  }
+  return err.message;
+}
+
+function wrapModelListError(err: unknown, hostOverride?: string): Error {
+  const apiUrl = resolveBaseUrl(hostOverride);
+  if (err instanceof APIConnectionTimeoutError) {
+    return new Error(
+      `Model listing timed out (${apiUrl}): ${err.message}`,
+    );
+  }
+  if (err instanceof APIConnectionError) {
+    return new Error(
+      `Model listing connection failed (${apiUrl}): ${err.message}`,
+    );
+  }
+  if (err instanceof APIError) {
+    return new Error(
+      `Model listing failed (${err.status ?? "unknown"}, ${apiUrl}): ${apiErrorDetails(err)}`,
     );
   }
   if (err instanceof Error) return err;
@@ -434,10 +494,8 @@ function wrapChatError(err: unknown, auxiliary = false): Error {
 
 export async function checkHealth(hostOverride?: string): Promise<boolean> {
   try {
-    const res = await fetch(`${resolveBaseUrl(hostOverride)}/v1/models`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    return res.ok;
+    await openAiClient(hostOverride).models.list({ timeout: 5000 });
+    return true;
   } catch {
     return false;
   }

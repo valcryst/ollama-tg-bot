@@ -1,6 +1,6 @@
 # OpenAI-compatible Telegram Bot
 
-Telegram bot backed by an OpenAI-compatible chat completions API, with a web dashboard for configuration and stats.
+Telegram bot backed by an OpenAI-compatible Responses API, with a web dashboard for configuration and stats.
 
 ## Docker
 

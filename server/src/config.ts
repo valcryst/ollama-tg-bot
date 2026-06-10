@@ -19,6 +19,10 @@ function resolveTavilyApiKey(): string {
   return (process.env.TAVILY_API_KEY ?? "").trim();
 }
 
+function resolveOpenAiApiKey(): string {
+  return (process.env.OPENAI_API_KEY ?? "").trim();
+}
+
 export type LoggingLevel = "ERROR" | "DEBUG" | "VERBOSE";
 
 function resolveLoggingLevel(): LoggingLevel {
@@ -83,7 +87,7 @@ export function requireBotToken(): string {
   return requireStartupEnv().botToken;
 }
 
-/** GPU VRAM from VRAM_AVAILABLE — used to derive context window from the selected model. */
+/** GPU VRAM from VRAM_AVAILABLE - used to derive context window from the selected model. */
 export function getVramAvailableGb(): number {
   return requireStartupEnv().vramAvailableGb;
 }
@@ -96,6 +100,8 @@ export const config = {
   dashboardDist: path.join(rootDir, "dashboard", "dist"),
   /** Tavily API key from env (TAVILY_API_KEY). Empty = web search off. */
   tavilyApiKey: resolveTavilyApiKey(),
+  /** OpenAI-compatible API key from env (OPENAI_API_KEY). Local servers can leave it empty. */
+  openAiApiKey: resolveOpenAiApiKey(),
   /** ERROR = errors only; DEBUG = lifecycle events; VERBOSE = + model API I/O. */
   loggingLevel: resolveLoggingLevel(),
 };

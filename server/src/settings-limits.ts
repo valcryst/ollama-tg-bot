@@ -81,7 +81,7 @@ export function getReplyNumPredict(settings: Settings): number {
   return settings.numPredict - getThinkingNumPredict(settings);
 }
 
-/** max_completion_tokens for a request (total generation budget). */
+/** max_output_tokens for a request (total generation budget). */
 export function getEffectiveNumPredict(
   settings: Settings,
   options?: { baseNumPredict?: number },
