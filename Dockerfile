@@ -2,16 +2,19 @@ FROM node:24-bookworm-slim AS build
 
 WORKDIR /app
 
+# devDependencies (typescript, vite) required for npm run build
+ENV NODE_ENV=development
+
 COPY package.json package-lock.json* ./
 COPY server/package.json ./server/
 COPY dashboard/package.json ./dashboard/
 
-RUN npm ci 2>/dev/null || npm install
+RUN npm ci
 
 COPY server ./server
 COPY dashboard ./dashboard
 
-RUN npm run build
+RUN npm run build -w dashboard && npm run build -w server
 
 FROM node:24-bookworm-slim
 
