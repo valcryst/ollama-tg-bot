@@ -9,7 +9,7 @@ COPY package.json package-lock.json* ./
 COPY server/package.json ./server/
 COPY dashboard/package.json ./dashboard/
 
-RUN npm ci
+RUN npm ci --include=dev
 
 COPY server ./server
 COPY dashboard ./dashboard
