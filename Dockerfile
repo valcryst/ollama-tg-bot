@@ -11,6 +11,7 @@ COPY dashboard/package.json ./dashboard/
 
 RUN npm ci --include=dev
 
+RUN rm -rf server dashboard
 COPY server ./server
 COPY dashboard ./dashboard
 
