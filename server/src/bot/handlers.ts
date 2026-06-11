@@ -101,6 +101,8 @@ function trackTelegramUser(ctx: Context): void {
   tryResolveOwnerFromUser(ctx.from);
 }
 
+let nextTurnId = 1;
+
 export function registerHandlers(bot: Bot, botUsername: string): void {
   bot.use((ctx, next) => {
     try {
@@ -128,10 +130,11 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
   bot.on("message", async (ctx) => {
     if (!ctx.message) return;
 
+    const turnId = nextTurnId++;
     const msgLog = {
+      turnId,
       chatId: ctx.chat?.id,
       userId: ctx.from?.id,
-      messageId: ctx.message.message_id,
       chatType: ctx.chat?.type,
     };
 
@@ -167,17 +170,31 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
     const settings = getSettings();
     const inGroup = ctx.chat?.type !== "private";
+    const randomRoll =
+      settings.randomReplyEnabled && inGroup ? Math.random() * 100 : null;
     const randomHit =
       settings.randomReplyEnabled &&
       inGroup &&
-      Math.random() * 100 < settings.randomReplyChance;
+      randomRoll != null &&
+      randomRoll < settings.randomReplyChance;
     const imageHit =
       settings.reactToEveryImage &&
       inGroup &&
       !randomHit &&
       messageHasUserImage(ctx.message);
     const addressed =
-      randomHit || imageHit ? false : await isMessageAddressedToBot(ctx);
+      randomHit || imageHit ? false : await isMessageAddressedToBot(ctx, turnId);
+
+    logEvent("message_address_gate", {
+      ...msgLog,
+      addressed,
+      randomHit,
+      imageHit,
+      randomReplyEnabled: settings.randomReplyEnabled,
+      randomReplyChance: settings.randomReplyChance,
+      randomRoll: randomRoll == null ? undefined : Number(randomRoll.toFixed(2)),
+      reactToEveryImage: settings.reactToEveryImage,
+    });
 
     if (!addressed && !randomHit && !imageHit) {
       logEvent("message_ignored", { ...msgLog, reason: "not_addressed" });

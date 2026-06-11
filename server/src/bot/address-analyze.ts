@@ -81,7 +81,10 @@ function formatBotNamesForAnalyzer(bot: BotIdentity): string {
  * Whether the bot should treat this message as addressed.
  * Private chats: always true. Groups: @mention/reply/command, name match, then LLM name-variant check.
  */
-export async function isMessageAddressedToBot(ctx: Context): Promise<boolean> {
+export async function isMessageAddressedToBot(
+  ctx: Context,
+  turnId?: number,
+): Promise<boolean> {
   const baseLog = {
     chatId: ctx.chat?.id,
     userId: ctx.from?.id,
@@ -109,15 +112,24 @@ export async function isMessageAddressedToBot(ctx: Context): Promise<boolean> {
   }
 
   const text = (ctx.message?.text ?? ctx.message?.caption ?? "").trim();
-  if (!text) return false;
+  if (!text) {
+    logEvent("message_address_decision", {
+      ...baseLog,
+      turnId,
+      addressed: false,
+      source: "no_text",
+    });
+    return false;
+  }
 
-  return analyzeGroupMessageForBot(ctx, bot, text);
+  return analyzeGroupMessageForBot(ctx, bot, text, turnId);
 }
 
 async function analyzeGroupMessageForBot(
   ctx: Context,
   bot: BotIdentity,
   text: string,
+  turnId?: number,
 ): Promise<boolean> {
   const chatType = ctx.chat?.type;
   if (chatType !== "group" && chatType !== "supergroup") return false;
@@ -144,14 +156,24 @@ async function analyzeGroupMessageForBot(
     const raw = await chatComplete(messages, {
       numPredict: ADDRESS_CHECK_NUM_PREDICT,
       auxiliary: true,
-      verboseLabel: "address detection",
+      verboseLabel: `address detection${turnId != null ? ` turn=${turnId}` : ""}`,
     });
     const yes = parseAddressDecision(raw);
     if (yes) {
       logEvent("message_addressed", {
         chatId: ctx.chat?.id,
         userId: ctx.from?.id,
+        turnId,
         chatType,
+        source: "analyzer",
+      });
+    } else {
+      logEvent("message_address_decision", {
+        chatId: ctx.chat?.id,
+        userId: ctx.from?.id,
+        turnId,
+        chatType,
+        addressed: false,
         source: "analyzer",
       });
     }
