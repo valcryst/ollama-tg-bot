@@ -13,7 +13,7 @@ import { logEvent, logEventError } from "../event-log.js";
 
 const ADDRESS_CHECK_NUM_PREDICT = 96;
 
-const ANALYZER_SYSTEM = `You decide whether a group-chat message is directed at a specific Telegram bot and should receive a reply.
+const ANALYZER_SYSTEM = `You decide whether a group-chat message explicitly names a specific Telegram bot and should receive a reply.
 
 Output ONLY:
 
@@ -27,14 +27,15 @@ or
 no
 [/ADDRESS]
 
-Say yes when someone:
-- Uses the bot's name, username, or a clear nickname or variation
-- Asks the bot a question or for its opinion
-- Clearly expects the assistant to respond (even without @mention)
+Say yes only when the message contains a reference to the bot identity:
+- The bot's username, first name, full name, nickname, or a clear spelling/case/punctuation variation
+- A clear translation/transliteration of the bot's name into another language
+- A natural-language call to that named bot, such as "<bot name>, what do you think?"
 
 Say no when:
 - Humans are chatting among themselves with no request aimed at the bot
-- The bot is not referenced and nothing asks an assistant to answer
+- The bot is not named, even if the message asks a general question or sounds like it wants an assistant
+- The message says "bot", "assistant", "AI", or similar generic words without the specific bot name
 - It is background banter the bot should not interrupt`;
 
 const ADDRESS_BLOCK = /\[ADDRESS\]\s*([\s\S]*?)\s*\[\/ADDRESS\]/i;
@@ -78,7 +79,7 @@ function formatBotNamesForAnalyzer(bot: BotIdentity): string {
 
 /**
  * Whether the bot should treat this message as addressed.
- * Private chats: always true. Groups: @mention/reply/command, name match, then LLM.
+ * Private chats: always true. Groups: @mention/reply/command, name match, then LLM name-variant check.
  */
 export async function isMessageAddressedToBot(ctx: Context): Promise<boolean> {
   const baseLog = {
@@ -107,7 +108,8 @@ export async function isMessageAddressedToBot(ctx: Context): Promise<boolean> {
     return true;
   }
 
-  const text = messageTextForAddressCheck(ctx);
+  const text = (ctx.message?.text ?? ctx.message?.caption ?? "").trim();
+  if (!text) return false;
 
   return analyzeGroupMessageForBot(ctx, bot, text);
 }

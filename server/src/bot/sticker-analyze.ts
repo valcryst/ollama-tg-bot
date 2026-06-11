@@ -18,9 +18,20 @@ const STICKER_BLOCK = new RegExp(
 );
 
 export function shouldTryStickerReply(chance: number): boolean {
-  if (chance <= 0) return false;
-  if (chance >= 100) return true;
-  return Math.random() * 100 < chance;
+  return rollStickerReplyChance(chance).hit;
+}
+
+export interface StickerReplyRoll {
+  chance: number;
+  roll: number | null;
+  hit: boolean;
+}
+
+export function rollStickerReplyChance(chance: number): StickerReplyRoll {
+  if (chance <= 0) return { chance, roll: null, hit: false };
+  if (chance >= 100) return { chance, roll: null, hit: true };
+  const roll = Math.random() * 100;
+  return { chance, roll, hit: roll < chance };
 }
 
 function buildStickerAnalyzerSystem(): string | null {

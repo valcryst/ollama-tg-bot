@@ -51,6 +51,18 @@ function buildLatestTurnMessage(options: LatestTurnOptions): string {
 
   const hasReplyThread = isReplyThreadContext(options.replyContext);
 
+  if (options.isGroupChat && options.currentSpeaker && hasReplyThread) {
+    const ownerLine = options.currentSpeakerIsOwner
+      ? "They are the bot owner - prioritize their intent.\n"
+      : "";
+    parts.push(
+      `[CURRENT SPEAKER - reply to this person]\n` +
+        `Name: ${options.currentSpeaker.label}\n` +
+        `Tag: ${options.speakerTag ?? options.currentSpeaker.userId}\n` +
+        ownerLine,
+    );
+  }
+
   if (options.isGroupChat && options.currentSpeaker) {
     if (hasReplyThread) {
       if (options.currentSpeakerIsOwner) {
@@ -203,7 +215,13 @@ export function buildChatMessages(
   });
 
   const storedHistory = getHistory(chatKey);
-  const history = historyToChatMessages(storedHistory);
+  const historySource =
+    isGroupChat &&
+    latestTurn.speakerTag &&
+    storedHistory.at(-1)?.role === latestTurn.speakerTag
+      ? storedHistory.slice(0, -1)
+      : storedHistory;
+  const history = historyToChatMessages(historySource);
   const latest = buildLatestTurnMessage({
     ...latestTurn,
     isGroupChat,

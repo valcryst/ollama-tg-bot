@@ -264,7 +264,6 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
             );
             if (mediaHistory) {
               userHistoryContent = mediaHistory;
-              skipUserHistory = false;
               logEvent("vision_stored", {
                 ...msgLog,
                 convKey,

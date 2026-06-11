@@ -36,7 +36,7 @@ import { replyParameters } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
 import {
   analyzeStickerForReply,
-  shouldTryStickerReply,
+  rollStickerReplyChance,
 } from "./sticker-analyze.js";
 import { resolveStickerFileId } from "./sticker-catalog.js";
 import { getHistory, historyToChatMessages } from "../db/history.js";
@@ -293,10 +293,21 @@ export async function runChatTurn(
     const hasReply = hasVisibleTelegramReply(replyBody);
 
     let stickerEmoji: string | null = null;
-    if (
-      settings.stickersEnabled &&
-      shouldTryStickerReply(settings.stickerReplyChance)
-    ) {
+    const stickerRoll = settings.stickersEnabled
+      ? rollStickerReplyChance(settings.stickerReplyChance)
+      : null;
+    if (stickerRoll) {
+      logEvent("sticker_roll", {
+        ...turnLog,
+        chance: stickerRoll.chance,
+        roll:
+          stickerRoll.roll == null
+            ? undefined
+            : Number(stickerRoll.roll.toFixed(2)),
+        hit: stickerRoll.hit,
+      });
+    }
+    if (settings.stickersEnabled && stickerRoll?.hit) {
       logEvent("sticker_analyze_started", turnLog);
       stickerEmoji = await analyzeStickerForReply({
         userMessage: input.latestBody,
