@@ -18,10 +18,10 @@ import {
   prepareTelegramHtml,
 } from "../telegram/html.js";
 import { buildExplainSystemPrompt } from "../prompts.js";
-import { sendThinkingMessages } from "./send-thinking.js";
 import { recordExchange } from "./conversation.js";
 import { replyParameters } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
+import { sendThinkingMessages } from "./send-thinking.js";
 import { resolveTypingThreadParams } from "./typing.js";
 
 export interface ExplainTurnInput {
@@ -166,7 +166,7 @@ export async function runExplainTurn(
       input.messageThreadId,
     );
 
-    if (settings.thinkingEnabled && settings.sendThinkingEnabled && thinking) {
+    if (settings.sendThinkingEnabled && thinking) {
       const thinkingChunks = await sendThinkingMessages(
         ctx,
         input.chatId,

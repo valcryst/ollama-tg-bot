@@ -65,11 +65,7 @@ export interface Settings {
   stickerReplyChance: number;
   /** Minutes of inactivity until mood returns to the active personality's defaults. */
   moodCooldownMinutes: number;
-  /** Enable LLM thinking mode for reasoning models (separate chain-of-thought). */
-  thinkingEnabled: boolean;
-  /** Target thinking slice of generation token (soft; LLM shares one generation budget). */
-  thinkingNumPredict: number;
-  /** Send model thinking to Telegram as a message before the reply (replies only). */
+  /** Send model reasoning to Telegram as a message before the reply. */
   sendThinkingEnabled: boolean;
 }
 
@@ -102,8 +98,6 @@ const DEFAULT_SETTINGS: Settings = {
   stickerPackName: "",
   stickerReplyChance: 70,
   moodCooldownMinutes: 120,
-  thinkingEnabled: false,
-  thinkingNumPredict: 384,
   sendThinkingEnabled: false,
 };
 
@@ -213,8 +207,6 @@ export function getSettings(): Settings {
     stickerPackName: getSetting<string>("stickerPackName"),
     stickerReplyChance: getSetting<number>("stickerReplyChance"),
     moodCooldownMinutes: getSetting<number>("moodCooldownMinutes"),
-    thinkingEnabled: getSetting<boolean>("thinkingEnabled"),
-    thinkingNumPredict: getSetting<number>("thinkingNumPredict"),
     sendThinkingEnabled: getSetting<boolean>("sendThinkingEnabled"),
   };
 }

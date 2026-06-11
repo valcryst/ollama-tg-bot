@@ -19,8 +19,6 @@ export interface Settings {
     historyMaxChars: number;
     historyMaxReplyChars: number;
     numPredict: number;
-    thinkingNumPredict: number;
-    replyNumPredict: number;
   };
   ownerUsername: string;
   ownerUserId: string;
@@ -28,8 +26,6 @@ export interface Settings {
   stickerPackName: string;
   stickerReplyChance: number;
   moodCooldownMinutes?: number;
-  thinkingEnabled: boolean;
-  thinkingNumPredict: number;
   sendThinkingEnabled: boolean;
   contextBudget?: ContextBudget;
   vramAvailableGb: number;

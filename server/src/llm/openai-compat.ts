@@ -54,8 +54,8 @@ export function localAiRequestExtensions(
  * answer often lands in `reasoning` with empty `content`. Structured `[REPLY]` parsing
  * requires the full answer in `content`, so every chat request uses `reasoning_effort: "none"`.
  *
- * Dashboard `thinkingEnabled` controls the token-budget slider and `sendThinkingEnabled`
- * (only applies when the backend returns a separate reasoning field on other models).
+ * Reasoning is parsed from a separate backend field when returned, but is never merged
+ * into user-facing reply text.
  */
 export function localAiChatExtensions(
   settings: Settings,

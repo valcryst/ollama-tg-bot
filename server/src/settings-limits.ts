@@ -10,19 +10,13 @@ export const ABSOLUTE_MAX_NUM_CTX = 262144;
 export const MAX_NUM_CTX = ABSOLUTE_MAX_NUM_CTX;
 export const NUM_CTX_STEP = 512;
 export const NUM_PREDICT_STEP = 32;
-export const MIN_THINKING_TOKENS = 32;
-export const MIN_REPLY_TOKENS = 32;
-export const DEFAULT_THINKING_NUM_PREDICT = 384;
 const APPROX_CHARS_PER_TOKEN = 3.5;
 
 export interface HistoryLimits {
   historyMaxMessages: number;
   historyMaxChars: number;
   historyMaxReplyChars: number;
-  /** Total generated-token budget (reply + thinking when thinking is on). */
   numPredict: number;
-  thinkingNumPredict: number;
-  replyNumPredict: number;
 }
 
 export function snapNumPredict(value: number): number {
@@ -50,37 +44,6 @@ export function minNumCtxForPredict(numPredict: number): number {
   return snapNumCtx(snapNumPredict(numPredict) + NUM_CTX_GENERATION_HEADROOM);
 }
 
-export function clampThinkingSplit(
-  total: number,
-  thinking: number,
-): { total: number; thinking: number } {
-  const snappedTotal = snapNumPredict(total);
-  let snappedThinking = snapNumPredict(thinking);
-  snappedThinking = Math.min(
-    snappedTotal - MIN_REPLY_TOKENS,
-    Math.max(MIN_THINKING_TOKENS, snappedThinking),
-  );
-  return { total: snappedTotal, thinking: snappedThinking };
-}
-
-export function defaultThinkingForTotal(total: number): number {
-  const snappedTotal = snapNumPredict(total);
-  return Math.min(
-    DEFAULT_THINKING_NUM_PREDICT,
-    Math.max(MIN_THINKING_TOKENS, snappedTotal - MIN_REPLY_TOKENS),
-  );
-}
-
-export function getThinkingNumPredict(settings: Settings): number {
-  if (!settings.thinkingEnabled) return 0;
-  return settings.thinkingNumPredict;
-}
-
-export function getReplyNumPredict(settings: Settings): number {
-  if (!settings.thinkingEnabled) return settings.numPredict;
-  return settings.numPredict - getThinkingNumPredict(settings);
-}
-
 /** max_output_tokens for a request (total generation budget). */
 export function getEffectiveNumPredict(
   settings: Settings,
@@ -92,15 +55,7 @@ export function getEffectiveNumPredict(
 /** Normalize token budget fields after settings changes. */
 export function normalizeTokenBudget(settings: Settings): Settings {
   const numPredict = snapNumPredict(settings.numPredict);
-  if (!settings.thinkingEnabled) {
-    return { ...settings, numPredict };
-  }
-  const split = clampThinkingSplit(numPredict, settings.thinkingNumPredict);
-  return {
-    ...settings,
-    numPredict: split.total,
-    thinkingNumPredict: split.thinking,
-  };
+  return { ...settings, numPredict };
 }
 
 export interface ReplyLengthGuidance {
@@ -112,7 +67,7 @@ export interface ReplyLengthGuidance {
 
 /** Reply brevity instructions derived from reply token budget. */
 export function getReplyLengthGuidance(settings: Settings): ReplyLengthGuidance {
-  const maxTokens = getReplyNumPredict(settings);
+  const maxTokens = settings.numPredict;
   const { historyMaxReplyChars } = getHistoryLimits(settings);
   const maxChars = historyMaxReplyChars;
 
@@ -132,8 +87,6 @@ export function getReplyLengthGuidance(settings: Settings): ReplyLengthGuidance 
 export function getHistoryLimits(settings: Settings): HistoryLimits {
   const { numCtx } = settings;
   const normalized = normalizeTokenBudget(settings);
-  const thinkingNumPredict = getThinkingNumPredict(normalized);
-  const replyNumPredict = getReplyNumPredict(normalized);
 
   const historyTokenBudget = Math.max(
     256,
@@ -148,11 +101,9 @@ export function getHistoryLimits(settings: Settings): HistoryLimits {
     historyMaxMessages: Math.min(50, Math.max(4, Math.floor(numCtx / 512))),
     historyMaxReplyChars: Math.min(
       4000,
-      Math.max(100, Math.floor(replyNumPredict * APPROX_CHARS_PER_TOKEN)),
+      Math.max(100, Math.floor(normalized.numPredict * APPROX_CHARS_PER_TOKEN)),
     ),
     numPredict: normalized.numPredict,
-    thinkingNumPredict,
-    replyNumPredict,
   };
 }
 
@@ -184,13 +135,11 @@ export function validateSettingsFields(settings: Settings): void {
     ["randomReplyEnabled must be true or false", isBoolean(settings.randomReplyEnabled)],
     ["reactToEveryImage must be true or false", isBoolean(settings.reactToEveryImage)],
     ["stickersEnabled must be true or false", isBoolean(settings.stickersEnabled)],
-    ["thinkingEnabled must be true or false", isBoolean(settings.thinkingEnabled)],
     ["sendThinkingEnabled must be true or false", isBoolean(settings.sendThinkingEnabled)],
     ["ownerUsername must be a string", isString(settings.ownerUsername)],
     ["ownerUserId must be a string", isString(settings.ownerUserId)],
     ["stickerPackName must be a string", isString(settings.stickerPackName)],
     ["numPredict must be a number", isFiniteNumber(settings.numPredict)],
-    ["thinkingNumPredict must be a number", isFiniteNumber(settings.thinkingNumPredict)],
     ["numCtx must be a number", isFiniteNumber(settings.numCtx)],
     ["temperature must be a number", isFiniteNumber(settings.temperature)],
     ["topP must be a number", isFiniteNumber(settings.topP)],
@@ -207,14 +156,6 @@ export function validateSettingsFields(settings: Settings): void {
       isFiniteNumber(normalized.numPredict) &&
         normalized.numPredict >= MIN_NUM_PREDICT &&
         normalized.numPredict <= maxNumPredictForContext(settings.numCtx),
-    ],
-    [
-      "thinkingNumPredict must leave at least 32 tokens for reply",
-      !normalized.thinkingEnabled ||
-        (isFiniteNumber(normalized.thinkingNumPredict) &&
-          normalized.thinkingNumPredict >= MIN_THINKING_TOKENS &&
-          normalized.thinkingNumPredict <=
-            normalized.numPredict - MIN_REPLY_TOKENS),
     ],
     [
       `numCtx must be ${MIN_NUM_CTX}–${MAX_NUM_CTX} (derived from VRAM and model)`,
@@ -306,10 +247,6 @@ export function validateSettingsFields(settings: Settings): void {
       isFiniteNumber(settings.moodCooldownMinutes) &&
         settings.moodCooldownMinutes >= 5 &&
         settings.moodCooldownMinutes <= 1440,
-    ],
-    [
-      "sendThinkingEnabled requires thinkingEnabled",
-      !settings.sendThinkingEnabled || settings.thinkingEnabled,
     ],
   ];
 

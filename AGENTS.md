@@ -71,7 +71,7 @@ Telegram → Grammy handlers → chat-turn → LLM
 - Chat options: `server/src/settings-limits.ts` (`temperature`, `topP`, `topK`, `repeatPenalty`, `numCtx` via `getProviderExtensions()`)
 - **Chat history limits are derived** from `numCtx` and `numPredict` via `getHistoryLimits()` — not separate settings. Dashboard preview: `dashboard/src/derivedHistoryLimits.ts` (keep in sync with server).
 
-**LocalAI:** Every chat request sends `reasoning_effort: "none"` and `options.skip_special_tokens: false`. Gemma 4 on LocalAI intermittently mis-splits when thinking is enabled via API (`content` empty, answer in `reasoning`); structured `[REPLY]` replies require the full answer in `message.content`. Parse **`message.content`** for `[REPLY]` (Telegram reply). Parse **`message.reasoning_content`** / **`reasoning`** for chain-of-thought only — never for replies. Dashboard `thinkingEnabled` is the token-budget slider; it does not enable LocalAI reasoning split. Extensions: `localAiChatExtensions()` in `openai-compat.ts`.
+**LocalAI:** Every chat request sends `reasoning_effort: "none"` and `options.skip_special_tokens: false`. Gemma 4 on LocalAI intermittently mis-splits when thinking is enabled via API (`content` empty, answer in `reasoning`); structured `[REPLY]` replies require the full answer in `message.content`. Parse **`message.content`** for `[REPLY]` (Telegram reply). Parse **`message.reasoning_content`** / **`reasoning`** as chain-of-thought only — never for replies. Extensions: `localAiChatExtensions()` in `openai-compat.ts`.
 
 ### Memory
 

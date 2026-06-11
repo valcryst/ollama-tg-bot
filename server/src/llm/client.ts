@@ -16,7 +16,6 @@ import {
   AUXILIARY_TEMPERATURE,
   getChatTimeoutMs,
   getEffectiveNumPredict,
-  getReplyNumPredict,
 } from "../settings-limits.js";
 import { getResolvedSettings } from "../settings-runtime.js";
 import { normalizeImageForChat } from "./images.js";
@@ -123,15 +122,7 @@ function emptyResponseError(
   let hint =
     "Try /reset to shorten context, pick a different model, or raise generation tokens in Settings.";
   if (reason === "length") {
-    if (settings.thinkingEnabled) {
-      const replyBudget = getReplyNumPredict(settings);
-      hint =
-        `Generation used all ${numPredict} tokens before a usable [REPLY]. ` +
-        `Reasoning and reply share one generation budget ` +
-        `(reply slice ~${replyBudget} tokens). Raise total generation tokens, lower thinking, or send /reset.`;
-    } else {
-      hint = `Generation used all ${numPredict} tokens before a usable [REPLY]. Raise generation tokens in Settings (try 512+) or send /reset.`;
-    }
+    hint = `Generation used all ${numPredict} tokens before a usable [REPLY]. Raise generation tokens in Settings (try 512+) or send /reset.`;
   } else if (hadReasoning) {
     hint =
       "The API returned reasoning but left content empty. " +
@@ -202,10 +193,7 @@ export interface ChatCompleteOptions {
   numPredict?: number;
   /** Use low temperature for structured side passes (mood, memory, search, etc.). */
   auxiliary?: boolean;
-  /**
-   * Reserved for passes that run with settings.thinkingEnabled (verbose label only).
-   * LocalAI thinking is controlled via `reasoning_effort` in `localAiChatExtensions()`.
-   */
+  /** Reserved for verbose labels on main reply calls. */
   think?: boolean;
   /** VERBOSE log section label, e.g. "web search decision". */
   verboseLabel?: string;

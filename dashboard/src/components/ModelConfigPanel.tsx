@@ -5,7 +5,6 @@ import {
   modelContextFromTags,
   type ContextBudget,
 } from "../contextBudgetCalc";
-import { NumPredictSplitSlider } from "../NumPredictSplitSlider";
 import { SettingsNumberField } from "../SettingsNumberField";
 import {
   MODEL_CONFIG_GROUPS,
@@ -15,7 +14,6 @@ import {
   numPredictHint,
   type ModelConfigIssue,
 } from "../modelConfig";
-import { clampThinkingSplit } from "../tokenBudget";
 
 interface ModelConfigPanelProps {
   draft: Settings;
@@ -23,12 +21,6 @@ interface ModelConfigPanelProps {
   vramAvailableGb: number | undefined;
   disabled?: boolean;
   onChange: (settings: Settings) => void;
-}
-
-function FieldIssue({ issues }: { issues: ModelConfigIssue[] }) {
-  const error = issues.find((i) => i.severity === "error");
-  if (!error) return null;
-  return <p className="field-error">{error.message}</p>;
 }
 
 function limiterLabel(limitedBy: ContextBudget["limitedBy"]): string {
@@ -106,7 +98,7 @@ export function ModelConfigPanel({
         <h3 className="section-title">Model parameters</h3>
         <p className="hint section-hint">
           Context is computed automatically from VRAM and the selected model.
-          Adjust generation budget, reasoning, and sampling below.
+          Adjust generation budget and sampling below.
         </p>
       </header>
 
@@ -162,80 +154,44 @@ export function ModelConfigPanel({
         <p className="hint model-config-group-desc">
           {MODEL_CONFIG_GROUPS[1].description}
         </p>
-        <NumPredictSplitSlider
-          total={draft.numPredict}
-          thinking={draft.thinkingNumPredict}
-          thinkingEnabled={draft.thinkingEnabled}
-          numCtx={contextBudget.effectiveNumCtx}
+        <SettingsNumberField
+          id="numPredict"
+          label="Max generation tokens"
+          value={draft.numPredict}
+          min={32}
+          max={analysis.maxNumPredict}
+          step={32}
+          variant="slider"
           disabled={disabled}
           error={numPredictError}
           hint={numPredictHint(analysis.maxNumPredict, contextBudget.effectiveNumCtx)}
-          onChange={(numPredict, thinkingNumPredict) =>
-            update({ numPredict, thinkingNumPredict })
-          }
+          onChange={(numPredict) => update({ numPredict })}
         />
-      </section>
-
-      <section className="model-config-group" aria-labelledby="model-reason">
-        <h4 id="model-reason" className="model-config-group-title">
-          {MODEL_CONFIG_GROUPS[2].title}
-        </h4>
-        <p className="hint model-config-group-desc">
-          {MODEL_CONFIG_GROUPS[2].description}
-        </p>
         <div className="field toggle-row">
           <label className="checkbox">
             <input
               type="checkbox"
-              checked={draft.thinkingEnabled}
+              checked={draft.sendThinkingEnabled}
               disabled={disabled}
-              onChange={(e) => {
-                const thinkingEnabled = e.target.checked;
-                update({
-                  thinkingEnabled,
-                  ...(thinkingEnabled
-                    ? {
-                        thinkingNumPredict: clampThinkingSplit(
-                          draft.numPredict,
-                          draft.thinkingNumPredict,
-                        ).thinking,
-                      }
-                    : { sendThinkingEnabled: false }),
-                });
-              }}
+              onChange={(e) =>
+                update({ sendThinkingEnabled: e.target.checked })
+              }
             />
-            Thinking mode
+            Send reasoning to Telegram
           </label>
+          <p className="hint">
+            If the API returns a separate reasoning field, post it as a separate
+            message before the reply. It is not saved to chat history.
+          </p>
         </div>
-
-        {draft.thinkingEnabled ? (
-          <div className="field toggle-row">
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={draft.sendThinkingEnabled}
-                disabled={disabled}
-                onChange={(e) =>
-                  update({ sendThinkingEnabled: e.target.checked })
-                }
-              />
-              Send thinking to Telegram
-            </label>
-            <p className="hint">
-              Post chain-of-thought as a separate message before each reply. Not
-              saved to chat history.
-            </p>
-            <FieldIssue issues={issuesForField(analysis.issues, "sendThinkingEnabled")} />
-          </div>
-        ) : null}
       </section>
 
       <section className="model-config-group" aria-labelledby="model-sample">
         <h4 id="model-sample" className="model-config-group-title">
-          {MODEL_CONFIG_GROUPS[3].title}
+          {MODEL_CONFIG_GROUPS[2].title}
         </h4>
         <p className="hint model-config-group-desc">
-          {MODEL_CONFIG_GROUPS[3].description}
+          {MODEL_CONFIG_GROUPS[2].description}
         </p>
         <SettingsNumberField
           id="temperature"
@@ -289,10 +245,10 @@ export function ModelConfigPanel({
 
       <section className="model-config-group" aria-labelledby="model-timeout">
         <h4 id="model-timeout" className="model-config-group-title">
-          {MODEL_CONFIG_GROUPS[4].title}
+          {MODEL_CONFIG_GROUPS[3].title}
         </h4>
         <p className="hint model-config-group-desc">
-          {MODEL_CONFIG_GROUPS[4].description}
+          {MODEL_CONFIG_GROUPS[3].description}
         </p>
         <SettingsNumberField
           id="chatTimeoutSec"
@@ -323,19 +279,10 @@ export function ModelConfigPanel({
             </strong>{" "}
             chars
           </li>
-          {draft.thinkingEnabled ? (
-            <li>
-              Generation split:{" "}
-              <strong>{analysis.derived.thinkingNumPredict}</strong> thinking +{" "}
-              <strong>{analysis.derived.replyNumPredict}</strong> reply ={" "}
-              <strong>{analysis.derived.numPredict}</strong> total
-            </li>
-          ) : (
-            <li>
-              Generation budget:{" "}
-              <strong>{analysis.derived.numPredict}</strong> tokens
-            </li>
-          )}
+          <li>
+            Generation budget:{" "}
+            <strong>{analysis.derived.numPredict}</strong> tokens
+          </li>
         </ul>
       </aside>
     </div>

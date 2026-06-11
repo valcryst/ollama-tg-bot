@@ -1,12 +1,7 @@
 import type { ContextBudget } from "./contextBudgetCalc";
 import type { Settings } from "./api";
 import {
-  DEFAULT_THINKING_NUM_PREDICT,
-  MIN_REPLY_TOKENS,
-  MIN_THINKING_TOKENS,
   NUM_CTX_GENERATION_HEADROOM,
-  clampThinkingSplit,
-  defaultThinkingForTotal,
   deriveHistoryLimits,
   maxNumPredictForContext,
   minNumCtxForPredict,
@@ -16,8 +11,6 @@ import {
 
 export type ModelConfigField =
   | "numPredict"
-  | "thinkingNumPredict"
-  | "thinkingEnabled"
   | "sendThinkingEnabled"
   | "temperature"
   | "topP"
@@ -35,8 +28,6 @@ export type ModelConfigPatch = Partial<
   Pick<
     Settings,
     | "numPredict"
-    | "thinkingNumPredict"
-    | "thinkingEnabled"
     | "sendThinkingEnabled"
     | "temperature"
     | "topP"
@@ -67,22 +58,10 @@ function normalizeModelFields(
   const maxPredict = maxNumPredictForContext(effectiveNumCtx);
   const numPredict = snapNumPredict(Math.min(settings.numPredict, maxPredict));
 
-  if (!settings.thinkingEnabled) {
-    return {
-      ...settings,
-      numCtx: effectiveNumCtx,
-      numPredict,
-      sendThinkingEnabled: false,
-    };
-  }
-
-  const split = clampThinkingSplit(numPredict, settings.thinkingNumPredict);
   return {
     ...settings,
     numCtx: effectiveNumCtx,
-    numPredict: split.total,
-    thinkingNumPredict: split.thinking,
-    sendThinkingEnabled: settings.sendThinkingEnabled,
+    numPredict,
   };
 }
 
@@ -95,8 +74,6 @@ export function analyzeModelConfig(
   const derived = deriveHistoryLimits(
     effectiveNumCtx,
     normalized.numPredict,
-    normalized.thinkingEnabled,
-    normalized.thinkingNumPredict,
   );
   const minNumCtx = minNumCtxForPredict(normalized.numPredict);
   const maxNumPredict = maxNumPredictForContext(effectiveNumCtx);
@@ -120,31 +97,6 @@ export function analyzeModelConfig(
       message:
         `Generation budget cannot exceed ${maxNumPredict} with derived context ` +
         `${effectiveNumCtx}. Lower generation tokens.`,
-    });
-  }
-
-  if (settings.thinkingEnabled) {
-    if (settings.thinkingNumPredict < MIN_THINKING_TOKENS) {
-      issues.push({
-        field: "thinkingNumPredict",
-        severity: "error",
-        message: `Thinking slice must be at least ${MIN_THINKING_TOKENS} tokens.`,
-      });
-    }
-    if (derived.replyNumPredict < MIN_REPLY_TOKENS) {
-      issues.push({
-        field: "thinkingNumPredict",
-        severity: "error",
-        message: `Reply slice must be at least ${MIN_REPLY_TOKENS} tokens.`,
-      });
-    }
-  }
-
-  if (settings.sendThinkingEnabled && !settings.thinkingEnabled) {
-    issues.push({
-      field: "sendThinkingEnabled",
-      severity: "error",
-      message: "Send thinking requires thinking mode.",
     });
   }
 
@@ -178,7 +130,7 @@ export function applyModelConfigUpdate(
   const effectiveNumCtx = contextBudget.effectiveNumCtx;
   let next: Settings = { ...settings, ...patch };
 
-  if (patch.numPredict != null || patch.thinkingNumPredict != null) {
+  if (patch.numPredict != null) {
     const maxPredict = maxNumPredictForContext(effectiveNumCtx);
     const requested = snapNumPredict(patch.numPredict ?? next.numPredict);
     if (requested > maxPredict) {
@@ -194,43 +146,7 @@ export function applyModelConfigUpdate(
         },
       };
     }
-    if (next.thinkingEnabled) {
-      const split = clampThinkingSplit(
-        requested,
-        patch.thinkingNumPredict ?? next.thinkingNumPredict,
-      );
-      next.numPredict = split.total;
-      next.thinkingNumPredict = split.thinking;
-    } else {
-      next.numPredict = requested;
-    }
-  }
-
-  if (patch.thinkingEnabled != null) {
-    if (patch.thinkingEnabled && !settings.thinkingEnabled) {
-      next.thinkingNumPredict = defaultThinkingForTotal(next.numPredict);
-      const split = clampThinkingSplit(
-        next.numPredict,
-        next.thinkingNumPredict,
-      );
-      next.numPredict = split.total;
-      next.thinkingNumPredict = split.thinking;
-    }
-    if (!patch.thinkingEnabled) {
-      next.sendThinkingEnabled = false;
-    }
-  }
-
-  if (patch.sendThinkingEnabled && !next.thinkingEnabled) {
-    return {
-      ok: false,
-      settings,
-      issue: {
-        field: "sendThinkingEnabled",
-        severity: "error",
-        message: "Enable thinking mode before sending thinking to Telegram.",
-      },
-    };
+    next.numPredict = requested;
   }
 
   next = normalizeModelFields(next, effectiveNumCtx);
@@ -248,23 +164,17 @@ export const MODEL_CONFIG_GROUPS = [
     id: "generation",
     title: "2. Generation budget",
     description:
-      "generation token caps total output per reply. With thinking mode, the slider splits that single LLM budget.",
-  },
-  {
-    id: "reasoning",
-    title: "3. Reasoning",
-    description:
-      "For models with chain-of-thought (e.g. Qwen3, DeepSeek-R1). Applies to chat replies and memory extraction.",
+      "generation tokens cap total output per reply.",
   },
   {
     id: "sampling",
-    title: "4. Sampling",
+    title: "3. Sampling",
     description:
       "LLM generation parameters for all model calls, including background passes.",
   },
   {
     id: "timeout",
-    title: "5. Request timeout",
+    title: "4. Request timeout",
     description: "How long to wait for the LLM before failing the turn.",
   },
 ] as const;
@@ -275,5 +185,3 @@ export function numPredictHint(maxNumPredict: number, effectiveNumCtx: number): 
     `derived context ${effectiveNumCtx.toLocaleString()}.`
   );
 }
-
-export { DEFAULT_THINKING_NUM_PREDICT };

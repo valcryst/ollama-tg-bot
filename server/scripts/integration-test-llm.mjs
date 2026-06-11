@@ -22,7 +22,6 @@ const settings = {
   temperature: 0.7,
   topP: 0.9,
   numPredict: 512,
-  thinkingEnabled: false,
 };
 
 const client = new OpenAI({

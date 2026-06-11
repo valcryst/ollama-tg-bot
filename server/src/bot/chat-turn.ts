@@ -364,7 +364,7 @@ export async function runChatTurn(
       input.messageThreadId,
     );
 
-    if (settings.thinkingEnabled && settings.sendThinkingEnabled && thinking) {
+    if (settings.sendThinkingEnabled && thinking) {
       const thinkingChunks = await sendThinkingMessages(
         ctx,
         input.chatId,
