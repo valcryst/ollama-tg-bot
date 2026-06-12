@@ -134,6 +134,7 @@ export function validateSettingsFields(settings: Settings): void {
     ["stickersEnabled must be true or false", isBoolean(settings.stickersEnabled)],
     ["thinkingEnabled must be true or false", isBoolean(settings.thinkingEnabled)],
     ["sendThinkingEnabled must be true or false", isBoolean(settings.sendThinkingEnabled)],
+    ["maintenanceModeEnabled must be true or false", isBoolean(settings.maintenanceModeEnabled)],
     ["ownerUsername must be a string", isString(settings.ownerUsername)],
     ["ownerUserId must be a string", isString(settings.ownerUserId)],
     ["stickerPackName must be a string", isString(settings.stickerPackName)],

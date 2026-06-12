@@ -16,6 +16,7 @@ import {
 } from "./message-media.js";
 import { stickerPackEmoji } from "./stickers.js";
 import { enrichTextWithUserMentions } from "./mentions.js";
+import { isMaintenanceBlocked } from "./maintenance.js";
 import { describeVisionImages } from "./vision-describe.js";
 
 /**
@@ -30,6 +31,7 @@ export async function recordPassiveGroupHistory(
   if (!msg || ctx.from?.is_bot) return;
   if (isSlashCommandMessage(ctx)) return;
   if (ctx.chat?.type === "private") return;
+  if (isMaintenanceBlocked(ctx)) return;
 
   const chatKey = resolveConversationKey(ctx);
   const role = userRoleTag(ctx.from);

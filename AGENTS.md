@@ -45,7 +45,7 @@ Docker: `docker compose up -d --build` (see `README.md`).
 | `PORT` | Docker/production listen port only — not for local dev |
 | `DATABASE_PATH` | Optional SQLite path (default `data/bot.db`) |
 
-API base URL, model, prompts, owner, and performance limits live in **dashboard settings** (SQLite), not `.env`.
+API base URL, model, prompts, owner, maintenance mode, and performance limits live in **dashboard settings** (SQLite), not `.env`.
 
 ## Architecture
 
@@ -60,9 +60,10 @@ Telegram → Grammy handlers → chat-turn → LLM
 ### Message flow
 
 1. **`server/src/bot/handlers.ts`** — Register **commands before** the catch-all `bot.on("message")`. Generic message handlers must not block command handlers (Grammy middleware order).
-2. **`server/src/bot/chat-turn.ts`** — One user turn: optional link fetch (Playwright), optional Tavily search, build messages, LLM chat, Telegram reply, history + memory scheduling.
-3. **`server/src/bot/conversation.ts`** — Assembles system prompt, history, reply context, group speaker wrapping.
-4. **`server/src/prompts.ts`** — Base system prompt; custom prompt from settings appended.
+2. **`server/src/bot/maintenance.ts`** — When `maintenanceModeEnabled` is on, non-owner messages are dropped before any LLM work (address check, vision, chat turn). Also gates passive group history in `history-record.ts`.
+3. **`server/src/bot/chat-turn.ts`** — One user turn: optional link fetch (Playwright), optional Tavily search, build messages, LLM chat, Telegram reply, history + memory scheduling.
+4. **`server/src/bot/conversation.ts`** — Assembles system prompt, history, reply context, group speaker wrapping.
+5. **`server/src/prompts.ts`** — Base system prompt; custom prompt from settings appended.
 
 ### LLM
 
@@ -84,7 +85,8 @@ Three layers, extracted in a **background pass** (`server/src/memory-extract.ts`
 
 - Bot responds when @mentioned, replied to, named (LLM check), or on random/image toggles.
 - Per-member history in groups (`conversationKey` includes `userId`).
-- Owner account: `ownerUsername` in settings; id resolved via Telegram API + `known_users` table.
+- Owner account: `ownerUsername` in settings; id resolved via Telegram API + `known_users` table. Owner-only commands: `/mood`, `/explain`, `/remember`.
+- **Maintenance mode** (`maintenanceModeEnabled`): non-owner events must not reach the LLM — gate in `handlers.ts` before `isMessageAddressedToBot` and in `history-record.ts` for passive history/vision/compression triggers.
 
 ### Response format
 
@@ -107,7 +109,7 @@ Model replies use `[REPLY]…[/REPLY]` (Telegram HTML subset). Parser: `server/s
 |-------|---------|
 | `/` | Overview, stats, error log |
 | `/character` | Default + custom system prompts |
-| `/settings` | LLM, model, owner, performance, vision |
+| `/settings` | LLM, model, owner, maintenance mode, performance, vision |
 | `/memories` | User / group / general facts |
 
 State: `dashboard/src/context/DashboardContext.tsx`. API client: `dashboard/src/api.ts`.
@@ -123,6 +125,7 @@ State: `dashboard/src/context/DashboardContext.tsx`. API client: `dashboard/src/
 | Area | Files |
 |------|-------|
 | Bot entry | `server/src/bot/index.ts`, `handlers.ts` |
+| Maintenance | `server/src/bot/maintenance.ts`, `owner.ts` |
 | Settings DB | `server/src/db/database.ts`, `server/src/api/routes.ts` |
 | History | `server/src/db/history.ts` |
 | Vision | `server/src/bot/message-media.ts`, `server/src/llm/images.ts` |
@@ -142,3 +145,4 @@ Optional live LLM check: `npm run test:llm -w server` — requires `LLM_BASE_URL
 2. Duplicating history limit math — use `getHistoryLimits()` on server only; mirror in dashboard for UI preview only.
 3. Assuming `@username` resolves without the user having messaged the bot at least once.
 4. Editing only server or only dashboard types when adding a setting — update both + PATCH allowlist.
+5. New LLM entry points must respect maintenance mode (`isMaintenanceBlocked`) — not only the main message handler.

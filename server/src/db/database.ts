@@ -69,6 +69,8 @@ export interface Settings {
   thinkingEnabled: boolean;
   /** Send model reasoning to Telegram as a message before the reply. */
   sendThinkingEnabled: boolean;
+  /** When on, only the owner can trigger LLM-backed bot behavior. */
+  maintenanceModeEnabled: boolean;
 }
 
 export interface Stats {
@@ -102,6 +104,7 @@ const DEFAULT_SETTINGS: Settings = {
   moodCooldownMinutes: 120,
   thinkingEnabled: false,
   sendThinkingEnabled: false,
+  maintenanceModeEnabled: false,
 };
 
 let db: DatabaseSync;
@@ -212,6 +215,7 @@ export function getSettings(): Settings {
     moodCooldownMinutes: getSetting<number>("moodCooldownMinutes"),
     thinkingEnabled: getSetting<boolean>("thinkingEnabled"),
     sendThinkingEnabled: getSetting<boolean>("sendThinkingEnabled"),
+    maintenanceModeEnabled: getSetting<boolean>("maintenanceModeEnabled"),
   };
 }
 

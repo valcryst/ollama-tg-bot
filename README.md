@@ -50,7 +50,8 @@ When an addressed message contains `http(s)` links, the bot detects them, opens 
 - Group & private chats, vision (images/stickers), optional random group replies
 - Optional web search via Tavily (model decides when to search)
 - Opens links in addressed messages via Playwright (auto-detected URLs)
-- Dashboard: API base URL, model, prompts, stats
+- **Maintenance mode** — dashboard toggle; when on, only the configured owner can trigger LLM-backed behavior (others are ignored silently)
+- Dashboard: API base URL, model, owner, prompts, stats
 
 ## Stack
 

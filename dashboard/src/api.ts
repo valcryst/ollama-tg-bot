@@ -28,6 +28,7 @@ export interface Settings {
   moodCooldownMinutes?: number;
   thinkingEnabled: boolean;
   sendThinkingEnabled: boolean;
+  maintenanceModeEnabled: boolean;
   contextBudget?: ContextBudget;
   vramAvailableGb: number;
 }

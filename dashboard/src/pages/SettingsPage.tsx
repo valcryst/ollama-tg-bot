@@ -261,6 +261,27 @@ export function SettingsPage() {
               <label className="checkbox">
                 <input
                   type="checkbox"
+                  checked={draft.maintenanceModeEnabled}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      maintenanceModeEnabled: e.target.checked,
+                    })
+                  }
+                />
+                Maintenance mode
+              </label>
+              <p className="hint">
+                When enabled, only the owner can trigger LLM-backed behavior
+                (replies, vision, search, memory extraction). Other users are
+                ignored silently.
+              </p>
+            </div>
+
+            <div className="field toggle-row">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
                   checked={draft.randomReplyEnabled}
                   onChange={(e) =>
                     setDraft({

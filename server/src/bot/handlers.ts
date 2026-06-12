@@ -49,6 +49,7 @@ import {
   messageHasVisionMedia,
 } from "./message-media.js";
 import { isMessageAddressedToBot } from "./address-analyze.js";
+import { isMaintenanceBlocked } from "./maintenance.js";
 import { getOwnerUserId, getOwnerUsername, isOwner } from "./owner.js";
 import { tryResolveOwnerFromUser } from "./owner-sync.js";
 import { rememberTelegramUser } from "../db/known-users.js";
@@ -169,6 +170,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     }
 
     const settings = getSettings();
+    if (isMaintenanceBlocked(ctx)) {
+      logEvent("message_ignored", { ...msgLog, reason: "maintenance_mode" });
+      return;
+    }
     const inGroup = ctx.chat?.type !== "private";
     const randomRoll =
       settings.randomReplyEnabled && inGroup ? Math.random() * 100 : null;
