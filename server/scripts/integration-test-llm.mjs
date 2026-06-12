@@ -12,7 +12,7 @@ if (!model) {
 const { default: OpenAI } = await import("openai");
 const { buildBaseSystemPrompt } = await import("../dist/prompts.js");
 const { extractTelegramReply } = await import("../dist/response-format.js");
-const { localAiChatExtensions } = await import("../dist/llm/openai-compat.js");
+const { providerChatExtensions } = await import("../dist/llm/openai-compat.js");
 
 /** Fixed test harness settings (not env). */
 const settings = {
@@ -44,7 +44,7 @@ function parseMessage(choice) {
 
 async function oneTurn(userText, history = []) {
   const system = buildBaseSystemPrompt(settings);
-  const ext = localAiChatExtensions(settings, false);
+  const ext = providerChatExtensions(settings, false);
   const r = await client.chat.completions.create(
     {
       model,

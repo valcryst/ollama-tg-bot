@@ -114,11 +114,8 @@ export function getChatTimeoutMs(settings: Settings): number {
   return settings.chatTimeoutSec * 1000;
 }
 
-/**
- * LocalAI / llama.cpp backends read sampling and context via request `options`.
- * @see server/src/llm/openai-compat.ts
- */
-export { localAiRequestExtensions as getProviderExtensions } from "./llm/openai-compat.js";
+/** Provider-specific request extensions for OpenAI-compatible backends. */
+export { providerRequestExtensions as getProviderExtensions } from "./llm/openai-compat.js";
 
 export function validateSettingsFields(settings: Settings): void {
   const normalized = normalizeTokenBudget(settings);
@@ -135,6 +132,7 @@ export function validateSettingsFields(settings: Settings): void {
     ["randomReplyEnabled must be true or false", isBoolean(settings.randomReplyEnabled)],
     ["reactToEveryImage must be true or false", isBoolean(settings.reactToEveryImage)],
     ["stickersEnabled must be true or false", isBoolean(settings.stickersEnabled)],
+    ["thinkingEnabled must be true or false", isBoolean(settings.thinkingEnabled)],
     ["sendThinkingEnabled must be true or false", isBoolean(settings.sendThinkingEnabled)],
     ["ownerUsername must be a string", isString(settings.ownerUsername)],
     ["ownerUserId must be a string", isString(settings.ownerUserId)],
@@ -247,6 +245,10 @@ export function validateSettingsFields(settings: Settings): void {
       isFiniteNumber(settings.moodCooldownMinutes) &&
         settings.moodCooldownMinutes >= 5 &&
         settings.moodCooldownMinutes <= 1440,
+    ],
+    [
+      "sendThinkingEnabled requires thinkingEnabled",
+      !settings.sendThinkingEnabled || settings.thinkingEnabled,
     ],
   ];
 

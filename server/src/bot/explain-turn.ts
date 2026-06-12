@@ -166,7 +166,7 @@ export async function runExplainTurn(
       input.messageThreadId,
     );
 
-    if (settings.sendThinkingEnabled && thinking) {
+    if (settings.thinkingEnabled && settings.sendThinkingEnabled && thinking) {
       const thinkingChunks = await sendThinkingMessages(
         ctx,
         input.chatId,

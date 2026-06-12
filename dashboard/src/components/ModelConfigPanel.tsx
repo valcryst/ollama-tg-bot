@@ -23,6 +23,12 @@ interface ModelConfigPanelProps {
   onChange: (settings: Settings) => void;
 }
 
+function FieldIssue({ issues }: { issues: ModelConfigIssue[] }) {
+  const error = issues.find((i) => i.severity === "error");
+  if (!error) return null;
+  return <p className="field-error">{error.message}</p>;
+}
+
 function limiterLabel(limitedBy: ContextBudget["limitedBy"]): string {
   switch (limitedBy) {
     case "vram_tier":
@@ -98,7 +104,7 @@ export function ModelConfigPanel({
         <h3 className="section-title">Model parameters</h3>
         <p className="hint section-hint">
           Context is computed automatically from VRAM and the selected model.
-          Adjust generation budget and sampling below.
+          Adjust generation budget, thinking, and sampling below.
         </p>
       </header>
 
@@ -171,19 +177,37 @@ export function ModelConfigPanel({
           <label className="checkbox">
             <input
               type="checkbox"
-              checked={draft.sendThinkingEnabled}
+              checked={draft.thinkingEnabled}
               disabled={disabled}
-              onChange={(e) =>
-                update({ sendThinkingEnabled: e.target.checked })
-              }
+              onChange={(e) => update({ thinkingEnabled: e.target.checked })}
             />
-            Send reasoning to Telegram
+            Enable thinking
           </label>
           <p className="hint">
-            If the API returns a separate reasoning field, post it as a separate
-            message before the reply. It is not saved to chat history.
+            Requests separate model reasoning when the backend supports
+            reasoning_effort.
           </p>
         </div>
+        {draft.thinkingEnabled ? (
+          <div className="field toggle-row">
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={draft.sendThinkingEnabled}
+                disabled={disabled}
+                onChange={(e) =>
+                  update({ sendThinkingEnabled: e.target.checked })
+                }
+              />
+            Send reasoning to Telegram
+            </label>
+            <p className="hint">
+              If the API returns a separate reasoning field, post it as a
+              separate message before the reply. It is not saved to chat history.
+            </p>
+            <FieldIssue issues={issuesForField(analysis.issues, "sendThinkingEnabled")} />
+          </div>
+        ) : null}
       </section>
 
       <section className="model-config-group" aria-labelledby="model-sample">

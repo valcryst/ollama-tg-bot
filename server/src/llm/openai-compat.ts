@@ -1,66 +1,59 @@
 import type { ChatCompletion } from "openai/resources/chat/completions";
 import type { Settings } from "../db/database.js";
 
-/**
- * LocalAI OpenAI-compatible chat completions extensions.
- * @see https://localai.io/features/openai-functions/
- * @see https://github.com/mudler/LocalAI/pull/7959
- */
-
-/** LocalAI `message` fields (OpenAI `content` + LocalAI reasoning split). */
+/** OpenAI-compatible assistant message fields used by common reasoning backends. */
 export const ASSISTANT_MESSAGE_FIELDS = {
   content: "content",
-  /** LocalAI / some backends (legacy alias). */
+  /** Legacy or provider-specific reasoning alias. */
   reasoning: "reasoning",
-  /** LocalAI documented field for Gemma 4, Qwen3, DeepSeek R1, etc. */
+  /** Common reasoning field used by several OpenAI-compatible backends. */
   reasoningContent: "reasoning_content",
 } as const;
 
-/** LocalAI request `options` bag (llama.cpp, vLLM, MLX backends). */
-export interface LocalAiChatOptions {
+/** Provider-specific request `options` bag used by several local backends. */
+export interface ProviderChatOptions {
   num_ctx: number;
   top_k: number;
   repeat_penalty: number;
-  /** Preserve Gemma 4 channel tokens when the backend supports it. */
+  /** Preserve channel tokens when the backend supports it. */
   skip_special_tokens?: boolean;
 }
 
 export interface ParsedAssistantMessage {
-  /** Final answer — parse [REPLY] and side-pass blocks from this only. */
+  /** Final answer: parse [REPLY] and side-pass blocks from this only. */
   content: string;
-  /** Chain-of-thought — never merge into user-facing reply text. */
+  /** Reasoning: never merge into user-facing reply text. */
   reasoning: string;
 }
 
-export interface LocalAiChatExtensions {
-  options: LocalAiChatOptions;
-  reasoning_effort: LocalAiReasoningEffort;
+export interface ProviderChatExtensions {
+  options: ProviderChatOptions;
+  reasoning_effort: ReasoningEffort;
 }
 
-export type LocalAiReasoningEffort = "none" | "low" | "medium" | "high";
+export type ReasoningEffort = "none" | "low" | "medium" | "high";
 
-/** Options bag only (dashboard preview). */
-export function localAiRequestExtensions(
+/** Options bag only for dashboard/API previews. */
+export function providerRequestExtensions(
   settings: Settings,
-): { options: LocalAiChatOptions } {
-  return { options: localAiChatExtensions(settings, true).options };
+): { options: ProviderChatOptions } {
+  return { options: providerChatExtensions(settings, true).options };
 }
 
 /**
- * LocalAI chat request extensions: llama.cpp `options` + OpenAI `reasoning_effort`.
- * @see https://localai.io/advanced/model-configuration/
+ * OpenAI-compatible chat request extensions for provider-specific options.
  *
- * Gemma 4 on LocalAI unreliably splits when `reasoning_effort` is not `"none"` — the
- * answer often lands in `reasoning` with empty `content`. Structured `[REPLY]` parsing
- * requires the full answer in `content`, so every chat request uses `reasoning_effort: "none"`.
+ * Some backends can mis-split when `reasoning_effort` is not `"none"`: the
+ * answer may land in `reasoning` with empty `content`. Keep thinking disabled
+ * unless the selected backend/model handles separate reasoning reliably.
  *
- * Reasoning is parsed from a separate backend field when returned, but is never merged
- * into user-facing reply text.
+ * Reasoning is parsed from a separate backend field when returned, but is never
+ * merged into user-facing reply text.
  */
-export function localAiChatExtensions(
+export function providerChatExtensions(
   settings: Settings,
   _auxiliary: boolean,
-): LocalAiChatExtensions {
+): ProviderChatExtensions {
   return {
     options: {
       num_ctx: settings.numCtx,
@@ -68,7 +61,7 @@ export function localAiChatExtensions(
       repeat_penalty: settings.repeatPenalty,
       skip_special_tokens: false,
     },
-    reasoning_effort: "none",
+    reasoning_effort: settings.thinkingEnabled ? "medium" : "none",
   };
 }
 
@@ -97,7 +90,7 @@ function readTextContent(
     .join("\n");
 }
 
-/** Map an OpenAI chat completion choice to content + reasoning (LocalAI field split). */
+/** Map an OpenAI chat completion choice to content + separate reasoning. */
 export function parseAssistantMessage(
   choice: ChatCompletion["choices"][number] | undefined,
 ): ParsedAssistantMessage {

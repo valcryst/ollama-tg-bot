@@ -67,11 +67,11 @@ Telegram → Grammy handlers → chat-turn → LLM
 ### LLM
 
 - Client: `server/src/llm/client.ts` (OpenAI SDK → `/v1/chat/completions`)
-- OpenAI-compatible parsing: `server/src/llm/openai-compat.ts` (LocalAI `content` vs `reasoning` / `reasoning_content`, request `options`)
+- OpenAI-compatible parsing: `server/src/llm/openai-compat.ts` (`content` vs `reasoning` / `reasoning_content`, request `options`)
 - Chat options: `server/src/settings-limits.ts` (`temperature`, `topP`, `topK`, `repeatPenalty`, `numCtx` via `getProviderExtensions()`)
 - **Chat history limits are derived** from `numCtx` and `numPredict` via `getHistoryLimits()` — not separate settings. Dashboard preview: `dashboard/src/derivedHistoryLimits.ts` (keep in sync with server).
 
-**LocalAI:** Every chat request sends `reasoning_effort: "none"` and `options.skip_special_tokens: false`. Gemma 4 on LocalAI intermittently mis-splits when thinking is enabled via API (`content` empty, answer in `reasoning`); structured `[REPLY]` replies require the full answer in `message.content`. Parse **`message.content`** for `[REPLY]` (Telegram reply). Parse **`message.reasoning_content`** / **`reasoning`** as chain-of-thought only — never for replies. Extensions: `localAiChatExtensions()` in `openai-compat.ts`.
+**OpenAI-compatible backends:** Chat requests send provider-specific `options` plus `reasoning_effort` (`"medium"` when `thinkingEnabled` is on, `"none"` when off). Some models/backends mis-split when thinking is enabled via API (`content` empty, answer in `reasoning`); structured `[REPLY]` replies require the full answer in `message.content`. Parse **`message.content`** for `[REPLY]` (Telegram reply). Parse **`message.reasoning_content`** / **`reasoning`** as chain-of-thought only — never for replies. Extensions: `providerChatExtensions()` in `openai-compat.ts`.
 
 ### Memory
 
@@ -90,7 +90,7 @@ Three layers, extracted in a **background pass** (`server/src/memory-extract.ts`
 
 Model replies use `[REPLY]…[/REPLY]` (Telegram HTML subset). Parser: `server/src/response-format.ts` — accepts closed blocks, unclosed `[REPLY]` (Gemma often omits `[/REPLY]`), or spoken text before a trailing empty `[REPLY]` tag when the model echoes `[assistant said]`.
 
-**LLM response fields:** User-facing text comes from the API `content` field. Chain-of-thought / reasoning comes from the separate `reasoning` (or `reasoning_content`) field — sent to Telegram only when `sendThinkingEnabled` is on. Never merge reasoning into the reply body.
+**LLM response fields:** User-facing text comes from the API `content` field. Chain-of-thought / reasoning comes from the separate `reasoning` (or `reasoning_content`) field — sent to Telegram only when `thinkingEnabled` and `sendThinkingEnabled` are on. Never merge reasoning into the reply body.
 
 ## Code conventions
 

@@ -11,6 +11,7 @@ import {
 
 export type ModelConfigField =
   | "numPredict"
+  | "thinkingEnabled"
   | "sendThinkingEnabled"
   | "temperature"
   | "topP"
@@ -28,6 +29,7 @@ export type ModelConfigPatch = Partial<
   Pick<
     Settings,
     | "numPredict"
+    | "thinkingEnabled"
     | "sendThinkingEnabled"
     | "temperature"
     | "topP"
@@ -100,6 +102,14 @@ export function analyzeModelConfig(
     });
   }
 
+  if (settings.sendThinkingEnabled && !settings.thinkingEnabled) {
+    issues.push({
+      field: "sendThinkingEnabled",
+      severity: "error",
+      message: "Send reasoning requires thinking mode.",
+    });
+  }
+
   return {
     settings: normalized,
     derived,
@@ -147,6 +157,22 @@ export function applyModelConfigUpdate(
       };
     }
     next.numPredict = requested;
+  }
+
+  if (patch.thinkingEnabled === false) {
+    next.sendThinkingEnabled = false;
+  }
+
+  if (patch.sendThinkingEnabled && !next.thinkingEnabled) {
+    return {
+      ok: false,
+      settings,
+      issue: {
+        field: "sendThinkingEnabled",
+        severity: "error",
+        message: "Enable thinking mode before sending reasoning.",
+      },
+    };
   }
 
   next = normalizeModelFields(next, effectiveNumCtx);

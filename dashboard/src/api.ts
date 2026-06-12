@@ -26,6 +26,7 @@ export interface Settings {
   stickerPackName: string;
   stickerReplyChance: number;
   moodCooldownMinutes?: number;
+  thinkingEnabled: boolean;
   sendThinkingEnabled: boolean;
   contextBudget?: ContextBudget;
   vramAvailableGb: number;

@@ -65,6 +65,8 @@ export interface Settings {
   stickerReplyChance: number;
   /** Minutes of inactivity until mood returns to the active personality's defaults. */
   moodCooldownMinutes: number;
+  /** Request model reasoning when the backend supports it. */
+  thinkingEnabled: boolean;
   /** Send model reasoning to Telegram as a message before the reply. */
   sendThinkingEnabled: boolean;
 }
@@ -98,6 +100,7 @@ const DEFAULT_SETTINGS: Settings = {
   stickerPackName: "",
   stickerReplyChance: 70,
   moodCooldownMinutes: 120,
+  thinkingEnabled: false,
   sendThinkingEnabled: false,
 };
 
@@ -207,6 +210,7 @@ export function getSettings(): Settings {
     stickerPackName: getSetting<string>("stickerPackName"),
     stickerReplyChance: getSetting<number>("stickerReplyChance"),
     moodCooldownMinutes: getSetting<number>("moodCooldownMinutes"),
+    thinkingEnabled: getSetting<boolean>("thinkingEnabled"),
     sendThinkingEnabled: getSetting<boolean>("sendThinkingEnabled"),
   };
 }
@@ -225,6 +229,9 @@ export function updateSettings(partial: Partial<Settings>): Settings {
   }
   if (partial.stickerPackName !== undefined) {
     next.stickerPackName = partial.stickerPackName.trim().replace(/^@/, "");
+  }
+  if (partial.thinkingEnabled === false) {
+    next.sendThinkingEnabled = false;
   }
   if (partial.topK !== undefined) {
     next.topK = Math.round(partial.topK);

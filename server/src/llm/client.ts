@@ -20,8 +20,8 @@ import {
 import { getResolvedSettings } from "../settings-runtime.js";
 import { normalizeImageForChat } from "./images.js";
 import {
-  localAiChatExtensions,
   parseAssistantMessage,
+  providerChatExtensions,
 } from "./openai-compat.js";
 import { logModelExchange } from "./verbose-log.js";
 
@@ -126,8 +126,8 @@ function emptyResponseError(
   } else if (hadReasoning) {
     hint =
       "The API returned reasoning but left content empty. " +
-      "This bot uses reasoning_effort: none so the [REPLY] answer should be in content. " +
-      "Check the LocalAI model config (reasoning_parser: gemma4) or try /reset.";
+      "The [REPLY] answer must be in content, not only in reasoning. " +
+      "Disable thinking, check the selected model/provider reasoning configuration, or try /reset.";
   }
 
   const fields = Object.keys(data).sort().join(", ") || "none";
@@ -257,7 +257,7 @@ function formatVerboseSamplingLine(
   auxiliary: boolean,
 ): string {
   const temp = auxiliary ? AUXILIARY_TEMPERATURE : settings.temperature;
-  const reasoningEffort = localAiChatExtensions(settings, auxiliary)
+  const reasoningEffort = providerChatExtensions(settings, auxiliary)
     .reasoning_effort;
   return [
     `temperature: ${temp}`,
@@ -283,7 +283,7 @@ function chatCompletionBody(
     max_completion_tokens: numPredict,
     temperature: auxiliary ? AUXILIARY_TEMPERATURE : settings.temperature,
     top_p: settings.topP,
-    ...localAiChatExtensions(settings, auxiliary),
+    ...providerChatExtensions(settings, auxiliary),
   } as ChatCompletionCreateParamsNonStreaming;
 }
 
