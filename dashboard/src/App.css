@@ -1251,6 +1251,13 @@ button.danger-btn:hover:not(:disabled) {
   gap: 1rem;
 }
 
+.debug-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
 .report-chat-list,
 .report-message-list,
 .report-phase-list {

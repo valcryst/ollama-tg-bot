@@ -34,6 +34,39 @@ function phaseStatusClass(status: ReportPhase["status"]): string {
   return "";
 }
 
+function buildLogFileContent(detail: MessageReportDetail): string {
+  const header = [
+    `Debug report #${detail.id}`,
+    `Exported: ${new Date().toISOString()}`,
+    `Created: ${detail.createdAt}`,
+    `Status: ${detail.status}`,
+    `Duration: ${detail.report.durationMs}ms`,
+    `Chat: ${detail.chatType} · ${detail.chatId}`,
+    `Conv key: ${detail.convKey || "—"}`,
+    detail.userId ? `User id: ${detail.userId}` : null,
+    detail.messageId != null ? `Telegram message id: ${detail.messageId}` : null,
+    "",
+    detail.report.headline,
+    "",
+    "--- raw report ---",
+    JSON.stringify(detail, null, 2),
+  ].filter((line) => line != null);
+
+  return `${header.join("\n")}\n`;
+}
+
+function downloadReportLog(detail: MessageReportDetail): void {
+  const text = buildLogFileContent(detail);
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const stamp = detail.createdAt.slice(0, 19).replace(/[:T]/g, "-");
+  anchor.href = url;
+  anchor.download = `debug-${detail.id}-${stamp}.txt`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function PhaseDetail({ detail }: { detail: ReportDetail }) {
   if (detail.type === "fields") {
     return (
@@ -208,9 +241,20 @@ export function DebugPage() {
             </p>
           </div>
           {view !== "chats" ? (
-            <button type="button" className="btn secondary" onClick={goBack}>
-              ← Back
-            </button>
+            <div className="debug-header-actions">
+              {view === "detail" && detail ? (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => downloadReportLog(detail)}
+                >
+                  Download log
+                </button>
+              ) : null}
+              <button type="button" className="btn secondary" onClick={goBack}>
+                ← Back
+              </button>
+            </div>
           ) : (
             <button
               type="button"
