@@ -78,6 +78,7 @@ function parseSearchDecision(raw: string): SearchDecision {
 export interface SearchAnalyzeInput {
   userMessage: string;
   replyContext?: string | null;
+  traceTurnId?: number;
 }
 
 /**
@@ -113,7 +114,8 @@ export async function analyzeSearchNeed(
     const raw = await chatComplete(messages, {
       numPredict: SEARCH_CHECK_NUM_PREDICT,
       auxiliary: true,
-      verboseLabel: "web search decision",
+      traceTurnId: input.traceTurnId,
+      traceLabel: "web search decision",
     });
     return parseSearchDecision(raw);
   } catch (err) {

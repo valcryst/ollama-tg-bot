@@ -23,7 +23,7 @@ import {
   parseAssistantMessage,
   providerChatExtensions,
 } from "./openai-compat.js";
-import { logModelExchange } from "./verbose-log.js";
+import { getDebugTrace } from "../debug-trace.js";
 
 const LIST_MODELS_TIMEOUT_MS = 60_000;
 
@@ -193,12 +193,14 @@ export interface ChatCompleteOptions {
   numPredict?: number;
   /** Use low temperature for structured side passes (mood, memory, search, etc.). */
   auxiliary?: boolean;
-  /** Reserved for verbose labels on main reply calls. */
+  /** Reserved for main reply calls. */
   think?: boolean;
-  /** VERBOSE log section label, e.g. "web search decision". */
-  verboseLabel?: string;
-  /** VERBOSE: split main-reply prompt into system / history / latest sections. */
-  verboseLayout?: VerbosePromptLayout;
+  /** Record LLM I/O on the active debug trace for this turn. */
+  traceTurnId?: number;
+  /** Debug trace section label, e.g. "web search decision". */
+  traceLabel?: string;
+  /** Split main-reply prompt into system / history / latest sections for debug trace. */
+  traceLayout?: VerbosePromptLayout;
 }
 
 async function requestChat(
@@ -206,8 +208,9 @@ async function requestChat(
   prepared: ChatMessage[],
   numPredict: number,
   auxiliary: boolean,
-  verboseLabel?: string,
-  verboseLayout?: VerbosePromptLayout,
+  traceTurnId?: number,
+  traceLayout?: VerbosePromptLayout,
+  traceLabel?: string,
 ): Promise<ChatResponse> {
   const settings = getResolvedSettings();
   let response: ChatCompletion;
@@ -238,21 +241,23 @@ async function requestChat(
   }
 
   const data = toChatResponse(response.choices?.[0], response.usage);
-  if (verboseLabel) {
-    logModelExchange(
-      verboseLabel,
-      model,
-      numPredict,
-      prepared,
-      data,
-      verboseLayout,
-      formatVerboseSamplingLine(settings, auxiliary),
-    );
+  if (traceTurnId != null) {
+    const trace = getDebugTrace(traceTurnId);
+    if (trace) {
+      trace.recordLlmExchange(
+        traceLabel ?? "llm",
+        model,
+        numPredict,
+        prepared,
+        data,
+        traceLayout,
+        formatTraceSamplingLine(settings, auxiliary),
+      );
+    }
   }
   return data;
 }
-
-function formatVerboseSamplingLine(
+function formatTraceSamplingLine(
   settings: Settings,
   auxiliary: boolean,
 ): string {
@@ -321,8 +326,9 @@ export async function chatCompleteDetailed(
   const settings = getResolvedSettings();
   const model = options?.model ?? settings.model;
   const prepared = await prepareMessages(messages);
-  const verboseLabel = options?.verboseLabel;
-  const verboseLayout = options?.verboseLayout;
+  const traceTurnId = options?.traceTurnId;
+  const traceLayout = options?.traceLayout;
+  const traceLabel = options?.traceLabel;
   const auxiliary = options?.auxiliary ?? false;
 
   try {
@@ -334,8 +340,9 @@ export async function chatCompleteDetailed(
       prepared,
       numPredict,
       auxiliary,
-      verboseLabel,
-      verboseLayout,
+      traceTurnId,
+      traceLayout,
+      traceLabel,
     );
     const raw = pickAssistantContent(data);
     const thinking = pickReasoning(data);

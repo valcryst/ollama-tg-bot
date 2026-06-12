@@ -88,7 +88,6 @@ async function compressHistoryIfNeeded(chatKey: string): Promise<void> {
   const raw = await chatComplete(messages, {
     numPredict: HISTORY_COMPRESS_NUM_PREDICT,
     auxiliary: true,
-    verboseLabel: "history compression",
   });
   const summaryBody = clampSummaryText(raw, maxSummaryChars);
   if (!summaryBody) return;

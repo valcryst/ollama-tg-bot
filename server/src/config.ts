@@ -23,11 +23,11 @@ function resolveOpenAiApiKey(): string {
   return (process.env.OPENAI_API_KEY ?? "").trim();
 }
 
-export type LoggingLevel = "ERROR" | "DEBUG" | "VERBOSE";
+export type LoggingLevel = "ERROR" | "DEBUG";
 
 function resolveLoggingLevel(): LoggingLevel {
   const raw = (process.env.LOGGING_LEVEL ?? "ERROR").trim().toUpperCase();
-  if (raw === "DEBUG" || raw === "VERBOSE") return raw;
+  if (raw === "DEBUG") return "DEBUG";
   return "ERROR";
 }
 
@@ -102,6 +102,6 @@ export const config = {
   tavilyApiKey: resolveTavilyApiKey(),
   /** OpenAI-compatible API key from env (OPENAI_API_KEY). Local servers can leave it empty. */
   openAiApiKey: resolveOpenAiApiKey(),
-  /** ERROR = errors only; DEBUG = lifecycle events; VERBOSE = + LLM I/O. */
+  /** ERROR = errors only; DEBUG = lifecycle events. Use dashboard Debug page for message traces. */
   loggingLevel: resolveLoggingLevel(),
 };

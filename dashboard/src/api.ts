@@ -91,6 +91,67 @@ export interface MoodPayload {
   current: MoodState | null;
 }
 
+export interface DebugTraceSummary {
+  outcome: "ignored" | "processed" | "error";
+  ignoreReason?: string;
+  trigger?: "addressed" | "random" | "image";
+  addressed?: boolean;
+  addressSource?: string;
+  durationMs?: number;
+  webSearch: boolean;
+  linkFetch: boolean;
+  vision: boolean;
+  memoryExtract: boolean;
+  memoryUpdated: boolean;
+  memoryScopes?: string[];
+  sticker: boolean;
+  moodEvaluated: boolean;
+  error?: string;
+  replyChars?: number;
+}
+
+export interface DebugStep {
+  at: number;
+  step: string;
+  durationMs?: number;
+  data?: Record<string, unknown>;
+}
+
+export interface DebugChatSummary {
+  chatId: string;
+  chatType: string;
+  label: string;
+  traceCount: number;
+  latestAt: string | null;
+}
+
+export interface DebugTraceListItem {
+  id: number;
+  chatId: string;
+  userId: string | null;
+  userLabel: string | null;
+  messagePreview: string;
+  status: "ignored" | "processed" | "error";
+  summary: DebugTraceSummary;
+  durationMs: number | null;
+  createdAt: string;
+}
+
+export interface DebugTraceRecord {
+  id: number;
+  chatId: string;
+  convKey: string;
+  userId: string | null;
+  chatType: string;
+  messageId: number | null;
+  messagePreview: string;
+  status: "ignored" | "processed" | "error";
+  summary: DebugTraceSummary;
+  steps: DebugStep[];
+  durationMs: number | null;
+  createdAt: string;
+}
+
 export interface BotErrorRecord {
   id: number;
   message: string;
@@ -459,4 +520,12 @@ export const api = {
       "/api/mood/current",
       { method: "DELETE" },
     ),
+  getDebugChats: () =>
+    request<{ chats: DebugChatSummary[] }>("/api/debug/chats"),
+  getDebugTraces: (chatId: string) =>
+    request<{ traces: DebugTraceListItem[] }>(
+      `/api/debug/traces?chatId=${encodeURIComponent(chatId)}`,
+    ),
+  getDebugTrace: (id: number) =>
+    request<{ trace: DebugTraceRecord }>(`/api/debug/traces/${id}`),
 };

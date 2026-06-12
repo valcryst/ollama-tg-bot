@@ -11,6 +11,7 @@ import {
   bindErrorLogDatabase,
   clearErrorLog,
 } from "./error-log.js";
+import { bindDebugTracesDatabase } from "./debug-traces.js";
 import { bindKnownUsersDatabase } from "./known-users.js";
 import { bindDataBrowserDatabase } from "./data-browser.js";
 import {
@@ -170,6 +171,7 @@ export function initDatabase(): void {
   bindGroupMemoryDatabase(db);
   bindGeneralMemoryDatabase(db);
   bindErrorLogDatabase(db);
+  bindDebugTracesDatabase(db);
   bindKnownUsersDatabase(db);
   bindDataBrowserDatabase(db);
   bindMoodDatabase(db);

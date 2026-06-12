@@ -69,6 +69,7 @@ import {
   summarizeMessageContent,
 } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
+import { beginDebugTrace, getDebugTrace } from "../debug-trace.js";
 import { buildMoodCommandReply } from "./mood-command.js";
 import { startTypingForMessage } from "./typing.js";
 
@@ -132,21 +133,44 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     if (!ctx.message) return;
 
     const turnId = nextTurnId++;
+    const chatId = ctx.chat?.id;
+    const userId = resolveUserId(ctx);
+    const chatType = ctx.chat?.type ?? "unknown";
+    const messagePreview =
+      extractText(ctx) ||
+      summarizeMessageContent(ctx.message).slice(0, 200) ||
+      "(non-text message)";
+
+    const trace =
+      chatId != null
+        ? beginDebugTrace({
+            turnId,
+            chatId,
+            userId,
+            chatType,
+            messageId: ctx.message.message_id ?? null,
+            messagePreview,
+          })
+        : null;
+
     const msgLog = {
       turnId,
-      chatId: ctx.chat?.id,
+      chatId,
       userId: ctx.from?.id,
       chatType: ctx.chat?.type,
     };
 
     logEvent("message_received", msgLog);
+    trace?.step("message_received");
 
     if (ctx.from?.is_bot) {
       logEvent("message_ignored", { ...msgLog, reason: "from_bot" });
+      trace?.finalize("ignored", { ignoreReason: "from_bot" });
       return;
     }
     if (isSlashCommandMessage(ctx)) {
       logEvent("message_ignored", { ...msgLog, reason: "slash_command" });
+      trace?.finalize("ignored", { ignoreReason: "slash_command" });
       return;
     }
 
@@ -158,6 +182,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
     if (!text && !hasMedia) {
       logEvent("message_ignored", { ...msgLog, reason: "no_content" });
+      trace?.finalize("ignored", { ignoreReason: "no_content" });
       return;
     }
 
@@ -167,11 +192,16 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         mediaKind: mediaKindForMessage(ctx.message, !!ctx.message.sticker),
         onMessage: true,
       });
+      trace?.step("media_detected", {
+        mediaKind: mediaKindForMessage(ctx.message, !!ctx.message.sticker),
+        onMessage: true,
+      });
     }
 
     const settings = getSettings();
     if (isMaintenanceBlocked(ctx)) {
       logEvent("message_ignored", { ...msgLog, reason: "maintenance_mode" });
+      trace?.finalize("ignored", { ignoreReason: "maintenance_mode" });
       return;
     }
     const inGroup = ctx.chat?.type !== "private";
@@ -187,8 +217,11 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       inGroup &&
       !randomHit &&
       messageHasUserImage(ctx.message);
-    const addressed =
-      randomHit || imageHit ? false : await isMessageAddressedToBot(ctx, turnId);
+    const addressCheck =
+      randomHit || imageHit
+        ? { addressed: false as const, source: undefined }
+        : await isMessageAddressedToBot(ctx, turnId);
+    const addressed = addressCheck.addressed;
 
     logEvent("message_address_gate", {
       ...msgLog,
@@ -200,9 +233,20 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       randomRoll: randomRoll == null ? undefined : Number(randomRoll.toFixed(2)),
       reactToEveryImage: settings.reactToEveryImage,
     });
+    trace?.step("message_address_gate", {
+      addressed,
+      randomHit,
+      imageHit,
+      addressSource: addressCheck.source,
+    });
 
     if (!addressed && !randomHit && !imageHit) {
       logEvent("message_ignored", { ...msgLog, reason: "not_addressed" });
+      trace?.finalize("ignored", {
+        ignoreReason: "not_addressed",
+        addressed: false,
+        addressSource: addressCheck.source,
+      });
       return;
     }
 
@@ -212,6 +256,12 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         ? "random"
         : "image";
     logEvent("message_accepted", { ...msgLog, trigger });
+    trace?.patchSummary({
+      addressed,
+      addressSource: addressCheck.source,
+      trigger,
+    });
+    trace?.step("message_accepted", { trigger });
 
     recordMessageReceived();
 
@@ -223,12 +273,13 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
       const convKey = resolveConversationKey(ctx);
       if (!convKey) return;
+      getDebugTrace(turnId)?.step("chat_turn_start", { convKey });
 
       const messageThreadId = ctx.message?.message_thread_id;
-      const userId = resolveUserId(ctx);
+      const groupUserId = resolveUserId(ctx);
       const groupChatId = resolveGroupChatId(ctx);
       const inGroupChat = isGroupChat(ctx);
-      const userMemoryFacts = userId ? getUserFacts(userId) : [];
+      const userMemoryFacts = groupUserId ? getUserFacts(groupUserId) : [];
       const groupMemoryFacts = groupChatId ? getGroupFacts(groupChatId) : [];
       const generalMemoryFacts = getGeneralFacts();
       const botId = ctx.me?.id;
@@ -261,6 +312,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
           const loaded = await loadVisionFromMessage(bot.token, ctx.message);
           if (loaded.unavailableText) {
             logEvent("vision_unavailable", { ...msgLog, convKey, addressed: true });
+            getDebugTrace(turnId)?.finalize("processed", {
+              vision: true,
+              error: "vision_unavailable",
+            });
             await replyToUser(ctx, loaded.unavailableText);
             recordReply(false);
             return;
@@ -273,6 +328,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
                 convKey,
               },
               loaded.visionHint,
+              turnId,
             );
             const sticker = loaded.sourceSticker ?? ctx.message.sticker;
             const mediaKind = mediaKindForMessage(ctx.message, !!sticker);
@@ -292,6 +348,11 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
                 mediaKind,
                 chars: visionDescription.length,
               });
+              getDebugTrace(turnId)?.patchSummary({ vision: true });
+              getDebugTrace(turnId)?.step("vision_stored", {
+                mediaKind,
+                chars: visionDescription.length,
+              });
             }
             const mediaNote = `The user sent a ${mediaKind}: ${visionDescription}`;
             latestBody = [messageText, mediaNote].filter(Boolean).join("\n\n");
@@ -306,6 +367,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
         if (loaded.unavailableText) {
           logEvent("vision_unavailable", { ...msgLog, convKey });
+          getDebugTrace(turnId)?.finalize("processed", {
+            vision: true,
+            error: "vision_unavailable",
+          });
           await replyToUser(ctx, loaded.unavailableText);
           recordReply(false);
           return;
@@ -326,6 +391,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
             );
             if (replyLoaded.unavailableText) {
               logEvent("vision_unavailable", { ...msgLog, convKey, fromReply: true });
+              getDebugTrace(turnId)?.finalize("processed", {
+                vision: true,
+                error: "vision_unavailable",
+              });
               await replyToUser(ctx, replyLoaded.unavailableText);
               recordReply(false);
               return;
@@ -347,6 +416,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
               fromReply: visionFromReply,
             },
             loaded.visionHint,
+            turnId,
           );
         }
 
@@ -376,6 +446,12 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
               fromReply: visionFromReply,
               chars: visionDescription.length,
             });
+            getDebugTrace(turnId)?.patchSummary({ vision: true });
+            getDebugTrace(turnId)?.step("vision_stored", {
+              mediaKind,
+              fromReply: visionFromReply,
+              chars: visionDescription.length,
+            });
           }
           latestBody = messageText || "What do you think?";
         } else if (visionDescription && visionFromReply) {
@@ -401,9 +477,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       }
 
       await runChatTurn(ctx, {
+        turnId,
         convKey,
         chatId,
-        userId,
+        userId: groupUserId,
         groupChatId,
         inGroup: inGroupChat,
         latestBody,
@@ -430,6 +507,9 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       });
     } catch (err) {
       logEventError("handler_error", err, msgLog);
+      getDebugTrace(turnId)?.finalize("error", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       endTyping?.();
     }

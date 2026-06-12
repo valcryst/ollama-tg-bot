@@ -128,12 +128,6 @@ export async function runExplainTurn(
     logEvent("llm_reply_started", { ...turnLog, mode: "explain" });
     const { raw: modelOutput, thinking } = await chatCompleteDetailed(messages, {
       think: true,
-      verboseLabel: "explain",
-      verboseLayout: {
-        system,
-        history,
-        latest: latestContent,
-      },
     });
     logEvent("llm_reply_done", {
       ...turnLog,

@@ -40,7 +40,7 @@ Docker: `docker compose up -d --build` (see `README.md`).
 | `BOT_TOKEN` | Telegram bot token (required) |
 | `VRAM_AVAILABLE` | GPU VRAM in GB (required); derives context window budget |
 | `OPENAI_API_KEY` | Optional API key for authenticated OpenAI-compatible endpoints |
-| `LOGGING_LEVEL` | `ERROR` (default), `DEBUG` (lifecycle events), or `VERBOSE` (+ LLM I/O) |
+| `LOGGING_LEVEL` | `ERROR` (default), `DEBUG` (lifecycle events to console) |
 | `TAVILY_API_KEY` | Optional web search via Tavily |
 | `PORT` | Docker/production listen port only — not for local dev |
 | `DATABASE_PATH` | Optional SQLite path (default `data/bot.db`) |
@@ -69,6 +69,7 @@ Telegram → Grammy handlers → chat-turn → LLM
 
 - Client: `server/src/llm/client.ts` (OpenAI SDK → `/v1/chat/completions`)
 - OpenAI-compatible parsing: `server/src/llm/openai-compat.ts` (`content` vs `reasoning` / `reasoning_content`, request `options`)
+- Debug traces: `server/src/debug-trace.ts`, `server/src/db/debug-traces.ts` — per-message processing stored in SQLite (50 per chat); LLM I/O recorded when a trace session is active
 - Chat options: `server/src/settings-limits.ts` (`temperature`, `topP`, `topK`, `repeatPenalty`, `numCtx` via `getProviderExtensions()`)
 - **Chat history limits are derived** from `numCtx` and `numPredict` via `getHistoryLimits()` — not separate settings. Dashboard preview: `dashboard/src/derivedHistoryLimits.ts` (keep in sync with server).
 
@@ -111,6 +112,9 @@ Model replies use `[REPLY]…[/REPLY]` (Telegram HTML subset). Parser: `server/s
 | `/character` | Default + custom system prompts |
 | `/settings` | LLM, model, owner, maintenance mode, performance, vision |
 | `/memories` | User / group / general facts |
+| `/mood` | Mood state and defaults |
+| `/debug` | Per-message processing traces (chat → message → step detail) |
+| `/data` | Raw SQLite table browser |
 
 State: `dashboard/src/context/DashboardContext.tsx`. API client: `dashboard/src/api.ts`.
 

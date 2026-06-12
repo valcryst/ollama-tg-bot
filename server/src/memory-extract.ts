@@ -2,6 +2,7 @@ import { addGeneralFacts } from "./db/general-memory.js";
 import { replaceGroupFacts } from "./db/group-memory.js";
 import { replaceUserFacts } from "./db/user-memory.js";
 import { logEvent, logEventError } from "./event-log.js";
+import { getDebugTrace } from "./debug-trace.js";
 import { chatComplete } from "./llm/client.js";
 import type { ChatMessage } from "./llm/client.js";
 import { parseStructuredResponse } from "./response-format.js";
@@ -82,6 +83,7 @@ export interface MemoryExtractResult {
 
 export async function extractMemoriesFromTurn(
   input: MemoryExtractInput,
+  traceTurnId?: number,
 ): Promise<MemoryExtractResult> {
   const userBlock = formatStored("user", input.existingUserFacts);
   const groupBlock = input.isGroupChat
@@ -120,7 +122,8 @@ export async function extractMemoriesFromTurn(
       numPredict: MEMORY_EXTRACT_NUM_PREDICT,
       auxiliary: true,
       think: true,
-      verboseLabel: "memory extract",
+      traceTurnId,
+      traceLabel: "memory extract",
     });
     const parsed = parseStructuredResponse(raw);
     return {
@@ -146,6 +149,7 @@ export interface MemoryPersistContext {
   input: MemoryExtractInput;
   userId: string | null;
   groupChatId: string | null;
+  turnId?: number;
 }
 
 /** Run memory extraction and DB writes without blocking the Telegram reply. */
@@ -160,6 +164,13 @@ export function scheduleMemoryPersistence(ctx: MemoryPersistContext): void {
       userId: ctx.userId,
       groupId: ctx.groupChatId,
     });
+    if (ctx.turnId != null) {
+      getDebugTrace(ctx.turnId)?.updateMemoryResult({
+        memoryUpdated: false,
+        memoryScopes: [],
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
 }
 
@@ -170,14 +181,16 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
     isGroupChat: ctx.input.isGroupChat,
   });
 
-  const extracted = await extractMemoriesFromTurn(ctx.input);
+  const extracted = await extractMemoriesFromTurn(ctx.input, ctx.turnId);
   let anyUpdated = false;
+  const updatedScopes: string[] = [];
 
   if (ctx.userId && extracted.userFacts.length > 0) {
     const merged = await mergeMemoryDocument({
       kind: "user",
       existing: ctx.input.existingUserFacts,
       incoming: extracted.userFacts,
+      traceTurnId: ctx.turnId,
     });
     replaceUserFacts(ctx.userId, merged ? [merged] : []);
     logEvent("memory_updated", {
@@ -186,6 +199,7 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
       factCount: extracted.userFacts.length,
     });
     anyUpdated = true;
+    updatedScopes.push("user");
   }
 
   if (ctx.groupChatId && extracted.groupFacts.length > 0) {
@@ -193,6 +207,7 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
       kind: "group",
       existing: ctx.input.existingGroupFacts,
       incoming: extracted.groupFacts,
+      traceTurnId: ctx.turnId,
     });
     replaceGroupFacts(ctx.groupChatId, merged ? [merged] : []);
     logEvent("memory_updated", {
@@ -201,6 +216,7 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
       factCount: extracted.groupFacts.length,
     });
     anyUpdated = true;
+    updatedScopes.push("group");
   }
 
   const generalNew = newFactsOnly(
@@ -214,6 +230,14 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
       factCount: generalNew.length,
     });
     anyUpdated = true;
+    updatedScopes.push("general");
+  }
+
+  if (ctx.turnId != null) {
+    getDebugTrace(ctx.turnId)?.updateMemoryResult({
+      memoryUpdated: anyUpdated,
+      memoryScopes: updatedScopes,
+    });
   }
 
   if (!anyUpdated) {
@@ -228,6 +252,7 @@ async function mergeMemoryDocument(input: {
   kind: "user" | "group";
   existing: string[];
   incoming: string[];
+  traceTurnId?: number;
 }): Promise<string> {
   const existing = input.existing.join("\n").trim() || "(none yet)";
   const incoming = input.incoming.map((f) => `- ${f}`).join("\n");
@@ -246,7 +271,8 @@ async function mergeMemoryDocument(input: {
     numPredict: MEMORY_MERGE_NUM_PREDICT,
     auxiliary: true,
     think: true,
-    verboseLabel: `${input.kind} memory merge`,
+    traceTurnId: input.traceTurnId,
+    traceLabel: `${input.kind} memory merge`,
   });
 
   return parseMemoryBlock(raw);

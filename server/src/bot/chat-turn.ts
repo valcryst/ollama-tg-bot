@@ -34,6 +34,7 @@ import type { MemoryExtractInput } from "../memory-extract.js";
 import { getOwnerUserId, getOwnerUsername } from "./owner.js";
 import { replyParameters } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
+import { getDebugTrace } from "../debug-trace.js";
 import {
   analyzeStickerForReply,
   rollStickerReplyChance,
@@ -48,6 +49,7 @@ import { resolveTypingThreadParams } from "./typing.js";
 export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
 
 export interface ChatTurnInput {
+  turnId: number;
   convKey: string;
   chatId: number;
   userId: string | null;
@@ -143,8 +145,10 @@ export async function runChatTurn(
   input: ChatTurnInput,
 ): Promise<void> {
   const settings = getResolvedSettings();
+  const trace = getDebugTrace(input.turnId);
 
   const turnLog = {
+    turnId: input.turnId,
     chatId: input.chatId,
     userId: input.userId,
     groupId: input.groupChatId,
@@ -169,14 +173,17 @@ export async function runChatTurn(
       .join("\n\n");
 
     logEvent("mood_evaluate_started", turnLog);
+    trace?.step("mood_evaluate_started");
     const decayedMood = getEffectiveMood();
     const moodPromise = evaluateMood({
       currentMood: decayedMood,
       historyText: moodContextText,
       latestTurn: moodLatestTurnPreview,
+      traceTurnId: input.turnId,
     });
 
     let linkFetchContext: string | null = null;
+    const linkFetchStarted = performance.now();
     const linkFetch = await resolveLinkFetchContext({
       userMessage: input.latestBody,
       replyContext: input.replyContext,
@@ -186,20 +193,28 @@ export async function runChatTurn(
         ...turnLog,
         urlCount: linkFetch.urlCount,
       });
+      trace?.timedStep("link_fetch", linkFetchStarted, {
+        urlCount: linkFetch.urlCount,
+      });
+      trace?.patchSummary({ linkFetch: true });
       linkFetchContext = linkFetch.context;
     } else {
       logEvent("link_fetch_skipped", turnLog);
+      trace?.step("link_fetch_skipped");
     }
 
     let webSearchContext: string | null = null;
     let webSearchSources: TavilySource[] = [];
     if (isTavilyConfigured() && !linkFetch.resolved) {
+      const searchStarted = performance.now();
       const decision = await analyzeSearchNeed({
         userMessage: input.latestBody,
         replyContext: input.replyContext,
+        traceTurnId: input.turnId,
       });
       if (decision.needsSearch && decision.query) {
         logEvent("web_search_triggered", { ...turnLog, queryLen: decision.query.length });
+        trace?.patchSummary({ webSearch: true });
         try {
           const payload = await tavilySearch(decision.query);
           webSearchContext = formatTavilyContext(decision.query, payload);
@@ -209,15 +224,27 @@ export async function runChatTurn(
             sourceCount: payload.results.length,
             hasSummary: Boolean(payload.answer),
           });
+          trace?.timedStep("web_search_done", searchStarted, {
+            query: decision.query,
+            sourceCount: payload.results.length,
+            hasSummary: Boolean(payload.answer),
+          });
         } catch (err) {
           logEventError("web_search_failed", err, turnLog);
+          trace?.timedStep("web_search_failed", searchStarted, {
+            error: err instanceof Error ? err.message : String(err),
+          });
           webSearchContext = formatTavilyFailure(decision.query, err);
         }
       } else {
         logEvent("web_search_skipped", turnLog);
+        trace?.timedStep("web_search_skipped", searchStarted, {
+          reason: decision.needsSearch ? "no_query" : "not_needed",
+        });
       }
     } else if (isTavilyConfigured() && linkFetch.resolved) {
       logEvent("web_search_skipped", { ...turnLog, reason: "link_fetch_resolved" });
+      trace?.step("web_search_skipped", { reason: "link_fetch_resolved" });
     }
 
     const evaluatedMood = await moodPromise;
@@ -226,8 +253,11 @@ export async function runChatTurn(
       ...turnLog,
       moodSummary: JSON.stringify(evaluatedMood),
     });
+    trace?.patchSummary({ moodEvaluated: true });
+    trace?.step("mood_evaluate_done", { mood: evaluatedMood });
 
     logEvent("llm_reply_started", turnLog);
+    trace?.step("llm_reply_started");
     const built = buildChatMessages(
       getActivePersonalityPrompt(),
       input.convKey,
@@ -272,12 +302,26 @@ export async function runChatTurn(
       latestChars: built.latestContent.length,
     });
 
+    trace?.step("history_injected", {
+      injectedMessages: built.historyMessages.length,
+      storedMessages: built.storedHistoryCount,
+      maxMessages: historyLimits.historyMaxMessages,
+      maxChars: historyLimits.historyMaxChars,
+      injectedChars,
+      charTrimmed:
+        built.storedHistoryCount > 0 &&
+        built.historyMessages.length < built.storedHistoryCount,
+      latestChars: built.latestContent.length,
+    });
+
+    const llmStarted = performance.now();
     const { raw: modelOutput, thinking } = await chatCompleteDetailed(
       built.messages,
       {
         think: true,
-        verboseLabel: "main reply",
-        verboseLayout: {
+        traceTurnId: input.turnId,
+        traceLabel: "main reply",
+        traceLayout: {
           system: built.systemContent,
           history: built.historyMessages,
           latest: built.latestContent,
@@ -286,6 +330,9 @@ export async function runChatTurn(
     );
     logEvent("llm_reply_done", {
       ...turnLog,
+      outputChars: modelOutput.length,
+    });
+    trace?.timedStep("llm_reply_done", llmStarted, {
       outputChars: modelOutput.length,
     });
 
@@ -313,6 +360,7 @@ export async function runChatTurn(
         userMessage: input.latestBody,
         botReply: replyBody,
         replyContext: input.replyContext,
+        traceTurnId: input.turnId,
       });
       logEvent("sticker_analyze_done", {
         ...turnLog,
@@ -405,21 +453,48 @@ export async function runChatTurn(
     }
 
     recordReply(false);
+    const replyChars = hasReply ? visibleTelegramText(replyWithSources).length : 0;
     logEvent("reply_sent", {
       ...turnLog,
       chunkCount: chunks.length,
-      replyChars: hasReply ? visibleTelegramText(replyWithSources).length : 0,
+      replyChars,
       sticker: stickerEmoji ?? undefined,
       skipUserHistory: Boolean(input.skipUserHistory),
     });
+    trace?.patchSummary({
+      sticker: Boolean(stickerEmoji),
+      replyChars,
+      memoryExtract: true,
+    });
+    trace?.step("reply_sent", {
+      chunkCount: chunks.length,
+      replyChars,
+      sticker: stickerEmoji ?? undefined,
+    });
+    trace?.finalize(
+      "processed",
+      {
+        replyChars,
+        sticker: Boolean(stickerEmoji),
+        memoryExtract: true,
+      },
+      { awaitMemory: true },
+    );
 
     scheduleMemoryPersistence({
       userId: input.userId,
       groupChatId: input.groupChatId,
+      turnId: input.turnId,
       input: { ...input.memoryInput, assistantReply: historyText },
     });
   } catch (err) {
     logEventError("reply_failed", err, turnLog);
+    trace?.step("reply_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    trace?.finalize("error", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     const detail: ErrorLogInput = {
       message: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,

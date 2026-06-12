@@ -30,7 +30,7 @@ npm run dev
 | `VRAM_AVAILABLE` | everywhere | required (GPU GB, e.g. `24`) |
 | `OPENAI_API_KEY` | optional | empty (local servers usually skip this) |
 | `TAVILY_API_KEY` | optional | empty (web search off) |
-| `LOGGING_LEVEL` | optional | `ERROR` (`DEBUG`, `VERBOSE`) |
+| `LOGGING_LEVEL` | optional | `ERROR` (`DEBUG`) |
 | `PORT` | Docker / Portainer only | `3000` |
 
 Do not put `PORT` in `.env` for local dev — it is only for `docker-compose.yml` (`PORT:PORT` mapping + app listen).

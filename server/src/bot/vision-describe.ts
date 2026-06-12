@@ -31,6 +31,7 @@ export async function describeVisionImages(
   images: ImagePayload[],
   logContext: EventFields = {},
   visionHint?: string,
+  traceTurnId?: number,
 ): Promise<string> {
   if (images.length === 0) return "";
 
@@ -52,7 +53,8 @@ export async function describeVisionImages(
     const raw = await chatComplete(messages, {
       numPredict: VISION_DESCRIBE_NUM_PREDICT,
       auxiliary: true,
-      verboseLabel: "vision describe",
+      traceTurnId,
+      traceLabel: "vision describe",
     });
     const description = raw.trim();
     logEvent("vision_done", {

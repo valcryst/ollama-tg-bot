@@ -63,6 +63,7 @@ export interface StickerAnalyzeInput {
   userMessage: string;
   botReply: string;
   replyContext?: string | null;
+  traceTurnId?: number;
 }
 
 /**
@@ -101,7 +102,8 @@ export async function analyzeStickerForReply(
     const raw = await chatComplete(messages, {
       numPredict: STICKER_CHECK_NUM_PREDICT,
       auxiliary: true,
-      verboseLabel: "sticker pick",
+      traceTurnId: input.traceTurnId,
+      traceLabel: "sticker pick",
     });
     return parseStickerChoice(raw);
   } catch (err) {

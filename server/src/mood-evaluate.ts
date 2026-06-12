@@ -50,6 +50,7 @@ export interface MoodEvaluateInput {
   currentMood: MoodValues;
   historyText: string;
   latestTurn: string;
+  traceTurnId?: number;
 }
 
 function formatCurrentMood(mood: MoodValues): string {
@@ -101,7 +102,8 @@ export async function evaluateMood(
     const raw = await chatComplete(messages, {
       numPredict: MOOD_EVAL_NUM_PREDICT,
       auxiliary: true,
-      verboseLabel: "mood evaluate",
+      traceTurnId: input.traceTurnId,
+      traceLabel: "mood evaluate",
     });
     const evaluated = parseMoodBlock(raw, fallback);
     logEvent("mood_evaluated", {

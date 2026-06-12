@@ -9,6 +9,7 @@ const navItems = [
   { to: "/settings", label: "Settings", end: false },
   { to: "/memories", label: "Memories", end: false },
   { to: "/mood", label: "Mood", end: false },
+  { to: "/debug", label: "Debug", end: false },
   { to: "/data", label: "Data", end: false },
 ] as const;
 

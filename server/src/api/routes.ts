@@ -10,6 +10,11 @@ import {
 import { getTelegramFilePath } from "../bot/files.js";
 import { requireBotToken } from "../config.js";
 import {
+  listDebugChats,
+  listDebugTracesForChat,
+  getDebugTraceById,
+} from "../db/debug-traces.js";
+import {
   clearErrors,
   getSettings,
   getStats,
@@ -916,6 +921,51 @@ export function createApiRouter(): Router {
     } catch (err) {
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to reset mood",
+      });
+    }
+  });
+
+  router.get("/debug/chats", (_req, res) => {
+    try {
+      res.json({ chats: listDebugChats() });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to load debug chats",
+      });
+    }
+  });
+
+  router.get("/debug/traces", (req, res) => {
+    try {
+      const chatId = String(req.query.chatId ?? "").trim();
+      if (!chatId) {
+        res.status(400).json({ error: "chatId query parameter is required" });
+        return;
+      }
+      res.json({ traces: listDebugTracesForChat(chatId) });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to load debug traces",
+      });
+    }
+  });
+
+  router.get("/debug/traces/:id", (req, res) => {
+    try {
+      const id = Number.parseInt(String(req.params.id), 10);
+      if (!Number.isFinite(id)) {
+        res.status(400).json({ error: "Invalid trace id" });
+        return;
+      }
+      const trace = getDebugTraceById(id);
+      if (!trace) {
+        res.status(404).json({ error: "Trace not found" });
+        return;
+      }
+      res.json({ trace });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to load debug trace",
       });
     }
   });

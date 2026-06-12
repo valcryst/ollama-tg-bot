@@ -13,6 +13,18 @@ import { logEvent, logEventError } from "../event-log.js";
 
 const ADDRESS_CHECK_NUM_PREDICT = 96;
 
+export type AddressSource =
+  | "private"
+  | "mention_or_reply"
+  | "name"
+  | "analyzer"
+  | "no_text";
+
+export interface AddressCheckResult {
+  addressed: boolean;
+  source?: AddressSource;
+}
+
 const ANALYZER_SYSTEM = `You decide whether a group-chat message explicitly names a specific Telegram bot and should receive a reply.
 
 Output ONLY:
@@ -84,7 +96,7 @@ function formatBotNamesForAnalyzer(bot: BotIdentity): string {
 export async function isMessageAddressedToBot(
   ctx: Context,
   turnId?: number,
-): Promise<boolean> {
+): Promise<AddressCheckResult> {
   const baseLog = {
     chatId: ctx.chat?.id,
     userId: ctx.from?.id,
@@ -93,12 +105,12 @@ export async function isMessageAddressedToBot(
 
   if (ctx.chat?.type === "private") {
     logEvent("message_addressed", { ...baseLog, source: "private" });
-    return true;
+    return { addressed: true, source: "private" };
   }
 
   if (isMessageForBot(ctx)) {
     logEvent("message_addressed", { ...baseLog, source: "mention_or_reply" });
-    return true;
+    return { addressed: true, source: "mention_or_reply" };
   }
 
   const bot = getBotIdentity();
@@ -108,7 +120,7 @@ export async function isMessageAddressedToBot(
   });
   if (textForNameCheck && messageReferencesBotByName(textForNameCheck, bot)) {
     logEvent("message_addressed", { ...baseLog, source: "name" });
-    return true;
+    return { addressed: true, source: "name" };
   }
 
   const text = (ctx.message?.text ?? ctx.message?.caption ?? "").trim();
@@ -119,7 +131,7 @@ export async function isMessageAddressedToBot(
       addressed: false,
       source: "no_text",
     });
-    return false;
+    return { addressed: false, source: "no_text" };
   }
 
   return analyzeGroupMessageForBot(ctx, bot, text, turnId);
@@ -130,9 +142,11 @@ async function analyzeGroupMessageForBot(
   bot: BotIdentity,
   text: string,
   turnId?: number,
-): Promise<boolean> {
+): Promise<AddressCheckResult> {
   const chatType = ctx.chat?.type;
-  if (chatType !== "group" && chatType !== "supergroup") return false;
+  if (chatType !== "group" && chatType !== "supergroup") {
+    return { addressed: false };
+  }
 
   const sender = ctx.from
     ? [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" ") ||
@@ -156,7 +170,8 @@ async function analyzeGroupMessageForBot(
     const raw = await chatComplete(messages, {
       numPredict: ADDRESS_CHECK_NUM_PREDICT,
       auxiliary: true,
-      verboseLabel: `address detection${turnId != null ? ` turn=${turnId}` : ""}`,
+      traceTurnId: turnId,
+      traceLabel: "address detection",
     });
     const yes = parseAddressDecision(raw);
     if (yes) {
@@ -167,23 +182,23 @@ async function analyzeGroupMessageForBot(
         chatType,
         source: "analyzer",
       });
-    } else {
-      logEvent("message_address_decision", {
-        chatId: ctx.chat?.id,
-        userId: ctx.from?.id,
-        turnId,
-        chatType,
-        addressed: false,
-        source: "analyzer",
-      });
+      return { addressed: true, source: "analyzer" };
     }
-    return yes;
+    logEvent("message_address_decision", {
+      chatId: ctx.chat?.id,
+      userId: ctx.from?.id,
+      turnId,
+      chatType,
+      addressed: false,
+      source: "analyzer",
+    });
+    return { addressed: false, source: "analyzer" };
   } catch (err) {
     logEventError("address_analyzer_failed", err, {
       chatId: ctx.chat?.id,
       userId: ctx.from?.id,
       chatType,
     });
-    return false;
+    return { addressed: false, source: "analyzer" };
   }
 }
