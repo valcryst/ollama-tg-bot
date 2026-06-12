@@ -164,9 +164,10 @@ export function OverviewPage() {
               (animated/video use a preview frame; optional caption)
             </li>
             <li>
-              <strong>Commands:</strong> <code>/reset</code> clears chat
-              history, <code>/forget</code> clears your stored memories,{" "}
-              <code>/forgetgroup</code> clears group memories (groups only)
+              <strong>Commands:</strong> <code>/forget</code> clears your
+              stored memories. Owner only: <code>/reset</code> clears chat
+              history, <code>/forgetgroup</code> clears group memories (groups
+              only)
             </li>
           </ul>
         </div>

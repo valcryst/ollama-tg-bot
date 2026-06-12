@@ -10,7 +10,7 @@ export function groupSetupMessage(botUsername: string): string {
     `<b>If I never respond:</b>\n` +
     `1. Open @BotFather → <code>/setprivacy</code> → <b>Disable</b>\n` +
     `2. Remove me from the group and add again\n\n` +
-    `I remember facts about this group across sessions. Clear with <code>/forgetgroup@${botUsername}</code>.\n\n` +
+    `I remember facts about this group across sessions. The bot owner can clear them with <code>/forgetgroup@${botUsername}</code>.\n\n` +
     `Private chat: open ${bot} and send anything.`
   );
 }

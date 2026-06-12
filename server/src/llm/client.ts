@@ -120,14 +120,14 @@ function emptyResponseError(
 
   const settings = getSettings();
   let hint =
-    "Try /reset to shorten context, pick a different model, or raise generation tokens in Settings.";
+    "The owner can send /reset to shorten context, or raise generation tokens in Settings.";
   if (reason === "length") {
-    hint = `Generation used all ${numPredict} tokens before a usable [REPLY]. Raise generation tokens in Settings (try 512+) or send /reset.`;
+    hint = `Generation used all ${numPredict} tokens before a usable [REPLY]. Raise generation tokens in Settings (try 512+), or the owner can send /reset.`;
   } else if (hadReasoning) {
     hint =
       "The API returned reasoning but left content empty. " +
       "The [REPLY] answer must be in content, not only in reasoning. " +
-      "Disable thinking, check the selected model/provider reasoning configuration, or try /reset.";
+      "Disable thinking, check the selected model/provider reasoning configuration, or the owner can send /reset.";
   }
 
   const fields = Object.keys(data).sort().join(", ") || "none";

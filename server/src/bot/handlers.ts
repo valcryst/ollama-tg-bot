@@ -559,12 +559,11 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
         (inGroup ? `\n• I learn facts about this group (stored per chat)` : "") +
         `\n\n` +
         `Current model: <code>${escapeHtml(settings.model)}</code>\n` +
-        `Clear chat context: /reset@${botUsername} · Clear your memory: /forget@${botUsername}` +
-        (inGroup
-          ? ` · Clear group memory: /forgetgroup@${botUsername}`
-          : "") +
+        `Clear your memory: /forget@${botUsername}` +
         (isOwner(ctx)
-          ? `\nOwner tools: /mood@${botUsername} · /explain@${botUsername} · /remember@${botUsername} (or reply with either)`
+          ? `\nOwner tools: /reset@${botUsername}` +
+            (inGroup ? ` · /forgetgroup@${botUsername}` : "") +
+            ` · /mood@${botUsername} · /explain@${botUsername} · /remember@${botUsername} (or reply with either)`
           : "") +
         (isOwner(ctx) ? `\n\nYou are the configured bot owner.` : "") +
         (!inGroup && !getOwnerUserId() && !getOwnerUsername()
@@ -601,6 +600,10 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
   });
 
   bot.command("reset", async (ctx) => {
+    if (!isOwner(ctx)) {
+      await replyToUser(ctx, "Only the bot owner can use /reset.");
+      return;
+    }
     const convKey = resolveConversationKey(ctx);
     if (!convKey) return;
     clearHistory(convKey);
@@ -634,6 +637,10 @@ function registerBotCommands(bot: Bot, botUsername: string): void {
   });
 
   bot.command("forgetgroup", async (ctx) => {
+    if (!isOwner(ctx)) {
+      await replyToUser(ctx, "Only the bot owner can use /forgetgroup.");
+      return;
+    }
     const groupChatId = resolveGroupChatId(ctx);
     if (!groupChatId) {
       await replyToUser(ctx, "Group memory is only available in group chats.");
