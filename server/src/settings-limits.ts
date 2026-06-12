@@ -1,6 +1,8 @@
 import type { Settings } from "./db/database.js";
 
 export const MIN_NUM_PREDICT = 32;
+/** Minimum generation budget for auxiliary side passes (address, search, mood, …). */
+export const AUXILIARY_NUM_PREDICT = 512;
 /** Hard cap on generated tokens; also limited by context size minus prompt headroom. */
 export const MAX_NUM_PREDICT = 8192;
 export const NUM_CTX_GENERATION_HEADROOM = 512;
@@ -50,6 +52,17 @@ export function getEffectiveNumPredict(
   options?: { baseNumPredict?: number },
 ): number {
   return snapNumPredict(options?.baseNumPredict ?? settings.numPredict);
+}
+
+/** Generation budget for auxiliary LLM side passes (never below AUXILIARY_NUM_PREDICT). */
+export function getAuxiliaryNumPredict(
+  settings: Settings,
+  baseNumPredict?: number,
+): number {
+  return Math.max(
+    AUXILIARY_NUM_PREDICT,
+    getEffectiveNumPredict(settings, { baseNumPredict }),
+  );
 }
 
 /** Normalize token budget fields after settings changes. */

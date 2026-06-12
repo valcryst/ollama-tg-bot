@@ -2,7 +2,7 @@ let db: import("node:sqlite").DatabaseSync;
 
 export const MAX_TRACES_PER_CHAT = 50;
 
-export type ReportStatus = "ignored" | "processed" | "error";
+export type ReportStatus = "ignored" | "processing" | "processed" | "error";
 export type PhaseStatus = "skipped" | "ok" | "failed";
 
 export interface ReportDetailFields {
@@ -187,6 +187,13 @@ function trimTracesForChat(chatId: string): void {
        )`,
     ).run(chatId, excess);
   }
+}
+
+export function getMaxDebugTraceId(): number {
+  const row = db
+    .prepare(`SELECT COALESCE(MAX(id), 0) AS max_id FROM debug_traces`)
+    .get() as { max_id: number };
+  return row.max_id;
 }
 
 export function upsertMessageReport(input: {

@@ -137,7 +137,7 @@ export interface ReportPhase {
 }
 
 export interface MessageReportRecord {
-  status: "ignored" | "processed" | "error";
+  status: "ignored" | "processing" | "processed" | "error";
   headline: string;
   durationMs: number;
   intake: {
@@ -188,7 +188,7 @@ export interface MessageReportListItem {
   userId: string | null;
   userLabel: string | null;
   messagePreview: string;
-  status: "ignored" | "processed" | "error";
+  status: "ignored" | "processing" | "processed" | "error";
   headline: string;
   badges: string[];
   durationMs: number | null;
@@ -203,7 +203,7 @@ export interface MessageReportDetail {
   chatType: string;
   messageId: number | null;
   messagePreview: string;
-  status: "ignored" | "processed" | "error";
+  status: "ignored" | "processing" | "processed" | "error";
   durationMs: number | null;
   createdAt: string;
   report: MessageReportRecord;

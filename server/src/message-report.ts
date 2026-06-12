@@ -138,6 +138,7 @@ export class MessageReportSession {
     trigger: "addressed" | "random" | "image";
     addressSource?: string;
   }): void {
+    this.status = "processing";
     this.routing = {
       decision: "accepted",
       trigger: input.trigger,
@@ -146,6 +147,7 @@ export class MessageReportSession {
         ? humanAddressLabel(input.addressSource)
         : undefined,
     };
+    this.persist();
   }
 
   skipPhase(id: string, title: string, summary: string): void {
@@ -423,6 +425,12 @@ function buildHeadline(
     const label =
       routing?.decision === "ignored" ? routing.ignoreLabel : "Ignored";
     return `Ignored · ${label}`;
+  }
+
+  if (status === "processing") {
+    const label =
+      routing?.decision === "accepted" ? routing.triggerLabel : "Processing";
+    return `Processing · ${label}`;
   }
 
   if (status === "error") {

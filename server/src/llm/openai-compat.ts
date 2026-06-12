@@ -52,7 +52,7 @@ export function providerRequestExtensions(
  */
 export function providerChatExtensions(
   settings: Settings,
-  _auxiliary: boolean,
+  auxiliary: boolean,
 ): ProviderChatExtensions {
   return {
     options: {
@@ -61,7 +61,10 @@ export function providerChatExtensions(
       repeat_penalty: settings.repeatPenalty,
       skip_special_tokens: false,
     },
-    reasoning_effort: settings.thinkingEnabled ? "medium" : "none",
+    // Side passes ([ADDRESS], [SEARCH], mood, memory, …) need structured output in
+    // `content`. Many backends mis-split when reasoning is on — keep it off there.
+    reasoning_effort:
+      auxiliary || !settings.thinkingEnabled ? "none" : "medium",
   };
 }
 

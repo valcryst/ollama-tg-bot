@@ -24,6 +24,7 @@ function formatDuration(ms: number | null | undefined): string {
 
 function statusClass(status: string): string {
   if (status === "processed") return "ok";
+  if (status === "processing") return "warn";
   if (status === "error") return "danger";
   return "warn";
 }

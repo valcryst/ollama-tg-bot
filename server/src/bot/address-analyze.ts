@@ -10,8 +10,9 @@ import { isMessageForBot } from "./addressed.js";
 import { stripNonBotMentions } from "./mentions.js";
 import { stickerHistoryLabel } from "./stickers.js";
 import { logEvent, logEventError } from "../event-log.js";
+import { extractLastClosedBlock } from "../response-format.js";
 
-const ADDRESS_CHECK_NUM_PREDICT = 96;
+const ADDRESS_CHECK_NUM_PREDICT = 192;
 
 export type AddressSource =
   | "private"
@@ -50,11 +51,14 @@ Say no when:
 - The message says "bot", "assistant", "AI", or similar generic words without the specific bot name
 - It is background banter the bot should not interrupt`;
 
-const ADDRESS_BLOCK = /\[ADDRESS\]\s*([\s\S]*?)\s*\[\/ADDRESS\]/i;
-
 function parseAddressDecision(raw: string): boolean {
-  const match = raw.match(ADDRESS_BLOCK);
-  const value = (match?.[1] ?? raw).trim().toLowerCase();
+  let value = extractLastClosedBlock(raw, "ADDRESS")?.toLowerCase() ?? "";
+
+  if (!value) {
+    const unclosed = raw.match(/\[ADDRESS\]\s*(yes|no)\b\s*$/i);
+    value = unclosed?.[1]?.toLowerCase() ?? "";
+  }
+
   if (!value) return false;
   if (/^no\b/.test(value) || value === "n") return false;
   return /^y(es)?\b/.test(value) || value === "y";

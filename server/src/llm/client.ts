@@ -14,6 +14,7 @@ import { getSettings } from "../db/database.js";
 import type { Settings } from "../db/database.js";
 import {
   AUXILIARY_TEMPERATURE,
+  getAuxiliaryNumPredict,
   getChatTimeoutMs,
   getEffectiveNumPredict,
 } from "../settings-limits.js";
@@ -332,9 +333,11 @@ export async function chatCompleteDetailed(
   const auxiliary = options?.auxiliary ?? false;
 
   try {
-    const numPredict = getEffectiveNumPredict(settings, {
-      baseNumPredict: options?.numPredict,
-    });
+    const numPredict = auxiliary
+      ? getAuxiliaryNumPredict(settings, options?.numPredict)
+      : getEffectiveNumPredict(settings, {
+          baseNumPredict: options?.numPredict,
+        });
     const data = await requestChat(
       model,
       prepared,
@@ -344,10 +347,14 @@ export async function chatCompleteDetailed(
       traceLayout,
       traceLabel,
     );
-    const raw = pickAssistantContent(data);
+    const content = pickAssistantContent(data);
     const thinking = pickReasoning(data);
-    if (raw) {
-      return { raw, thinking };
+    if (content) {
+      return { raw: content, thinking };
+    }
+    // Some backends still put side-pass blocks only in reasoning when misconfigured.
+    if (auxiliary && thinking) {
+      return { raw: thinking, thinking: "" };
     }
     throw emptyResponseError(model, data, numPredict);
   } catch (err) {

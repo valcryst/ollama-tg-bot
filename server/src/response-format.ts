@@ -71,6 +71,19 @@ export function extractClosedBlock(text: string, tag: string): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
+/** Last closed [TAG]…[/TAG] block — reasoning may quote the format before the decision. */
+export function extractLastClosedBlock(text: string, tag: string): string | null {
+  const closed = new RegExp(
+    `\\[${escapeRegExp(tag)}\\]\\s*([\\s\\S]*?)\\s*\\[\\/${escapeRegExp(tag)}\\]`,
+    "gi",
+  );
+  let last: string | null = null;
+  for (const match of text.matchAll(closed)) {
+    last = match[1]?.trim() ?? null;
+  }
+  return last;
+}
+
 /** Text after an opening [TAG] when the model omits the closing tag (common on stop/length). */
 function extractUnclosedBlock(text: string, tag: string): string | null {
   const unclosed = new RegExp(

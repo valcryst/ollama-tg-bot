@@ -69,6 +69,7 @@ import {
   summarizeMessageContent,
 } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
+import { getMaxDebugTraceId } from "../db/debug-traces.js";
 import {
   beginMessageReport,
   getMessageReport,
@@ -106,7 +107,14 @@ function trackTelegramUser(ctx: Context): void {
   tryResolveOwnerFromUser(ctx.from);
 }
 
-let nextTurnId = 1;
+let nextTurnId: number | null = null;
+
+function allocateTurnId(): number {
+  if (nextTurnId == null) {
+    nextTurnId = getMaxDebugTraceId() + 1;
+  }
+  return nextTurnId++;
+}
 
 export function registerHandlers(bot: Bot, botUsername: string): void {
   bot.use((ctx, next) => {
@@ -135,7 +143,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
   bot.on("message", async (ctx) => {
     if (!ctx.message) return;
 
-    const turnId = nextTurnId++;
+    const turnId = allocateTurnId();
     const chatId = ctx.chat?.id;
     const userId = resolveUserId(ctx);
     const chatType = ctx.chat?.type ?? "unknown";
@@ -165,6 +173,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
     logEvent("message_received", msgLog);
 
+    try {
     if (ctx.from?.is_bot) {
       logEvent("message_ignored", { ...msgLog, reason: "from_bot" });
       report?.finishIgnored("from_bot");
@@ -262,10 +271,16 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     try {
       endTyping = startTypingForMessage(ctx) ?? undefined;
       const chatId = ctx.chat?.id;
-      if (!chatId) return;
+      if (!chatId) {
+        report?.finalizeError("Missing chat id");
+        return;
+      }
 
       const convKey = resolveConversationKey(ctx);
-      if (!convKey) return;
+      if (!convKey) {
+        report?.finalizeError("Missing conversation key");
+        return;
+      }
       report?.setConvKey(convKey);
 
       const messageThreadId = ctx.message?.message_thread_id;
@@ -516,6 +531,12 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       );
     } finally {
       endTyping?.();
+    }
+    } catch (err) {
+      logEventError("handler_error", err, msgLog);
+      report?.finalizeError(
+        err instanceof Error ? err.message : String(err),
+      );
     }
   });
 
