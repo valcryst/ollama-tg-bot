@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type DataTablePayload, type DataTableSummary } from "../api";
 import { useDashboard } from "../context/DashboardContext";
+import { useLiveData } from "../liveSocket";
 import { ErrorBanner } from "../components/ErrorBanner";
 
 type SortDirection = "asc" | "desc";
@@ -85,7 +86,6 @@ export function DataPage() {
   const [payload, setPayload] = useState<DataTablePayload | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [loadingTable, setLoadingTable] = useState(false);
-  const [refreshingTable, setRefreshingTable] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>(
@@ -95,32 +95,35 @@ export function DataPage() {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
-  const loadMeta = useCallback(async () => {
-    if (!apiOnline) return;
-    setLoadingMeta(true);
-    setError(null);
-    try {
-      const data = await api.getDataTables();
-      setTables(data.tables);
-      setActiveTable((current) => {
-        if (current && data.tables.some((t) => t.id === current)) {
-          return current;
-        }
-        return data.tables[0]?.id ?? null;
-      });
-    } catch (err) {
-      setError(err);
-      setTables([]);
-      setActiveTable(null);
-    } finally {
-      setLoadingMeta(false);
-    }
-  }, [apiOnline]);
+  const loadMeta = useCallback(
+    async (silent = false) => {
+      if (!apiOnline) return;
+      if (!silent) setLoadingMeta(true);
+      setError(null);
+      try {
+        const data = await api.getDataTables();
+        setTables(data.tables);
+        setActiveTable((current) => {
+          if (current && data.tables.some((t) => t.id === current)) {
+            return current;
+          }
+          return data.tables[0]?.id ?? null;
+        });
+      } catch (err) {
+        setError(err);
+        setTables([]);
+        setActiveTable(null);
+      } finally {
+        if (!silent) setLoadingMeta(false);
+      }
+    },
+    [apiOnline],
+  );
 
   const loadTable = useCallback(
-    async (tableId: string) => {
+    async (tableId: string, silent = false) => {
       if (!apiOnline) return;
-      setLoadingTable(true);
+      if (!silent) setLoadingTable(true);
       setError(null);
       try {
         const data = await api.getDataTable(tableId);
@@ -129,7 +132,7 @@ export function DataPage() {
         setError(err);
         setPayload(null);
       } finally {
-        setLoadingTable(false);
+        if (!silent) setLoadingTable(false);
       }
     },
     [apiOnline],
@@ -152,32 +155,38 @@ export function DataPage() {
     void loadTable(activeTable);
   }, [activeTable, loadTable]);
 
-  const refreshTable = useCallback(
-    async (tableId: string) => {
+  const refreshLive = useCallback(
+    async (tableIds?: string[]) => {
       if (!apiOnline) return;
-      setRefreshingTable(tableId);
-      setError(null);
-      try {
-        const [meta, data] = await Promise.all([
-          api.getDataTables(),
-          api.getDataTable(tableId),
-        ]);
-        setTables(meta.tables);
-        setActiveTable(tableId);
-        setPayload(data);
-      } catch (err) {
-        setError(err);
-        if (activeTable === tableId) setPayload(null);
-      } finally {
-        setRefreshingTable(null);
+      const shouldRefreshMeta =
+        !tableIds?.length ||
+        tableIds.some((id) => tables.some((table) => table.id === id));
+      if (shouldRefreshMeta) {
+        await loadMeta(true);
+      }
+      if (
+        activeTable &&
+        (!tableIds?.length || tableIds.includes(activeTable))
+      ) {
+        await loadTable(activeTable, true);
       }
     },
-    [apiOnline, activeTable],
+    [apiOnline, activeTable, tables, loadMeta, loadTable],
+  );
+
+  useLiveData(
+    useCallback(
+      (event) => {
+        void refreshLive(event.tableIds);
+      },
+      [refreshLive],
+    ),
+    apiOnline === true,
   );
 
   const activeSummary = tables.find((t) => t.id === activeTable);
   const isTableLoading =
-    loadingTable || (activeTable != null && refreshingTable === activeTable);
+    loadingTable;
 
   const displayedRows = useMemo(() => {
     if (!payload) return [];
@@ -230,7 +239,7 @@ export function DataPage() {
         <h2>Data</h2>
         <p className="page-desc">
           Raw SQLite contents — one tab per table. Large tables show the newest{" "}
-          {2000} rows.
+          {2000} rows. Updates live.
         </p>
       </header>
 
@@ -276,16 +285,6 @@ export function DataPage() {
                 >
                   {table.label}
                   <span className="data-tab-count">{table.count}</span>
-                </button>
-                <button
-                  type="button"
-                  className="secondary data-tab-refresh"
-                  aria-label={`Refresh ${table.label}`}
-                  title={`Refresh ${table.label}`}
-                  disabled={refreshingTable === table.id || !apiOnline}
-                  onClick={() => void refreshTable(table.id)}
-                >
-                  {refreshingTable === table.id ? "…" : "↻"}
                 </button>
               </div>
             ))}

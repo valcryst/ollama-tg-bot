@@ -63,8 +63,16 @@ export function getGeneralFactById(id: number): GeneralFactRecord | null {
   return row ? rowToGeneralFactRecord(row) : null;
 }
 
+function notifyGeneralMemoryChanged(): void {
+  void import("../live-events.js").then(({ emitDataUpdated, emitMemoryUpdated }) => {
+    emitMemoryUpdated("general");
+    emitDataUpdated(["general_facts"]);
+  });
+}
+
 export function deleteGeneralFactById(id: number): boolean {
   const result = db.prepare(`DELETE FROM general_facts WHERE id = ?`).run(id);
+  if (result.changes > 0) notifyGeneralMemoryChanged();
   return result.changes > 0;
 }
 
@@ -91,6 +99,7 @@ export function createGeneralFact(fact: string): GeneralFactRecord | null {
     .prepare(`INSERT INTO general_facts (fact) VALUES (?)`)
     .run(normalized);
   pruneGeneralFacts();
+  notifyGeneralMemoryChanged();
   return getGeneralFactById(Number(result.lastInsertRowid));
 }
 
@@ -116,6 +125,7 @@ export function updateGeneralFactById(
     normalized,
     id,
   );
+  notifyGeneralMemoryChanged();
   return getGeneralFactById(id);
 }
 
@@ -137,12 +147,15 @@ export function addGeneralFacts(facts: string[]): number {
   }
 
   pruneGeneralFacts();
+  if (added > 0) notifyGeneralMemoryChanged();
   return added;
 }
 
 export function clearAllGeneralFacts(): number {
   const result = db.prepare(`DELETE FROM general_facts`).run();
-  return Number(result.changes);
+  const deleted = Number(result.changes);
+  if (deleted > 0) notifyGeneralMemoryChanged();
+  return deleted;
 }
 
 function pruneGeneralFacts(): void {

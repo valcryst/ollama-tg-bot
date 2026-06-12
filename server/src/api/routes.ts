@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getBotUsername, getBot } from "../bot/index.js";
+import { getBot } from "../bot/index.js";
 import { resolveOwnerUsername } from "../bot/resolve-owner.js";
 import {
   getStickerCatalogState,
@@ -17,7 +17,6 @@ import {
 import {
   clearErrors,
   getSettings,
-  getStats,
   updateSettings,
   type Settings,
 } from "../db/database.js";
@@ -60,7 +59,6 @@ import {
   replaceUserMemory,
   updateUserFactById,
 } from "../db/user-memory.js";
-import { listRecentErrors } from "../db/error-log.js";
 import { getDataTable, listDataTables } from "../db/data-browser.js";
 import {
   createPersonality,
@@ -75,18 +73,16 @@ import {
   updatePersonalityById,
 } from "../db/personalities.js";
 import {
-  getMoodStateView,
   resetMoodState,
   saveMoodState,
   tickMoodCooldown,
 } from "../db/mood.js";
+import { MOOD_KEYS, normalizeMoodValues } from "../mood.js";
 import {
-  MOOD_KEYS,
-  MOOD_TRAIT_HINTS,
-  normalizeMoodValues,
-} from "../mood.js";
-
-const startedAt = new Date();
+  buildMoodPayload,
+  buildSettingsPayload,
+  buildStatsPayload,
+} from "../dashboard-payloads.js";
 
 function stickerCatalogResponse() {
   const settings = getSettings();
@@ -115,16 +111,7 @@ export function createApiRouter(): Router {
 
   router.get("/settings", async (_req, res) => {
     try {
-      const settings = getSettings();
-      await ensureModelContextCache(settings.model, settings.apiBaseUrl);
-      const resolved = getResolvedSettings(settings);
-      res.json({
-        ...resolved,
-        baseSystemPrompt: buildBaseSystemPrompt(resolved),
-        derivedHistoryLimits: getResolvedHistoryLimits(settings),
-        contextBudget: getContextBudgetForSettings(settings),
-        vramAvailableGb: getVramAvailableGb(),
-      });
+      res.json(await buildSettingsPayload());
     } catch (err) {
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to load settings",
@@ -821,23 +808,7 @@ export function createApiRouter(): Router {
 
   router.get("/stats", (_req, res) => {
     try {
-      const stats = getStats();
-      let botRunning = false;
-      try {
-        getBot();
-        botRunning = true;
-      } catch {
-        botRunning = false;
-      }
-
-      res.json({
-        ...stats,
-        botUsername: getBotUsername() || null,
-        botRunning,
-        uptimeSeconds: Math.floor((Date.now() - startedAt.getTime()) / 1000),
-        startedAt: startedAt.toISOString(),
-        recentErrors: listRecentErrors(20),
-      });
+      res.json(buildStatsPayload());
     } catch (err) {
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to load stats",
@@ -845,27 +816,9 @@ export function createApiRouter(): Router {
     }
   });
 
-  function moodApiPayload() {
-    const settings = getSettings();
-    const activePersonalityId = resolveActivePersonalityId(
-      settings.activePersonalityId,
-    );
-    const activePersonality = activePersonalityId
-      ? getPersonalityById(activePersonalityId)
-      : null;
-    return {
-      defaults: getActivePersonalityMoodDefaults(),
-      activePersonalityId,
-      activePersonalityName: activePersonality?.name ?? null,
-      cooldownMinutes: settings.moodCooldownMinutes,
-      traitHints: MOOD_TRAIT_HINTS,
-      current: getMoodStateView(),
-    };
-  }
-
   router.get("/mood", (_req, res) => {
     try {
-      res.json(moodApiPayload());
+      res.json(buildMoodPayload());
     } catch (err) {
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to load mood",
@@ -895,7 +848,7 @@ export function createApiRouter(): Router {
       if (Object.keys(patch).length > 0) {
         updateSettings(patch);
       }
-      res.json(moodApiPayload());
+      res.json(buildMoodPayload());
     } catch (err) {
       res.status(400).json({
         error: err instanceof Error ? err.message : "Invalid mood settings",
@@ -906,7 +859,7 @@ export function createApiRouter(): Router {
   router.post("/mood/refresh", (_req, res) => {
     try {
       tickMoodCooldown();
-      res.json(moodApiPayload());
+      res.json(buildMoodPayload());
     } catch (err) {
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to refresh mood",
@@ -917,7 +870,7 @@ export function createApiRouter(): Router {
   router.delete("/mood/current", (_req, res) => {
     try {
       const deleted = resetMoodState();
-      res.json({ ok: true, deleted, ...moodApiPayload() });
+      res.json({ ok: true, deleted, ...buildMoodPayload() });
     } catch (err) {
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to reset mood",

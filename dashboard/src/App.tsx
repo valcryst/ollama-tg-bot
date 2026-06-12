@@ -55,7 +55,7 @@ function DashboardRoutes() {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="memories" element={<MemoriesPage />} />
         <Route path="mood" element={<MoodPage />} />
-        <Route path="debug" element={<DebugPage />} />
+        <Route path="debug/*" element={<DebugPage />} />
         <Route path="data" element={<DataPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

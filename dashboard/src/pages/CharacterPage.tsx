@@ -8,6 +8,7 @@ import {
   type Personality,
 } from "../api";
 import { useDashboard } from "../context/DashboardContext";
+import { useLiveMood, useLivePersonalities } from "../liveSocket";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { SettingsNumberField } from "../SettingsNumberField";
 
@@ -40,32 +41,49 @@ export function CharacterPage() {
   const [newMoodDefaults, setNewMoodDefaults] =
     useState<MoodValues>(DEFAULT_MOOD_VALUES);
 
-  const load = useCallback(async () => {
-    if (configBlocked) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [data, mood] = await Promise.all([
-        api.getPersonalities(),
-        api.getMood(),
-      ]);
-      setPersonalities(data.personalities);
-      setActiveId(data.activePersonalityId);
-      setTraitHints(mood.traitHints);
-      setDraft((d) =>
-        d ? { ...d, activePersonalityId: data.activePersonalityId } : d,
-      );
-    } catch (err) {
-      setError(err);
-      setPersonalities([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [configBlocked, setDraft]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (configBlocked) return;
+      if (!silent) setLoading(true);
+      setError(null);
+      try {
+        const [data, mood] = await Promise.all([
+          api.getPersonalities(),
+          api.getMood(),
+        ]);
+        setPersonalities(data.personalities);
+        setActiveId(data.activePersonalityId);
+        setTraitHints(mood.traitHints);
+        setDraft((d) =>
+          d ? { ...d, activePersonalityId: data.activePersonalityId } : d,
+        );
+      } catch (err) {
+        setError(err);
+        setPersonalities([]);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [configBlocked, setDraft],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useLivePersonalities(
+    useCallback(() => {
+      void load(true);
+    }, [load]),
+    !configBlocked,
+  );
+
+  useLiveMood(
+    useCallback((mood) => {
+      setTraitHints(mood.traitHints);
+    }, []),
+    !configBlocked,
+  );
 
   async function activatePersonality(id: number) {
     setActivatingId(id);
@@ -222,14 +240,6 @@ export function CharacterPage() {
       <section className="card">
         <div className="section-head">
           <h3 className="section-title">Personalities</h3>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => void load()}
-            disabled={loading || configBlocked}
-          >
-            {loading ? "Loading…" : "Refresh"}
-          </button>
         </div>
 
         {error != null ? (

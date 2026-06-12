@@ -13,6 +13,7 @@ import {
   startMoodCooldownWorker,
   stopMoodCooldownWorker,
 } from "./mood-cooldown.js";
+import { initLiveSocket } from "./socket.js";
 
 async function main(): Promise<void> {
   requireStartupEnv();
@@ -51,6 +52,8 @@ async function main(): Promise<void> {
     logInfo(`Listening on http://${config.host}:${config.port}`);
   });
 
+  const liveSocket = initLiveSocket(server);
+
   await startBot();
 
   const shutdown = async () => {
@@ -58,6 +61,7 @@ async function main(): Promise<void> {
     stopMoodCooldownWorker();
     await stopBot();
     await closePlaywrightBrowser();
+    liveSocket.close();
     server.close();
     process.exit(0);
   };

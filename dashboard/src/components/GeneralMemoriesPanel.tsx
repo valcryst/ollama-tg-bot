@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type GeneralMemoryFact } from "../api";
+import { useLiveMemory } from "../liveSocket";
 import { ErrorBanner } from "./ErrorBanner";
 
 interface GeneralMemoriesPanelProps {
@@ -21,24 +22,35 @@ export function GeneralMemoriesPanel({
   const [editText, setEditText] = useState("");
   const [addFactText, setAddFactText] = useState("");
 
-  const load = useCallback(async () => {
-    if (!apiOnline) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await api.getGeneralMemories();
-      setFacts(data.facts);
-    } catch (err) {
-      setError(err);
-      setFacts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiOnline]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!apiOnline) return;
+      if (!silent) setLoading(true);
+      setError(null);
+      try {
+        const data = await api.getGeneralMemories();
+        setFacts(data.facts);
+      } catch (err) {
+        setError(err);
+        setFacts([]);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [apiOnline],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useLiveMemory(
+    "general",
+    useCallback(() => {
+      void load(true);
+    }, [load]),
+    apiOnline,
+  );
 
   const upsertFact = (record: GeneralMemoryFact) => {
     setFacts((prev) => {
@@ -150,29 +162,19 @@ export function GeneralMemoriesPanel({
         <h2>General memory</h2>
         <p className="page-desc">
           Facts, terms, and knowledge shared across all chats. {facts.length}{" "}
-          total.
+          total. Updates live.
         </p>
       </div>
-      <div className="memories-header-actions">
-        {facts.length > 0 ? (
-          <button
-            type="button"
-            className="secondary danger-btn"
-            disabled={clearing}
-            onClick={() => void clearAll()}
-          >
-            {clearing ? "…" : "Clear all"}
-          </button>
-        ) : null}
+      {facts.length > 0 ? (
         <button
           type="button"
-          className="secondary"
-          onClick={() => void load()}
-          disabled={loading}
+          className="secondary danger-btn"
+          disabled={clearing}
+          onClick={() => void clearAll()}
         >
-          {loading ? "…" : "Refresh"}
+          {clearing ? "…" : "Clear all"}
         </button>
-      </div>
+      ) : null}
     </header>
   ) : (
     <div className="memories-header">
@@ -180,11 +182,11 @@ export function GeneralMemoriesPanel({
         <h2>General memory</h2>
         <p className="hint">
           Facts, terms, and knowledge shared across all chats. {facts.length}{" "}
-          total.
+          total. Updates live.
         </p>
       </div>
-      <div className="memories-header-actions">
-        {facts.length > 0 ? (
+      {facts.length > 0 ? (
+        <div className="memories-header-actions">
           <button
             type="button"
             className="secondary danger-btn"
@@ -193,16 +195,8 @@ export function GeneralMemoriesPanel({
           >
             {clearing ? "…" : "Clear all"}
           </button>
-        ) : null}
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => void load()}
-          disabled={loading}
-        >
-          {loading ? "…" : "Refresh"}
-        </button>
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 

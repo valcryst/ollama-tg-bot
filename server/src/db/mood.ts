@@ -104,6 +104,9 @@ export function tickMoodCooldown(): boolean {
   if (current && moodValuesEqual(current, decayed)) return false;
 
   writeMeta(MOOD_VALUES_KEY, JSON.stringify(decayed));
+  void import("../live-events.js").then(({ emitMoodUpdated }) => {
+    emitMoodUpdated();
+  });
   return true;
 }
 
@@ -153,6 +156,9 @@ export function saveMoodState(values: MoodValues): MoodState {
   writeMeta(MOOD_VALUES_KEY, encoded);
   writeMeta(MOOD_UPDATED_AT_KEY, updatedAt);
 
+  void import("../live-events.js").then(({ emitMoodUpdated }) => {
+    emitMoodUpdated();
+  });
   return { values: normalized, updatedAt };
 }
 
@@ -161,5 +167,10 @@ export function resetMoodState(): boolean {
   deleteMeta(MOOD_ANCHOR_KEY);
   deleteMeta(MOOD_VALUES_KEY);
   deleteMeta(MOOD_UPDATED_AT_KEY);
+  if (hadValues) {
+    void import("../live-events.js").then(({ emitMoodUpdated }) => {
+      emitMoodUpdated();
+    });
+  }
   return hadValues;
 }

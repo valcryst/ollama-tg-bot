@@ -4,10 +4,17 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { api, type LlmModel, type Settings, type Stats } from "../api";
+import {
+  getLiveSocket,
+  useLiveSettings,
+  useLiveSocketConnected,
+  useLiveStats,
+} from "../liveSocket";
 import {
   calculateContextBudget,
   modelContextFromTags,
@@ -85,6 +92,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     Partial<Record<SectionKey, unknown>>
   >({});
   const [saveOk, setSaveOk] = useState(false);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   const setSectionError = (key: SectionKey, err: unknown | null) => {
     setSectionErrors((prev) => {
@@ -181,49 +190,61 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void load();
-    const id = setInterval(async () => {
-      try {
-        await api.checkHealth();
-        setApiOnline(true);
-      } catch (err) {
-        setApiOnline(false);
-        setSectionErrors((prev) => ({ ...prev, stats: err }));
-        return;
-      }
+  }, [load]);
 
-      try {
-        const st = await api.getStats();
-        setStats(st);
-        setSectionErrors((prev) => {
-          const next = { ...prev };
-          delete next.stats;
-          return next;
+  const handleSocketConnected = useCallback((connected: boolean) => {
+    setApiOnline(connected);
+    if (connected) {
+      setSectionErrors((prev) => {
+        const next = { ...prev };
+        delete next.stats;
+        return next;
+      });
+    }
+  }, []);
+
+  useLiveSocketConnected(handleSocketConnected);
+
+  useLiveStats(
+    useCallback((st) => {
+      setStats(st);
+      setSectionErrors((prev) => {
+        const next = { ...prev };
+        delete next.stats;
+        return next;
+      });
+    }, []),
+  );
+
+  useLiveSettings(
+    useCallback(
+      (updated) => {
+        setSettings(updated);
+        setVramAvailableGb(updated.vramAvailableGb);
+        setDraft((current) => {
+          if (saving || !current || !settingsRef.current) return current;
+          const draftMatchesSaved =
+            JSON.stringify(current) === JSON.stringify(settingsRef.current);
+          return draftMatchesSaved ? updated : current;
         });
-      } catch (err) {
-        setSectionErrors((prev) => ({ ...prev, stats: err }));
-      }
+        const host = updated.apiBaseUrl.trim();
+        if (host && verifiedApiBaseUrl === host) {
+          void api.llmHealth(host).then(setLlmOk).catch(() => setLlmOk(false));
+        }
+      },
+      [saving, verifiedApiBaseUrl],
+    ),
+  );
 
-      try {
-        const ok = await api.llmHealth();
-        setLlmOk(ok);
-        setSectionErrors((prev) => {
-          const next = { ...prev };
-          delete next.llm;
-          return next;
-        });
-      } catch (err) {
-        setLlmOk(false);
-        setSectionErrors((prev) => ({ ...prev, llm: err }));
-      }
-
-      try {
-        const tavily = await api.tavilyStatus();
-        setTavilyConfigured(tavily.configured);
-      } catch {
-        setTavilyConfigured(null);
-      }
-    }, 5000);
-    return () => clearInterval(id);
+  useEffect(() => {
+    const socket = getLiveSocket();
+    const onReconnect = () => {
+      void load();
+    };
+    socket.io.on("reconnect", onReconnect);
+    return () => {
+      socket.io.off("reconnect", onReconnect);
+    };
   }, [load]);
 
   const fetchModelsForHost = async (host: string) => {

@@ -259,6 +259,11 @@ export function updateSettings(partial: Partial<Settings>): Settings {
   }
 
   void refreshModelContextCache(resolved.model, resolved.apiBaseUrl);
+  void import("../live-events.js").then(({ emitDataUpdated, emitMoodUpdated, emitSettingsUpdated }) => {
+    void emitSettingsUpdated();
+    emitMoodUpdated();
+    emitDataUpdated(["settings"]);
+  });
   return resolved;
 }
 
@@ -287,15 +292,24 @@ export function getStats(): Stats {
   };
 }
 
+function notifyStatsChanged(): void {
+  void import("../live-events.js").then(({ emitDataUpdated, emitStatsUpdated }) => {
+    emitStatsUpdated();
+    emitDataUpdated(["stats", "stats_meta"]);
+  });
+}
+
 export function recordMessageReceived(): void {
   incrementStat("messagesReceived");
   touchActivity();
+  notifyStatsChanged();
 }
 
 export function recordReply(usedVision: boolean): void {
   incrementStat("messagesReplied");
   if (usedVision) incrementStat("visionRequests");
   touchActivity();
+  notifyStatsChanged();
 }
 
 export interface ErrorLogInput {
@@ -311,11 +325,19 @@ export function recordError(detail?: ErrorLogInput): void {
   if (detail) {
     appendErrorLog(detail);
   }
+  void import("../live-events.js").then(({ emitDataUpdated, emitStatsUpdated }) => {
+    emitStatsUpdated();
+    emitDataUpdated(["stats", "error_log"]);
+  });
 }
 
 export function clearErrors(): number {
   const deleted = clearErrorLog();
   db.prepare("UPDATE stats SET value = 0 WHERE key = 'errors'").run();
+  void import("../live-events.js").then(({ emitDataUpdated, emitStatsUpdated }) => {
+    emitStatsUpdated();
+    emitDataUpdated(["stats", "error_log"]);
+  });
   return deleted;
 }
 

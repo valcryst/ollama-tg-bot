@@ -91,6 +91,19 @@ export interface MoodPayload {
   current: MoodState | null;
 }
 
+export type MemoryScope = "user" | "group" | "general";
+
+export interface DashboardDebugEvent {
+  chatId: string;
+  traceId: number;
+  listItem: MessageReportListItem | null;
+  trace: MessageReportDetail | null;
+}
+
+export interface DashboardDataEvent {
+  tableIds?: string[];
+}
+
 export type PhaseStatus = "skipped" | "ok" | "failed";
 
 export interface ReportDetailFields {

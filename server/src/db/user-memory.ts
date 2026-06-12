@@ -97,8 +97,16 @@ function getUserMemoryRecord(userId: string): UserFactRecord | null {
   return row ? rowToUserFactRecord(row) : null;
 }
 
+function notifyUserMemoryChanged(): void {
+  void import("../live-events.js").then(({ emitDataUpdated, emitMemoryUpdated }) => {
+    emitMemoryUpdated("user");
+    emitDataUpdated(["user_memories"]);
+  });
+}
+
 export function deleteUserFactById(id: number): boolean {
   const result = db.prepare(`DELETE FROM user_memories WHERE id = ?`).run(id);
+  if (result.changes > 0) notifyUserMemoryChanged();
   return result.changes > 0;
 }
 
@@ -132,7 +140,9 @@ export function clearUserFactsForUser(userId: string): number {
   const result = db
     .prepare(`DELETE FROM user_memories WHERE user_id = ?`)
     .run(userId);
-  return Number(result.changes);
+  const deleted = Number(result.changes);
+  if (deleted > 0) notifyUserMemoryChanged();
+  return deleted;
 }
 
 export function addUserFacts(userId: string, facts: string[]): number {
@@ -154,7 +164,10 @@ export function addUserFacts(userId: string, facts: string[]): number {
 }
 
 export function clearUserMemory(userId: string): void {
-  db.prepare(`DELETE FROM user_memories WHERE user_id = ?`).run(userId);
+  const result = db
+    .prepare(`DELETE FROM user_memories WHERE user_id = ?`)
+    .run(userId);
+  if (result.changes > 0) notifyUserMemoryChanged();
 }
 
 export function formatUserMemoryForPrompt(facts: string[]): string {
@@ -186,6 +199,7 @@ export function replaceUserMemory(userId: string, content: string): void {
        content = excluded.content,
        updated_at = excluded.updated_at`,
   ).run(userId, normalized);
+  notifyUserMemoryChanged();
 }
 
 function appendUniqueLine(existing: string, fact: string): string {

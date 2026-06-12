@@ -11,6 +11,10 @@ export default defineConfig({
     port: DEV_UI_PORT,
     proxy: {
       "/api": `http://127.0.0.1:${DEV_API_PORT}`,
+      "/socket.io": {
+        target: `http://127.0.0.1:${DEV_API_PORT}`,
+        ws: true,
+      },
     },
   },
 });

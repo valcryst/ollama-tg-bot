@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type GroupMemoryFact, type UserMemoryFact } from "../api";
+import { useLiveMemory } from "../liveSocket";
 import { ErrorBanner } from "./ErrorBanner";
 
 export type MemoryKind = "user" | "group";
@@ -77,30 +78,41 @@ export function MemoriesPanel({
   const [addEntityId, setAddEntityId] = useState("");
   const [addFactText, setAddFactText] = useState("");
 
-  const load = useCallback(async () => {
-    if (!apiOnline) return;
-    setLoading(true);
-    setError(null);
-    try {
-      if (kind === "user") {
-        const data = await api.getMemories();
-        setUserFacts(data.facts);
-      } else {
-        const data = await api.getGroupMemories();
-        setGroupFacts(data.facts);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!apiOnline) return;
+      if (!silent) setLoading(true);
+      setError(null);
+      try {
+        if (kind === "user") {
+          const data = await api.getMemories();
+          setUserFacts(data.facts);
+        } else {
+          const data = await api.getGroupMemories();
+          setGroupFacts(data.facts);
+        }
+      } catch (err) {
+        setError(err);
+        if (kind === "user") setUserFacts([]);
+        else setGroupFacts([]);
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } catch (err) {
-      setError(err);
-      if (kind === "user") setUserFacts([]);
-      else setGroupFacts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiOnline, kind]);
+    },
+    [apiOnline, kind],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useLiveMemory(
+    kind,
+    useCallback(() => {
+      void load(true);
+    }, [load]),
+    apiOnline,
+  );
 
   const userGroups = useMemo((): UserGroup[] => {
     const map = new Map<string, UserMemoryFact[]>();
@@ -355,34 +367,18 @@ export function MemoriesPanel({
       <div>
         <h2>{copy.title}</h2>
         <p className="page-desc">
-          {copy.desc} {facts.length} total.
+          {copy.desc} {facts.length} total. Updates live.
         </p>
       </div>
-      <button
-        type="button"
-        className="secondary"
-        onClick={() => void load()}
-        disabled={loading}
-      >
-        {loading ? "…" : "Refresh"}
-      </button>
     </header>
   ) : (
     <div className="memories-header">
       <div>
         <h2>{copy.title}</h2>
         <p className="hint">
-          {copy.desc} {facts.length} total.
+          {copy.desc} {facts.length} total. Updates live.
         </p>
       </div>
-      <button
-        type="button"
-        className="secondary"
-        onClick={() => void load()}
-        disabled={loading}
-      >
-        {loading ? "…" : "Refresh"}
-      </button>
     </div>
   );
 

@@ -234,6 +234,69 @@ export function upsertMessageReport(input: {
     input.durationMs,
   );
   trimTracesForChat(input.chatId);
+  void import("../live-events.js").then(({ emitDataUpdated, emitDebugUpdated }) => {
+    emitDebugUpdated(buildDebugLivePayload(input.id));
+    emitDataUpdated(["debug_traces"]);
+  });
+}
+
+type DebugTraceListRow = {
+  id: number;
+  chat_id: string;
+  user_id: string | null;
+  message_preview: string;
+  status: ReportStatus;
+  summary_json: string;
+  duration_ms: number | null;
+  created_at: number;
+};
+
+function rowToListItem(row: DebugTraceListRow): MessageReportListItem | null {
+  const list = parseListSummary(row.summary_json);
+  if (!list) return null;
+  return {
+    id: row.id,
+    chatId: row.chat_id,
+    userId: row.user_id,
+    userLabel: formatUserLabel(row.user_id),
+    messagePreview: row.message_preview,
+    status: row.status,
+    headline: list.headline,
+    badges: list.badges,
+    durationMs: row.duration_ms,
+    createdAt: new Date(row.created_at * 1000).toISOString(),
+  };
+}
+
+export function getDebugTraceListItem(
+  id: number,
+): MessageReportListItem | null {
+  const row = db
+    .prepare(
+      `SELECT id, chat_id, user_id, message_preview, status,
+              summary_json, duration_ms, created_at
+       FROM debug_traces
+       WHERE id = ?`,
+    )
+    .get(id) as DebugTraceListRow | undefined;
+  if (!row) return null;
+  return rowToListItem(row);
+}
+
+export function buildDebugLivePayload(traceId: number): {
+  chatId: string;
+  traceId: number;
+  listItem: MessageReportListItem | null;
+  trace: MessageReportDetail | null;
+} | null {
+  const trace = getDebugTraceById(traceId);
+  if (!trace) return null;
+  return {
+    chatId: trace.chatId,
+    traceId,
+    listItem: getDebugTraceListItem(traceId),
+    trace,
+  };
 }
 
 export function listDebugChats(): DebugChatSummary[] {
@@ -332,22 +395,8 @@ export function listDebugTracesForChat(
   }>;
 
   return rows.flatMap((row) => {
-    const list = parseListSummary(row.summary_json);
-    if (!list) return [];
-    return [
-      {
-        id: row.id,
-        chatId: row.chat_id,
-        userId: row.user_id,
-        userLabel: formatUserLabel(row.user_id),
-        messagePreview: row.message_preview,
-        status: row.status,
-        headline: list.headline,
-        badges: list.badges,
-        durationMs: row.duration_ms,
-        createdAt: new Date(row.created_at * 1000).toISOString(),
-      },
-    ];
+    const item = rowToListItem(row);
+    return item ? [item] : [];
   });
 }
 

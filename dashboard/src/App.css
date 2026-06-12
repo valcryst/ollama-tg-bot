@@ -1293,6 +1293,11 @@ button.danger-btn:hover:not(:disabled) {
   background: rgba(110, 231, 183, 0.06);
 }
 
+a.report-chat-item,
+a.report-message-item {
+  text-decoration: none;
+}
+
 .report-message-top {
   display: flex;
   align-items: center;

@@ -212,6 +212,9 @@ export function createPersonality(
     .run(name, prompt, JSON.stringify(normalizedMood));
 
   const id = Number(result.lastInsertRowid);
+  void import("../live-events.js").then(({ emitPersonalitiesUpdated }) => {
+    emitPersonalitiesUpdated();
+  });
   return getPersonalityById(id);
 }
 
@@ -243,10 +246,18 @@ export function updatePersonalityById(
      WHERE id = ?`,
   ).run(nextName, nextPrompt, JSON.stringify(nextMood), id);
 
+  void import("../live-events.js").then(({ emitPersonalitiesUpdated }) => {
+    emitPersonalitiesUpdated();
+  });
   return getPersonalityById(id);
 }
 
 export function deletePersonalityById(id: number): boolean {
   const result = db.prepare("DELETE FROM personalities WHERE id = ?").run(id);
+  if (result.changes > 0) {
+    void import("../live-events.js").then(({ emitPersonalitiesUpdated }) => {
+      emitPersonalitiesUpdated();
+    });
+  }
   return result.changes > 0;
 }

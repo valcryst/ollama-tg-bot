@@ -7,6 +7,7 @@ import {
   type MoodPayload,
   type MoodValues,
 } from "../api";
+import { useLiveMood } from "../liveSocket";
 
 const MOOD_KEYS: MoodKey[] = [
   "irritated",
@@ -59,6 +60,15 @@ export function MoodPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useLiveMood(
+    useCallback(
+      (data) => {
+        if (!refreshing && !saving) applyPayload(data);
+      },
+      [applyPayload, refreshing, saving],
+    ),
+  );
 
   async function refreshCurrent() {
     setRefreshing(true);
@@ -192,7 +202,7 @@ export function MoodPage() {
               disabled={refreshing || saving}
               onClick={() => void refreshCurrent()}
             >
-              {refreshing ? "Refreshing…" : "Refresh"}
+              {refreshing ? "Applying…" : "Apply cooldown now"}
             </button>
           </div>
           <p className="hint">

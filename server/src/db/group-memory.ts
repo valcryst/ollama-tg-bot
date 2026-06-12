@@ -97,8 +97,16 @@ function getGroupMemoryRecord(groupId: string): GroupFactRecord | null {
   return row ? rowToGroupFactRecord(row) : null;
 }
 
+function notifyGroupMemoryChanged(): void {
+  void import("../live-events.js").then(({ emitDataUpdated, emitMemoryUpdated }) => {
+    emitMemoryUpdated("group");
+    emitDataUpdated(["group_memories"]);
+  });
+}
+
 export function deleteGroupFactById(id: number): boolean {
   const result = db.prepare(`DELETE FROM group_memories WHERE id = ?`).run(id);
+  if (result.changes > 0) notifyGroupMemoryChanged();
   return result.changes > 0;
 }
 
@@ -132,7 +140,9 @@ export function clearGroupFactsForGroup(groupId: string): number {
   const result = db
     .prepare(`DELETE FROM group_memories WHERE group_id = ?`)
     .run(groupId);
-  return Number(result.changes);
+  const deleted = Number(result.changes);
+  if (deleted > 0) notifyGroupMemoryChanged();
+  return deleted;
 }
 
 export function addGroupFacts(groupId: string, facts: string[]): number {
@@ -154,7 +164,10 @@ export function addGroupFacts(groupId: string, facts: string[]): number {
 }
 
 export function clearGroupMemory(groupId: string): void {
-  db.prepare(`DELETE FROM group_memories WHERE group_id = ?`).run(groupId);
+  const result = db
+    .prepare(`DELETE FROM group_memories WHERE group_id = ?`)
+    .run(groupId);
+  if (result.changes > 0) notifyGroupMemoryChanged();
 }
 
 export function formatGroupMemoryForPrompt(facts: string[]): string {
@@ -186,6 +199,7 @@ export function replaceGroupMemory(groupId: string, content: string): void {
        content = excluded.content,
        updated_at = excluded.updated_at`,
   ).run(groupId, normalized);
+  notifyGroupMemoryChanged();
 }
 
 function appendUniqueLine(existing: string, fact: string): string {

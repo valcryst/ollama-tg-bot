@@ -137,6 +137,9 @@ export function appendMessage(
   ).run(chatKey, role, stored);
 
   pruneHistory(chatKey);
+  void import("../live-events.js").then(({ emitDataUpdated }) => {
+    emitDataUpdated(["chat_messages"]);
+  });
 }
 
 export function clearHistory(chatKey: string): void {
