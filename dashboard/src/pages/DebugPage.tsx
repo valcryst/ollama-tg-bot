@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import {
   api,
   type DebugChatSummary,
-  type DebugTraceListItem,
-  type DebugTraceRecord,
-  type DebugTraceSummary,
+  type MessageReportDetail,
+  type MessageReportListItem,
+  type ReportDetail,
+  type ReportPhase,
 } from "../api";
 import { useDashboard } from "../context/DashboardContext";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { JsonView } from "../components/JsonView";
 
 type View = "chats" | "messages" | "detail";
 
@@ -28,98 +28,96 @@ function statusClass(status: string): string {
   return "warn";
 }
 
-function summaryFlags(summary: DebugTraceSummary): string[] {
-  const flags: string[] = [];
-  if (summary.trigger) flags.push(summary.trigger);
-  else if (summary.ignoreReason) flags.push(`ignored: ${summary.ignoreReason}`);
-  if (summary.addressSource) flags.push(`via ${summary.addressSource}`);
-  if (summary.linkFetch) flags.push("link fetch");
-  if (summary.webSearch) flags.push("web search");
-  if (summary.vision) flags.push("vision");
-  if (summary.moodEvaluated) flags.push("mood");
-  if (summary.memoryExtract) {
-    flags.push(
-      summary.memoryUpdated
-        ? `memory (${summary.memoryScopes?.join(", ") ?? "updated"})`
-        : "memory (none)",
+function phaseStatusClass(status: ReportPhase["status"]): string {
+  if (status === "ok") return "ok";
+  if (status === "failed") return "danger";
+  return "";
+}
+
+function PhaseDetail({ detail }: { detail: ReportDetail }) {
+  if (detail.type === "fields") {
+    return (
+      <dl className="report-fields">
+        {detail.fields.map(({ label, value }) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
     );
   }
-  if (summary.sticker) flags.push("sticker");
-  if (summary.error) flags.push(`error: ${summary.error}`);
-  return flags;
-}
 
-function stepSummaryHint(data?: Record<string, unknown>): string | null {
-  if (!data) return null;
-  if (data.kind === "llm") {
-    const label = typeof data.label === "string" ? data.label : "llm";
-    return `LLM · ${label}`;
-  }
-  const keys = Object.keys(data);
-  if (keys.length === 0) return null;
-  if (keys.length <= 3) return keys.join(", ");
-  return `${keys.length} fields`;
-}
-
-function StepDetail({ step }: { step: { step: string; data?: Record<string, unknown> } }) {
-  const data = step.data;
-  if (!data) return null;
-
-  if (data.kind === "llm") {
-    const request = data.request;
-    const response = data.response;
+  if (detail.type === "text") {
     return (
-      <div className="debug-llm-detail">
-        <div className="debug-llm-meta">
-          <span>model: {String(data.model ?? "—")}</span>
-          {data.sampling ? <span>{String(data.sampling)}</span> : null}
-        </div>
-        <details className="debug-nested-details">
-          <summary>Request</summary>
-          <JsonView value={request} collapsed />
-        </details>
-        <details className="debug-nested-details">
-          <summary>Response</summary>
-          <JsonView value={response} collapsed />
-        </details>
+      <div className="report-text-block">
+        <h5>{detail.title}</h5>
+        <pre className="report-pre">{detail.body}</pre>
       </div>
     );
   }
 
-  return <JsonView value={data} collapsed />;
-}
-
-function TimelineStep({
-  step,
-  index,
-}: {
-  step: { step: string; at: number; durationMs?: number; data?: Record<string, unknown> };
-  index: number;
-}) {
-  const hint = stepSummaryHint(step.data);
-  const hasData = step.data != null && Object.keys(step.data).length > 0;
+  if (detail.type === "mood") {
+    return (
+      <dl className="report-fields report-mood-grid">
+        {Object.entries(detail.traits)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([trait, value]) => (
+            <div key={trait}>
+              <dt>{trait}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+      </dl>
+    );
+  }
 
   return (
-    <li>
-      <details className="debug-step">
-        <summary className="debug-step-summary">
-          <span className="debug-step-index">{index + 1}</span>
-          <span className="debug-step-name">{step.step}</span>
-          {hint ? <span className="debug-step-hint">{hint}</span> : null}
-          <span className="debug-step-time">
-            +{step.at}ms
-            {step.durationMs != null ? ` · ${step.durationMs}ms` : ""}
-          </span>
-        </summary>
-        <div className="debug-step-body">
-          {hasData ? (
-            <StepDetail step={step} />
-          ) : (
-            <p className="muted debug-step-empty">No additional data.</p>
-          )}
-        </div>
+    <div className="report-llm">
+      <div className="report-llm-meta">
+        <span>{detail.model}</span>
+        {detail.sampling ? <span>{detail.sampling}</span> : null}
+        {detail.output.meta ? <span>{detail.output.meta}</span> : null}
+      </div>
+      {detail.sections.map((section) => (
+        <details key={section.title} className="report-section">
+          <summary>{section.title}</summary>
+          <pre className="report-pre">{section.body}</pre>
+        </details>
+      ))}
+      <details className="report-section">
+        <summary>Output</summary>
+        <pre className="report-pre">{detail.output.content || "(empty)"}</pre>
       </details>
-    </li>
+      {detail.output.reasoning ? (
+        <details className="report-section">
+          <summary>Reasoning</summary>
+          <pre className="report-pre">{detail.output.reasoning}</pre>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function PhaseRow({ phase }: { phase: ReportPhase }) {
+  return (
+    <details className="report-phase">
+      <summary className="report-phase-summary">
+        <span className={`report-phase-status ${phaseStatusClass(phase.status)}`}>
+          {phase.status}
+        </span>
+        <span className="report-phase-title">{phase.title}</span>
+        <span className="report-phase-oneline">{phase.summary}</span>
+        {phase.durationMs != null ? (
+          <span className="report-phase-duration">{formatDuration(phase.durationMs)}</span>
+        ) : null}
+      </summary>
+      {phase.detail ? (
+        <div className="report-phase-body">
+          <PhaseDetail detail={phase.detail} />
+        </div>
+      ) : null}
+    </details>
   );
 }
 
@@ -127,13 +125,9 @@ export function DebugPage() {
   const { apiOnline } = useDashboard();
   const [view, setView] = useState<View>("chats");
   const [chats, setChats] = useState<DebugChatSummary[]>([]);
-  const [selectedChat, setSelectedChat] = useState<DebugChatSummary | null>(
-    null,
-  );
-  const [traces, setTraces] = useState<DebugTraceListItem[]>([]);
-  const [selectedTrace, setSelectedTrace] = useState<DebugTraceRecord | null>(
-    null,
-  );
+  const [selectedChat, setSelectedChat] = useState<DebugChatSummary | null>(null);
+  const [messages, setMessages] = useState<MessageReportListItem[]>([]);
+  const [detail, setDetail] = useState<MessageReportDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -151,14 +145,14 @@ export function DebugPage() {
     }
   }, [apiOnline]);
 
-  const loadTraces = useCallback(
+  const loadMessages = useCallback(
     async (chat: DebugChatSummary) => {
       if (!apiOnline) return;
       setLoading(true);
       setError(null);
       try {
         const data = await api.getDebugTraces(chat.chatId);
-        setTraces(data.traces);
+        setMessages(data.traces);
         setSelectedChat(chat);
         setView("messages");
       } catch (err) {
@@ -170,12 +164,12 @@ export function DebugPage() {
     [apiOnline],
   );
 
-  const loadTraceDetail = useCallback(async (id: number) => {
+  const loadDetail = useCallback(async (id: number) => {
     setLoading(true);
     setError(null);
     try {
       const data = await api.getDebugTrace(id);
-      setSelectedTrace(data.trace);
+      setDetail(data.trace);
       setView("detail");
     } catch (err) {
       setError(err);
@@ -190,16 +184,18 @@ export function DebugPage() {
 
   function goBack() {
     if (view === "detail") {
-      setSelectedTrace(null);
+      setDetail(null);
       setView("messages");
       return;
     }
     if (view === "messages") {
       setSelectedChat(null);
-      setTraces([]);
+      setMessages([]);
       setView("chats");
     }
   }
+
+  const report = detail?.report;
 
   return (
     <div className="page debug-page">
@@ -208,7 +204,7 @@ export function DebugPage() {
           <div>
             <h2>Debug</h2>
             <p className="page-desc">
-              Per-message processing traces (last 50 messages per chat).
+              Message processing reports (last 50 per chat).
             </p>
           </div>
           {view !== "chats" ? (
@@ -235,9 +231,8 @@ export function DebugPage() {
           onRetry={() => {
             if (view === "chats") void loadChats();
             else if (view === "messages" && selectedChat)
-              void loadTraces(selectedChat);
-            else if (view === "detail" && selectedTrace)
-              void loadTraceDetail(selectedTrace.id);
+              void loadMessages(selectedChat);
+            else if (view === "detail" && detail) void loadDetail(detail.id);
           }}
         />
       ) : null}
@@ -249,26 +244,25 @@ export function DebugPage() {
           <h3>Chats</h3>
           {chats.length === 0 ? (
             <p className="muted">
-              No traces yet. Send messages to the bot to populate this view.
+              No reports yet. Send messages to the bot to populate this view.
             </p>
           ) : (
-            <div className="debug-chat-list">
+            <div className="report-chat-list">
               {chats.map((chat) => (
                 <button
                   key={chat.chatId}
                   type="button"
-                  className="debug-chat-item"
-                  onClick={() => void loadTraces(chat)}
+                  className="report-chat-item"
+                  onClick={() => void loadMessages(chat)}
                 >
-                  <div className="debug-chat-item-main">
+                  <div>
                     <strong>{chat.label}</strong>
                     <span className="muted">
                       {chat.chatType === "private" ? "Private" : "Group"} ·{" "}
-                      {chat.traceCount} message
-                      {chat.traceCount === 1 ? "" : "s"}
+                      {chat.traceCount} reports
                     </span>
                   </div>
-                  <span className="muted debug-chat-item-time">
+                  <span className="muted">
                     {chat.latestAt ? formatTime(chat.latestAt) : "—"}
                   </span>
                 </button>
@@ -281,44 +275,34 @@ export function DebugPage() {
       {view === "messages" && selectedChat && !loading ? (
         <section className="card">
           <h3>{selectedChat.label}</h3>
-          <p className="muted page-desc">
-            Recent messages, newest first (max 50).
-          </p>
-          {traces.length === 0 ? (
-            <p className="muted">No messages recorded for this chat.</p>
+          {messages.length === 0 ? (
+            <p className="muted">No reports for this chat.</p>
           ) : (
-            <div className="debug-message-list">
-              {traces.map((trace) => (
+            <div className="report-message-list">
+              {messages.map((item) => (
                 <button
-                  key={trace.id}
+                  key={item.id}
                   type="button"
-                  className="debug-message-item"
-                  onClick={() => void loadTraceDetail(trace.id)}
+                  className="report-message-item"
+                  onClick={() => void loadDetail(item.id)}
                 >
-                  <div className="debug-message-item-top">
-                    <span className={`badge ${statusClass(trace.status)}`}>
-                      {trace.status}
+                  <div className="report-message-top">
+                    <span className={`badge ${statusClass(item.status)}`}>
+                      {item.status}
                     </span>
-                    <span className="muted">
-                      #{trace.id} · {formatTime(trace.createdAt)}
+                    <span className="muted">#{item.id}</span>
+                    <span className="report-message-time">
+                      {formatTime(item.createdAt)}
                     </span>
-                    <span className="debug-duration">
-                      {formatDuration(trace.durationMs ?? trace.summary.durationMs)}
+                    <span className="report-message-duration">
+                      {formatDuration(item.durationMs)}
                     </span>
                   </div>
-                  <div className="debug-message-preview">
-                    {trace.messagePreview}
-                  </div>
-                  <div className="debug-flag-row">
-                    {trace.userLabel ? (
-                      <span className="debug-flag">{trace.userLabel}</span>
-                    ) : null}
-                    {summaryFlags(trace.summary).map((flag) => (
-                      <span key={flag} className="debug-flag">
-                        {flag}
-                      </span>
-                    ))}
-                  </div>
+                  <p className="report-headline">{item.headline}</p>
+                  <p className="report-preview">{item.messagePreview}</p>
+                  {item.userLabel ? (
+                    <span className="report-badge">{item.userLabel}</span>
+                  ) : null}
                 </button>
               ))}
             </div>
@@ -326,75 +310,152 @@ export function DebugPage() {
         </section>
       ) : null}
 
-      {view === "detail" && selectedTrace && !loading ? (
+      {view === "detail" && detail && report && !loading ? (
         <>
-          <section className="card">
-            <h3>Message #{selectedTrace.id}</h3>
-            <dl className="stats debug-summary-grid">
+          <section className={`card report-outcome report-outcome-${report.status}`}>
+            <div className="report-outcome-head">
+              <span className={`badge ${statusClass(report.status)}`}>
+                {report.status}
+              </span>
+              <h3>{report.headline}</h3>
+            </div>
+            <p className="report-preview report-preview-large">
+              {report.intake.messagePreview}
+            </p>
+            <dl className="report-meta">
               <div>
-                <dt>Status</dt>
-                <dd>
-                  <span
-                    className={`badge ${statusClass(selectedTrace.status)}`}
-                  >
-                    {selectedTrace.status}
-                  </span>
-                </dd>
-              </div>
-              <div>
-                <dt>Time</dt>
-                <dd>{formatTime(selectedTrace.createdAt)}</dd>
+                <dt>When</dt>
+                <dd>{formatTime(detail.createdAt)}</dd>
               </div>
               <div>
                 <dt>Duration</dt>
-                <dd>
-                  {formatDuration(
-                    selectedTrace.durationMs ??
-                      selectedTrace.summary.durationMs,
-                  )}
-                </dd>
+                <dd>{formatDuration(report.durationMs)}</dd>
               </div>
               <div>
                 <dt>Chat</dt>
                 <dd>
-                  {selectedTrace.chatType} · {selectedTrace.chatId}
+                  {detail.chatType} · {detail.chatId}
                 </dd>
               </div>
-              <div>
-                <dt>Conv key</dt>
-                <dd>
-                  <code>{selectedTrace.convKey || "—"}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>Telegram message</dt>
-                <dd>{selectedTrace.messageId ?? "—"}</dd>
-              </div>
+              {detail.messageId != null ? (
+                <div>
+                  <dt>Telegram msg</dt>
+                  <dd>{detail.messageId}</dd>
+                </div>
+              ) : null}
             </dl>
-            <p className="debug-message-preview">{selectedTrace.messagePreview}</p>
-            <div className="debug-flag-row">
-              {summaryFlags(selectedTrace.summary).map((flag) => (
-                <span key={flag} className="debug-flag">
-                  {flag}
-                </span>
-              ))}
-            </div>
           </section>
 
           <section className="card">
-            <h3>Processing timeline</h3>
-            {selectedTrace.steps.length === 0 ? (
-              <p className="muted">No steps recorded.</p>
+            <h3>Routing</h3>
+            {report.routing.decision === "ignored" ? (
+              <dl className="report-fields">
+                <div>
+                  <dt>Decision</dt>
+                  <dd>Ignored</dd>
+                </div>
+                <div>
+                  <dt>Reason</dt>
+                  <dd>{report.routing.ignoreLabel}</dd>
+                </div>
+                {report.routing.addressSource ? (
+                  <div>
+                    <dt>Address check</dt>
+                    <dd>{report.routing.addressSource}</dd>
+                  </div>
+                ) : null}
+              </dl>
             ) : (
-              <ol className="debug-timeline">
-                {selectedTrace.steps.map((step, index) => (
-                  <TimelineStep
-                    key={`${step.step}-${step.at}-${index}`}
-                    step={step}
-                    index={index}
-                  />
+              <dl className="report-fields">
+                <div>
+                  <dt>Decision</dt>
+                  <dd>Accepted</dd>
+                </div>
+                <div>
+                  <dt>Trigger</dt>
+                  <dd>{report.routing.triggerLabel}</dd>
+                </div>
+                {report.routing.addressSource ? (
+                  <div>
+                    <dt>Address match</dt>
+                    <dd>{report.routing.addressSource}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            )}
+            {report.intake.hasMedia ? (
+              <p className="muted report-note">
+                Media attached{report.intake.mediaKind ? `: ${report.intake.mediaKind}` : ""}
+              </p>
+            ) : null}
+          </section>
+
+          {report.result.replyChars != null ||
+          report.result.sticker ||
+          report.result.error ||
+          report.result.memory ? (
+            <section className="card">
+              <h3>Result</h3>
+              <dl className="report-fields">
+                {report.result.replyChars != null ? (
+                  <div>
+                    <dt>Reply length</dt>
+                    <dd>{report.result.replyChars} chars</dd>
+                  </div>
+                ) : null}
+                {report.result.chunks != null ? (
+                  <div>
+                    <dt>Chunks sent</dt>
+                    <dd>{report.result.chunks}</dd>
+                  </div>
+                ) : null}
+                {report.result.sticker ? (
+                  <div>
+                    <dt>Sticker</dt>
+                    <dd>{report.result.sticker}</dd>
+                  </div>
+                ) : null}
+                {report.result.thinkingSent ? (
+                  <div>
+                    <dt>Thinking sent</dt>
+                    <dd>Yes</dd>
+                  </div>
+                ) : null}
+                {report.result.memory ? (
+                  <div>
+                    <dt>Memory</dt>
+                    <dd>
+                      {report.result.memory.status === "pending"
+                        ? "Pending…"
+                        : report.result.memory.updated
+                          ? `Updated (${report.result.memory.scopes?.join(", ") ?? "yes"})`
+                          : "No changes"}
+                      {report.result.memory.error
+                        ? ` · ${report.result.memory.error}`
+                        : ""}
+                    </dd>
+                  </div>
+                ) : null}
+                {report.result.error ? (
+                  <div>
+                    <dt>Error</dt>
+                    <dd>{report.result.error}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </section>
+          ) : null}
+
+          <section className="card">
+            <h3>Pipeline</h3>
+            {report.phases.length === 0 ? (
+              <p className="muted">No pipeline steps recorded.</p>
+            ) : (
+              <div className="report-phase-list">
+                {report.phases.map((phase) => (
+                  <PhaseRow key={`${phase.id}-${phase.title}`} phase={phase} />
                 ))}
-              </ol>
+              </div>
             )}
           </section>
         </>

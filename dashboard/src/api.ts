@@ -91,30 +91,87 @@ export interface MoodPayload {
   current: MoodState | null;
 }
 
-export interface DebugTraceSummary {
-  outcome: "ignored" | "processed" | "error";
-  ignoreReason?: string;
-  trigger?: "addressed" | "random" | "image";
-  addressed?: boolean;
-  addressSource?: string;
-  durationMs?: number;
-  webSearch: boolean;
-  linkFetch: boolean;
-  vision: boolean;
-  memoryExtract: boolean;
-  memoryUpdated: boolean;
-  memoryScopes?: string[];
-  sticker: boolean;
-  moodEvaluated: boolean;
-  error?: string;
-  replyChars?: number;
+export type PhaseStatus = "skipped" | "ok" | "failed";
+
+export interface ReportDetailFields {
+  type: "fields";
+  fields: Array<{ label: string; value: string }>;
 }
 
-export interface DebugStep {
-  at: number;
-  step: string;
+export interface ReportDetailText {
+  type: "text";
+  title: string;
+  body: string;
+}
+
+export interface ReportDetailLlm {
+  type: "llm";
+  model: string;
+  sampling?: string;
+  sections: Array<{ title: string; body: string }>;
+  output: {
+    content: string;
+    reasoning?: string;
+    meta?: string;
+  };
+}
+
+export interface ReportDetailMood {
+  type: "mood";
+  traits: Record<string, number>;
+}
+
+export type ReportDetail =
+  | ReportDetailFields
+  | ReportDetailText
+  | ReportDetailLlm
+  | ReportDetailMood;
+
+export interface ReportPhase {
+  id: string;
+  title: string;
+  status: PhaseStatus;
   durationMs?: number;
-  data?: Record<string, unknown>;
+  summary: string;
+  detail?: ReportDetail;
+}
+
+export interface MessageReportRecord {
+  status: "ignored" | "processed" | "error";
+  headline: string;
+  durationMs: number;
+  intake: {
+    messagePreview: string;
+    hasMedia: boolean;
+    mediaKind?: string;
+  };
+  routing:
+    | {
+        decision: "ignored";
+        ignoreReason: string;
+        ignoreLabel: string;
+        addressSource?: string;
+      }
+    | {
+        decision: "accepted";
+        trigger: "addressed" | "random" | "image";
+        triggerLabel: string;
+        addressSource?: string;
+      };
+  phases: ReportPhase[];
+  result: {
+    replyChars?: number;
+    chunks?: number;
+    sticker?: string;
+    thinkingSent?: boolean;
+    memory?: {
+      status: "pending" | "done" | "failed";
+      updated: boolean;
+      scopes?: string[];
+      error?: string;
+    };
+    error?: string;
+  };
 }
 
 export interface DebugChatSummary {
@@ -125,19 +182,20 @@ export interface DebugChatSummary {
   latestAt: string | null;
 }
 
-export interface DebugTraceListItem {
+export interface MessageReportListItem {
   id: number;
   chatId: string;
   userId: string | null;
   userLabel: string | null;
   messagePreview: string;
   status: "ignored" | "processed" | "error";
-  summary: DebugTraceSummary;
+  headline: string;
+  badges: string[];
   durationMs: number | null;
   createdAt: string;
 }
 
-export interface DebugTraceRecord {
+export interface MessageReportDetail {
   id: number;
   chatId: string;
   convKey: string;
@@ -146,10 +204,9 @@ export interface DebugTraceRecord {
   messageId: number | null;
   messagePreview: string;
   status: "ignored" | "processed" | "error";
-  summary: DebugTraceSummary;
-  steps: DebugStep[];
   durationMs: number | null;
   createdAt: string;
+  report: MessageReportRecord;
 }
 
 export interface BotErrorRecord {
@@ -523,9 +580,9 @@ export const api = {
   getDebugChats: () =>
     request<{ chats: DebugChatSummary[] }>("/api/debug/chats"),
   getDebugTraces: (chatId: string) =>
-    request<{ traces: DebugTraceListItem[] }>(
+    request<{ traces: MessageReportListItem[] }>(
       `/api/debug/traces?chatId=${encodeURIComponent(chatId)}`,
     ),
   getDebugTrace: (id: number) =>
-    request<{ trace: DebugTraceRecord }>(`/api/debug/traces/${id}`),
+    request<{ trace: MessageReportDetail }>(`/api/debug/traces/${id}`),
 };

@@ -23,7 +23,7 @@ import {
   parseAssistantMessage,
   providerChatExtensions,
 } from "./openai-compat.js";
-import { getDebugTrace } from "../debug-trace.js";
+import { getMessageReport } from "../message-report.js";
 
 const LIST_MODELS_TIMEOUT_MS = 60_000;
 
@@ -242,9 +242,9 @@ async function requestChat(
 
   const data = toChatResponse(response.choices?.[0], response.usage);
   if (traceTurnId != null) {
-    const trace = getDebugTrace(traceTurnId);
-    if (trace) {
-      trace.recordLlmExchange(
+    const report = getMessageReport(traceTurnId);
+    if (report) {
+      report.recordLlmCall(
         traceLabel ?? "llm",
         model,
         numPredict,

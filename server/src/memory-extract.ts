@@ -2,7 +2,7 @@ import { addGeneralFacts } from "./db/general-memory.js";
 import { replaceGroupFacts } from "./db/group-memory.js";
 import { replaceUserFacts } from "./db/user-memory.js";
 import { logEvent, logEventError } from "./event-log.js";
-import { getDebugTrace } from "./debug-trace.js";
+import { getMessageReport } from "./message-report.js";
 import { chatComplete } from "./llm/client.js";
 import type { ChatMessage } from "./llm/client.js";
 import { parseStructuredResponse } from "./response-format.js";
@@ -165,9 +165,9 @@ export function scheduleMemoryPersistence(ctx: MemoryPersistContext): void {
       groupId: ctx.groupChatId,
     });
     if (ctx.turnId != null) {
-      getDebugTrace(ctx.turnId)?.updateMemoryResult({
-        memoryUpdated: false,
-        memoryScopes: [],
+      getMessageReport(ctx.turnId)?.completeMemory({
+        updated: false,
+        scopes: [],
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -234,9 +234,9 @@ async function persistMemories(ctx: MemoryPersistContext): Promise<void> {
   }
 
   if (ctx.turnId != null) {
-    getDebugTrace(ctx.turnId)?.updateMemoryResult({
-      memoryUpdated: anyUpdated,
-      memoryScopes: updatedScopes,
+    getMessageReport(ctx.turnId)?.completeMemory({
+      updated: anyUpdated,
+      scopes: updatedScopes,
     });
   }
 

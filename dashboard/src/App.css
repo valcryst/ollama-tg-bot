@@ -1251,15 +1251,16 @@ button.danger-btn:hover:not(:disabled) {
   gap: 1rem;
 }
 
-.debug-chat-list,
-.debug-message-list {
+.report-chat-list,
+.report-message-list,
+.report-phase-list {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.debug-chat-item,
-.debug-message-item {
+.report-chat-item,
+.report-message-item {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -1271,59 +1272,59 @@ button.danger-btn:hover:not(:disabled) {
   background: var(--surface-hover);
   color: inherit;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
 }
 
-.debug-chat-item {
+.report-chat-item {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
 }
 
-.debug-chat-item:hover,
-.debug-message-item:hover {
+.report-chat-item:hover,
+.report-message-item:hover {
   border-color: var(--accent);
   background: rgba(110, 231, 183, 0.06);
 }
 
-.debug-chat-item-main {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.debug-chat-item-time {
-  font-size: 0.82rem;
-  white-space: nowrap;
-}
-
-.debug-message-item-top {
+.report-message-top {
   display: flex;
   align-items: center;
   gap: 0.65rem;
   flex-wrap: wrap;
 }
 
-.debug-duration {
-  margin-left: auto;
+.report-message-time,
+.report-message-duration {
   font-size: 0.82rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-.debug-message-preview {
-  font-size: 0.92rem;
+.report-message-duration {
+  margin-left: auto;
+}
+
+.report-headline {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.report-preview {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
   line-height: 1.45;
   word-break: break-word;
 }
 
-.debug-flag-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+.report-preview-large {
+  color: var(--text);
+  font-size: 1rem;
 }
 
-.debug-flag {
+.report-badge {
+  align-self: flex-start;
   font-size: 0.75rem;
   padding: 0.15rem 0.45rem;
   border-radius: 999px;
@@ -1331,181 +1332,173 @@ button.danger-btn:hover:not(:disabled) {
   color: var(--muted);
 }
 
-.debug-summary-grid {
-  margin-bottom: 1rem;
-}
-
-.debug-timeline {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.report-outcome-head {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
-.debug-timeline li {
+.report-outcome-head h3 {
   margin: 0;
-  padding: 0;
-  border: none;
+  font-size: 1.1rem;
 }
 
-.debug-step {
+.report-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 1rem 0 0;
+}
+
+.report-meta dt,
+.report-fields dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.15rem;
+}
+
+.report-meta dd,
+.report-fields dd {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.report-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0;
+}
+
+.report-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+}
+
+.report-phase {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.12);
   overflow: hidden;
 }
 
-.debug-step-summary {
-  display: flex;
+.report-phase-summary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "status title duration"
+    "status oneline duration";
+  gap: 0.15rem 0.65rem;
   align-items: center;
-  gap: 0.6rem;
   padding: 0.65rem 0.85rem;
   cursor: pointer;
   list-style: none;
-  user-select: none;
 }
 
-.debug-step-summary::-webkit-details-marker {
+.report-phase-summary::-webkit-details-marker {
   display: none;
 }
 
-.debug-step-summary::before {
-  content: "▸";
-  flex-shrink: 0;
-  width: 0.85rem;
+.report-phase-status {
+  grid-area: status;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--muted);
-  transition: transform 0.15s ease;
 }
 
-.debug-step[open] > .debug-step-summary::before {
-  transform: rotate(90deg);
+.report-phase-status.ok {
+  color: var(--accent);
 }
 
-.debug-step-summary:hover {
-  background: rgba(110, 231, 183, 0.05);
+.report-phase-status.danger {
+  color: var(--danger);
 }
 
-.debug-step-index {
-  flex-shrink: 0;
-  font-size: 0.72rem;
+.report-phase-title {
+  grid-area: title;
   font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.report-phase-oneline {
+  grid-area: oneline;
+  font-size: 0.82rem;
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  min-width: 1.25rem;
 }
 
-.debug-step-name {
-  font-weight: 600;
-  font-size: 0.88rem;
-  word-break: break-word;
-}
-
-.debug-step-hint {
-  font-size: 0.75rem;
-  color: var(--muted);
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.12);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 14rem;
-}
-
-.debug-step-time {
-  margin-left: auto;
-  flex-shrink: 0;
+.report-phase-duration {
+  grid-area: duration;
   font-size: 0.78rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.debug-step-body {
+.report-phase-body {
   padding: 0 0.85rem 0.85rem;
   border-top: 1px solid var(--border);
 }
 
-.debug-step-empty {
-  margin: 0.65rem 0 0;
-  font-size: 0.82rem;
+.report-pre {
+  margin: 0;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
 }
 
-.debug-nested-details {
+.report-section {
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.15);
   overflow: hidden;
-}
-
-.debug-nested-details + .debug-nested-details {
   margin-top: 0.5rem;
 }
 
-.debug-nested-details summary {
+.report-section summary {
   cursor: pointer;
+  padding: 0.45rem 0.65rem;
   font-size: 0.82rem;
   font-weight: 600;
-  padding: 0.45rem 0.65rem;
   list-style: none;
-  user-select: none;
 }
 
-.debug-nested-details summary::-webkit-details-marker {
+.report-section summary::-webkit-details-marker {
   display: none;
 }
 
-.debug-nested-details summary::before {
-  content: "▸ ";
-  color: var(--muted);
-}
-
-.debug-nested-details[open] > summary::before {
-  content: "▾ ";
-}
-
-.debug-nested-details .debug-json-view {
-  margin: 0;
-  border-top: 1px solid var(--border);
+.report-section .report-pre {
   border-radius: 0;
+  border-top: 1px solid var(--border);
+  max-height: 280px;
 }
 
-.debug-llm-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding-top: 0.65rem;
-}
-
-.debug-llm-meta {
+.report-llm-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   font-size: 0.78rem;
   color: var(--muted);
+  margin-bottom: 0.35rem;
 }
 
-.debug-llm-detail details summary {
-  cursor: pointer;
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin-bottom: 0;
+.report-mood-grid {
+  padding-top: 0.5rem;
 }
 
-.debug-json-view {
-  margin-top: 0.35rem;
-  padding: 0.5rem 0.65rem;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.25);
-  overflow-x: auto;
-  font-size: 0.78rem;
-  line-height: 1.45;
-}
-
-.debug-json-view .react-json-view {
-  background: transparent !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+.report-text-block h5 {
+  margin: 0 0 0.35rem;
+  font-size: 0.82rem;
+  color: var(--muted);
 }
 

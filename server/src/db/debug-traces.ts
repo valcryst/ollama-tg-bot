@@ -2,45 +2,97 @@ let db: import("node:sqlite").DatabaseSync;
 
 export const MAX_TRACES_PER_CHAT = 50;
 
-export interface DebugTraceSummary {
-  outcome: "ignored" | "processed" | "error";
-  ignoreReason?: string;
+export type ReportStatus = "ignored" | "processed" | "error";
+export type PhaseStatus = "skipped" | "ok" | "failed";
+
+export interface ReportDetailFields {
+  type: "fields";
+  fields: Array<{ label: string; value: string }>;
+}
+
+export interface ReportDetailText {
+  type: "text";
+  title: string;
+  body: string;
+}
+
+export interface ReportDetailLlm {
+  type: "llm";
+  model: string;
+  sampling?: string;
+  sections: Array<{ title: string; body: string }>;
+  output: {
+    content: string;
+    reasoning?: string;
+    meta?: string;
+  };
+}
+
+export interface ReportDetailMood {
+  type: "mood";
+  traits: Record<string, number>;
+}
+
+export type ReportDetail =
+  | ReportDetailFields
+  | ReportDetailText
+  | ReportDetailLlm
+  | ReportDetailMood;
+
+export interface ReportPhase {
+  id: string;
+  title: string;
+  status: PhaseStatus;
+  durationMs?: number;
+  summary: string;
+  detail?: ReportDetail;
+}
+
+export interface MessageReportRecord {
+  status: ReportStatus;
+  headline: string;
+  durationMs: number;
+  intake: {
+    messagePreview: string;
+    hasMedia: boolean;
+    mediaKind?: string;
+  };
+  routing:
+    | {
+        decision: "ignored";
+        ignoreReason: string;
+        ignoreLabel: string;
+        addressSource?: string;
+      }
+    | {
+        decision: "accepted";
+        trigger: "addressed" | "random" | "image";
+        triggerLabel: string;
+        addressSource?: string;
+      };
+  phases: ReportPhase[];
+  result: {
+    replyChars?: number;
+    chunks?: number;
+    sticker?: string;
+    thinkingSent?: boolean;
+    memory?: {
+      status: "pending" | "done" | "failed";
+      updated: boolean;
+      scopes?: string[];
+      error?: string;
+    };
+    error?: string;
+  };
+}
+
+export type MessageReport = MessageReportRecord;
+
+export interface MessageReportListSummary {
+  headline: string;
+  badges: string[];
   trigger?: "addressed" | "random" | "image";
-  addressed?: boolean;
-  addressSource?: string;
-  durationMs?: number;
-  webSearch: boolean;
-  linkFetch: boolean;
-  vision: boolean;
-  memoryExtract: boolean;
-  memoryUpdated: boolean;
-  memoryScopes?: string[];
-  sticker: boolean;
-  moodEvaluated: boolean;
-  error?: string;
-  replyChars?: number;
-}
-
-export interface DebugStep {
-  at: number;
-  step: string;
-  durationMs?: number;
-  data?: Record<string, unknown>;
-}
-
-export interface DebugTraceRecord {
-  id: number;
-  chatId: string;
-  convKey: string;
-  userId: string | null;
-  chatType: string;
-  messageId: number | null;
-  messagePreview: string;
-  status: "ignored" | "processed" | "error";
-  summary: DebugTraceSummary;
-  steps: DebugStep[];
-  durationMs: number | null;
-  createdAt: string;
+  ignoreLabel?: string;
 }
 
 export interface DebugChatSummary {
@@ -51,16 +103,31 @@ export interface DebugChatSummary {
   latestAt: string | null;
 }
 
-export interface DebugTraceListItem {
+export interface MessageReportListItem {
   id: number;
   chatId: string;
   userId: string | null;
   userLabel: string | null;
   messagePreview: string;
-  status: "ignored" | "processed" | "error";
-  summary: DebugTraceSummary;
+  status: ReportStatus;
+  headline: string;
+  badges: string[];
   durationMs: number | null;
   createdAt: string;
+}
+
+export interface MessageReportDetail {
+  id: number;
+  chatId: string;
+  convKey: string;
+  userId: string | null;
+  chatType: string;
+  messageId: number | null;
+  messagePreview: string;
+  status: ReportStatus;
+  durationMs: number | null;
+  createdAt: string;
+  report: MessageReportRecord;
 }
 
 export function bindDebugTracesDatabase(
@@ -78,7 +145,7 @@ export function bindDebugTracesDatabase(
       message_preview TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL,
       summary_json TEXT NOT NULL,
-      details_json TEXT NOT NULL DEFAULT '[]',
+      details_json TEXT NOT NULL DEFAULT '{}',
       duration_ms INTEGER,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
@@ -87,37 +154,27 @@ export function bindDebugTracesDatabase(
   `);
 }
 
-function parseSummary(raw: string): DebugTraceSummary {
+function parseListSummary(raw: string): MessageReportListSummary | null {
   try {
-    return JSON.parse(raw) as DebugTraceSummary;
+    const parsed = JSON.parse(raw) as MessageReportListSummary;
+    return parsed.headline ? parsed : null;
   } catch {
-    return {
-      outcome: "ignored",
-      webSearch: false,
-      linkFetch: false,
-      vision: false,
-      memoryExtract: false,
-      memoryUpdated: false,
-      sticker: false,
-      moodEvaluated: false,
-    };
+    return null;
   }
 }
 
-function parseSteps(raw: string): DebugStep[] {
+function parseReport(raw: string): MessageReportRecord | null {
   try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as DebugStep[]) : [];
+    const parsed = JSON.parse(raw) as MessageReportRecord;
+    return parsed.headline ? parsed : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
 function trimTracesForChat(chatId: string): void {
   const row = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM debug_traces WHERE chat_id = ?`,
-    )
+    .prepare(`SELECT COUNT(*) AS n FROM debug_traces WHERE chat_id = ?`)
     .get(chatId) as { n: number };
   const excess = row.n - MAX_TRACES_PER_CHAT;
   if (excess > 0) {
@@ -132,7 +189,7 @@ function trimTracesForChat(chatId: string): void {
   }
 }
 
-export function upsertDebugTrace(input: {
+export function upsertMessageReport(input: {
   id: number;
   chatId: string;
   convKey: string;
@@ -140,9 +197,9 @@ export function upsertDebugTrace(input: {
   chatType: string;
   messageId: number | null;
   messagePreview: string;
-  status: "ignored" | "processed" | "error";
-  summary: DebugTraceSummary;
-  steps: DebugStep[];
+  status: ReportStatus;
+  listSummary: MessageReportListSummary;
+  report: MessageReportRecord;
   durationMs: number | null;
 }): void {
   db.prepare(
@@ -151,6 +208,7 @@ export function upsertDebugTrace(input: {
        message_preview, status, summary_json, details_json, duration_ms
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
+       conv_key = excluded.conv_key,
        status = excluded.status,
        summary_json = excluded.summary_json,
        details_json = excluded.details_json,
@@ -164,8 +222,8 @@ export function upsertDebugTrace(input: {
     input.messageId,
     input.messagePreview.slice(0, 500),
     input.status,
-    JSON.stringify(input.summary),
-    JSON.stringify(input.steps),
+    JSON.stringify(input.listSummary),
+    JSON.stringify(input.report),
     input.durationMs,
   );
   trimTracesForChat(input.chatId);
@@ -243,7 +301,9 @@ function formatUserLabel(userId: string | null): string | null {
   return `User ${userId}`;
 }
 
-export function listDebugTracesForChat(chatId: string): DebugTraceListItem[] {
+export function listDebugTracesForChat(
+  chatId: string,
+): MessageReportListItem[] {
   const rows = db
     .prepare(
       `SELECT id, chat_id, user_id, message_preview, status,
@@ -258,26 +318,33 @@ export function listDebugTracesForChat(chatId: string): DebugTraceListItem[] {
     chat_id: string;
     user_id: string | null;
     message_preview: string;
-    status: "ignored" | "processed" | "error";
+    status: ReportStatus;
     summary_json: string;
     duration_ms: number | null;
     created_at: number;
   }>;
 
-  return rows.map((row) => ({
-    id: row.id,
-    chatId: row.chat_id,
-    userId: row.user_id,
-    userLabel: formatUserLabel(row.user_id),
-    messagePreview: row.message_preview,
-    status: row.status,
-    summary: parseSummary(row.summary_json),
-    durationMs: row.duration_ms,
-    createdAt: new Date(row.created_at * 1000).toISOString(),
-  }));
+  return rows.flatMap((row) => {
+    const list = parseListSummary(row.summary_json);
+    if (!list) return [];
+    return [
+      {
+        id: row.id,
+        chatId: row.chat_id,
+        userId: row.user_id,
+        userLabel: formatUserLabel(row.user_id),
+        messagePreview: row.message_preview,
+        status: row.status,
+        headline: list.headline,
+        badges: list.badges,
+        durationMs: row.duration_ms,
+        createdAt: new Date(row.created_at * 1000).toISOString(),
+      },
+    ];
+  });
 }
 
-export function getDebugTraceById(id: number): DebugTraceRecord | null {
+export function getDebugTraceById(id: number): MessageReportDetail | null {
   const row = db
     .prepare(
       `SELECT id, chat_id, conv_key, user_id, chat_type, message_id,
@@ -295,7 +362,7 @@ export function getDebugTraceById(id: number): DebugTraceRecord | null {
         chat_type: string;
         message_id: number | null;
         message_preview: string;
-        status: "ignored" | "processed" | "error";
+        status: ReportStatus;
         summary_json: string;
         details_json: string;
         duration_ms: number | null;
@@ -304,6 +371,9 @@ export function getDebugTraceById(id: number): DebugTraceRecord | null {
     | undefined;
 
   if (!row) return null;
+
+  const report = parseReport(row.details_json);
+  if (!report) return null;
 
   return {
     id: row.id,
@@ -314,9 +384,8 @@ export function getDebugTraceById(id: number): DebugTraceRecord | null {
     messageId: row.message_id,
     messagePreview: row.message_preview,
     status: row.status,
-    summary: parseSummary(row.summary_json),
-    steps: parseSteps(row.details_json),
     durationMs: row.duration_ms,
     createdAt: new Date(row.created_at * 1000).toISOString(),
+    report,
   };
 }

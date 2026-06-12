@@ -69,7 +69,10 @@ import {
   summarizeMessageContent,
 } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
-import { beginDebugTrace, getDebugTrace } from "../debug-trace.js";
+import {
+  beginMessageReport,
+  getMessageReport,
+} from "../message-report.js";
 import { buildMoodCommandReply } from "./mood-command.js";
 import { startTypingForMessage } from "./typing.js";
 
@@ -141,9 +144,9 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       summarizeMessageContent(ctx.message).slice(0, 200) ||
       "(non-text message)";
 
-    const trace =
+    const report =
       chatId != null
-        ? beginDebugTrace({
+        ? beginMessageReport({
             turnId,
             chatId,
             userId,
@@ -161,16 +164,15 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     };
 
     logEvent("message_received", msgLog);
-    trace?.step("message_received");
 
     if (ctx.from?.is_bot) {
       logEvent("message_ignored", { ...msgLog, reason: "from_bot" });
-      trace?.finalize("ignored", { ignoreReason: "from_bot" });
+      report?.finishIgnored("from_bot");
       return;
     }
     if (isSlashCommandMessage(ctx)) {
       logEvent("message_ignored", { ...msgLog, reason: "slash_command" });
-      trace?.finalize("ignored", { ignoreReason: "slash_command" });
+      report?.finishIgnored("slash_command");
       return;
     }
 
@@ -180,9 +182,16 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       !!ctx.message.sticker ||
       !!ctx.message.document;
 
+    report?.setIntake({
+      hasMedia,
+      mediaKind: hasMedia
+        ? mediaKindForMessage(ctx.message, !!ctx.message.sticker)
+        : undefined,
+    });
+
     if (!text && !hasMedia) {
       logEvent("message_ignored", { ...msgLog, reason: "no_content" });
-      trace?.finalize("ignored", { ignoreReason: "no_content" });
+      report?.finishIgnored("no_content");
       return;
     }
 
@@ -192,16 +201,12 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         mediaKind: mediaKindForMessage(ctx.message, !!ctx.message.sticker),
         onMessage: true,
       });
-      trace?.step("media_detected", {
-        mediaKind: mediaKindForMessage(ctx.message, !!ctx.message.sticker),
-        onMessage: true,
-      });
     }
 
     const settings = getSettings();
     if (isMaintenanceBlocked(ctx)) {
       logEvent("message_ignored", { ...msgLog, reason: "maintenance_mode" });
-      trace?.finalize("ignored", { ignoreReason: "maintenance_mode" });
+      report?.finishIgnored("maintenance_mode");
       return;
     }
     const inGroup = ctx.chat?.type !== "private";
@@ -233,20 +238,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       randomRoll: randomRoll == null ? undefined : Number(randomRoll.toFixed(2)),
       reactToEveryImage: settings.reactToEveryImage,
     });
-    trace?.step("message_address_gate", {
-      addressed,
-      randomHit,
-      imageHit,
-      addressSource: addressCheck.source,
-    });
 
     if (!addressed && !randomHit && !imageHit) {
       logEvent("message_ignored", { ...msgLog, reason: "not_addressed" });
-      trace?.finalize("ignored", {
-        ignoreReason: "not_addressed",
-        addressed: false,
-        addressSource: addressCheck.source,
-      });
+      report?.finishIgnored("not_addressed", addressCheck.source);
       return;
     }
 
@@ -256,12 +251,10 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
         ? "random"
         : "image";
     logEvent("message_accepted", { ...msgLog, trigger });
-    trace?.patchSummary({
-      addressed,
-      addressSource: addressCheck.source,
+    report?.setAccepted({
       trigger,
+      addressSource: addressCheck.source,
     });
-    trace?.step("message_accepted", { trigger });
 
     recordMessageReceived();
 
@@ -273,7 +266,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
       const convKey = resolveConversationKey(ctx);
       if (!convKey) return;
-      getDebugTrace(turnId)?.step("chat_turn_start", { convKey });
+      report?.setConvKey(convKey);
 
       const messageThreadId = ctx.message?.message_thread_id;
       const groupUserId = resolveUserId(ctx);
@@ -312,9 +305,13 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
           const loaded = await loadVisionFromMessage(bot.token, ctx.message);
           if (loaded.unavailableText) {
             logEvent("vision_unavailable", { ...msgLog, convKey, addressed: true });
-            getDebugTrace(turnId)?.finalize("processed", {
-              vision: true,
-              error: "vision_unavailable",
+            getMessageReport(turnId)?.failPhase(
+              "vision",
+              "Vision",
+              "Vision model unavailable",
+            );
+            getMessageReport(turnId)?.finalizeEarlyReply({
+              reason: "Vision unavailable",
             });
             await replyToUser(ctx, loaded.unavailableText);
             recordReply(false);
@@ -348,11 +345,11 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
                 mediaKind,
                 chars: visionDescription.length,
               });
-              getDebugTrace(turnId)?.patchSummary({ vision: true });
-              getDebugTrace(turnId)?.step("vision_stored", {
-                mediaKind,
-                chars: visionDescription.length,
-              });
+              getMessageReport(turnId)?.okPhase(
+                "vision",
+                "Vision",
+                `Stored ${mediaKind} description (${visionDescription.length} chars)`,
+              );
             }
             const mediaNote = `The user sent a ${mediaKind}: ${visionDescription}`;
             latestBody = [messageText, mediaNote].filter(Boolean).join("\n\n");
@@ -367,9 +364,13 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
 
         if (loaded.unavailableText) {
           logEvent("vision_unavailable", { ...msgLog, convKey });
-          getDebugTrace(turnId)?.finalize("processed", {
-            vision: true,
-            error: "vision_unavailable",
+          getMessageReport(turnId)?.failPhase(
+            "vision",
+            "Vision",
+            "Vision model unavailable",
+          );
+          getMessageReport(turnId)?.finalizeEarlyReply({
+            reason: "Vision unavailable",
           });
           await replyToUser(ctx, loaded.unavailableText);
           recordReply(false);
@@ -391,9 +392,13 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
             );
             if (replyLoaded.unavailableText) {
               logEvent("vision_unavailable", { ...msgLog, convKey, fromReply: true });
-              getDebugTrace(turnId)?.finalize("processed", {
-                vision: true,
-                error: "vision_unavailable",
+              getMessageReport(turnId)?.failPhase(
+                "vision",
+                "Vision",
+                "Vision model unavailable (replied-to media)",
+              );
+              getMessageReport(turnId)?.finalizeEarlyReply({
+                reason: "Vision unavailable",
               });
               await replyToUser(ctx, replyLoaded.unavailableText);
               recordReply(false);
@@ -446,12 +451,11 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
               fromReply: visionFromReply,
               chars: visionDescription.length,
             });
-            getDebugTrace(turnId)?.patchSummary({ vision: true });
-            getDebugTrace(turnId)?.step("vision_stored", {
-              mediaKind,
-              fromReply: visionFromReply,
-              chars: visionDescription.length,
-            });
+            getMessageReport(turnId)?.okPhase(
+              "vision",
+              "Vision",
+              `Stored ${mediaKind} description (${visionDescription.length} chars)`,
+            );
           }
           latestBody = messageText || "What do you think?";
         } else if (visionDescription && visionFromReply) {
@@ -507,9 +511,9 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       });
     } catch (err) {
       logEventError("handler_error", err, msgLog);
-      getDebugTrace(turnId)?.finalize("error", {
-        error: err instanceof Error ? err.message : String(err),
-      });
+      getMessageReport(turnId)?.finalizeError(
+        err instanceof Error ? err.message : String(err),
+      );
     } finally {
       endTyping?.();
     }
