@@ -22,7 +22,7 @@ import { recordExchange } from "./conversation.js";
 import { replyParameters } from "./replies.js";
 import { logEvent, logEventError } from "../event-log.js";
 import { sendThinkingMessages } from "./send-thinking.js";
-import { resolveTypingThreadParams } from "./typing.js";
+import { messageThreadExtra, resolveTypingThreadParams } from "./typing.js";
 
 export interface ExplainTurnInput {
   convKey: string;
@@ -80,7 +80,8 @@ function buildReplyExtra(
 ): Parameters<Context["reply"]>[1] {
   const extra: Parameters<Context["reply"]>[1] = {};
   if (options?.messageThreadId) {
-    extra.message_thread_id = options.messageThreadId;
+    const threadParams = messageThreadExtra({ message_thread_id: options.messageThreadId });
+    if (threadParams) extra.message_thread_id = threadParams.message_thread_id;
   }
   const replyParams = replyParameters(ctx);
   if (replyParams) extra.reply_parameters = replyParams;

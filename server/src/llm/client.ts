@@ -25,6 +25,7 @@ import {
   providerChatExtensions,
 } from "./openai-compat.js";
 import { getMessageReport } from "../message-report.js";
+import { extractModelMaxCtx } from "../context-budget.js";
 
 const LIST_MODELS_TIMEOUT_MS = 60_000;
 
@@ -163,10 +164,27 @@ function normalizeModels(models: (OpenAiModel | Model)[]): LlmModel[] {
 }
 
 export async function showModel(
-  _name: string,
-  _hostOverride?: string,
+  name: string,
+  hostOverride?: string,
 ): Promise<ModelShowResult> {
-  return { modelMaxCtx: null };
+  try {
+    const base = resolveBaseUrl(hostOverride);
+    const url = `${base}/api/show`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: name }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return { modelMaxCtx: null };
+    const data = (await res.json()) as Record<string, unknown>;
+    const modelInfo = data.model_info as Record<string, unknown> | undefined;
+    if (!modelInfo) return { modelMaxCtx: null };
+    const modelMaxCtx = extractModelMaxCtx(modelInfo);
+    return { modelMaxCtx };
+  } catch {
+    return { modelMaxCtx: null };
+  }
 }
 
 async function prepareMessages(

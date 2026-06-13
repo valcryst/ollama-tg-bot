@@ -44,7 +44,7 @@ import { getHistory, historyToChatMessages } from "../db/history.js";
 import { getEffectiveMood, saveMoodState } from "../db/mood.js";
 import { evaluateMood } from "../mood-evaluate.js";
 import { sendThinkingMessages } from "./send-thinking.js";
-import { resolveTypingThreadParams } from "./typing.js";
+import { messageThreadExtra, resolveTypingThreadParams } from "./typing.js";
 
 export type ChatTurnMemoryInput = Omit<MemoryExtractInput, "assistantReply">;
 
@@ -133,7 +133,8 @@ function buildReplyExtra(
 ): Parameters<Context["reply"]>[1] {
   const extra: Parameters<Context["reply"]>[1] = {};
   if (options?.messageThreadId) {
-    extra.message_thread_id = options.messageThreadId;
+    const threadParams = messageThreadExtra({ message_thread_id: options.messageThreadId });
+    if (threadParams) extra.message_thread_id = threadParams.message_thread_id;
   }
   const replyParams = replyParameters(ctx);
   if (replyParams) extra.reply_parameters = replyParams;

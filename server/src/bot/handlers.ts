@@ -68,7 +68,7 @@ import {
   replyParameters,
   summarizeMessageContent,
 } from "./replies.js";
-import { logEvent, logEventError } from "../event-log.js";
+import { logEvent, logEventError, type EventFields } from "../event-log.js";
 import { getMaxDebugTraceId } from "../db/debug-traces.js";
 import {
   beginMessageReport,
@@ -143,7 +143,12 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
   bot.on("message", async (ctx) => {
     if (!ctx.message) return;
 
-    const turnId = allocateTurnId();
+    let turnId = 0;
+    let report: ReturnType<typeof beginMessageReport> | null = null;
+    let msgLog: EventFields = {};
+
+    try {
+    turnId = allocateTurnId();
     const chatId = ctx.chat?.id;
     const userId = resolveUserId(ctx);
     const chatType = ctx.chat?.type ?? "unknown";
@@ -152,7 +157,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
       summarizeMessageContent(ctx.message).slice(0, 200) ||
       "(non-text message)";
 
-    const report =
+    report =
       chatId != null
         ? beginMessageReport({
             turnId,
@@ -164,7 +169,7 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
           })
         : null;
 
-    const msgLog = {
+    msgLog = {
       turnId,
       chatId,
       userId: ctx.from?.id,
@@ -172,8 +177,6 @@ export function registerHandlers(bot: Bot, botUsername: string): void {
     };
 
     logEvent("message_received", msgLog);
-
-    try {
     if (ctx.from?.is_bot) {
       logEvent("message_ignored", { ...msgLog, reason: "from_bot" });
       report?.finishIgnored("from_bot");

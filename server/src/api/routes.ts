@@ -21,7 +21,7 @@ import {
   type Settings,
 } from "../db/database.js";
 import { checkHealth, listModels } from "../llm/client.js";
-import { isTavilyConfigured } from "../tavily/client.js";
+import { checkTavilyHealth, isTavilyConfigured } from "../tavily/client.js";
 import { buildBaseSystemPrompt } from "../prompts.js";
 import { config, getVramAvailableGb } from "../config.js";
 import { ensureModelContextCache } from "../llm/model-context-cache.js";
@@ -206,6 +206,15 @@ export function createApiRouter(): Router {
 
   router.get("/tavily/status", (_req, res) => {
     res.json({ configured: isTavilyConfigured(), ok: isTavilyConfigured() });
+  });
+
+  router.get("/tavily/health", async (_req, res) => {
+    try {
+      const ok = await checkTavilyHealth();
+      res.json({ ok });
+    } catch {
+      res.json({ ok: false });
+    }
   });
 
   router.get("/stickers", (_req, res) => {
