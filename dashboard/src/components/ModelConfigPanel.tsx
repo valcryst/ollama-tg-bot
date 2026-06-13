@@ -1,10 +1,6 @@
 import { useMemo, useState } from "react";
-import type { LlmModel, Settings } from "../api";
-import {
-  calculateContextBudget,
-  modelContextFromTags,
-  type ContextBudget,
-} from "../contextBudgetCalc";
+import type { ContextBudget, Settings } from "../api";
+import { useDashboard } from "../context/DashboardContext";
 import { SettingsNumberField } from "../SettingsNumberField";
 import {
   MODEL_CONFIG_GROUPS,
@@ -17,8 +13,6 @@ import {
 
 interface ModelConfigPanelProps {
   draft: Settings;
-  models: LlmModel[];
-  vramAvailableGb: number | undefined;
   disabled?: boolean;
   onChange: (settings: Settings) => void;
 }
@@ -46,24 +40,17 @@ function limiterLabel(limitedBy: ContextBudget["limitedBy"]): string {
 
 export function ModelConfigPanel({
   draft,
-  models,
-  vramAvailableGb,
   disabled,
   onChange,
 }: ModelConfigPanelProps) {
-  const contextBudget = useMemo(() => {
-    if (vramAvailableGb == null) return null;
-    const tag = models.find((m) => m.name === draft.model);
-    return calculateContextBudget(
-      vramAvailableGb,
-      modelContextFromTags(draft.model, tag),
-      draft.numPredict,
-    );
-  }, [draft.model, draft.numPredict, models, vramAvailableGb]);
+  const { contextBudget, derivedHistoryLimits, budgetLoading, vramAvailableGb } = useDashboard();
 
   const analysis = useMemo(
-    () => (contextBudget ? analyzeModelConfig(draft, contextBudget) : null),
-    [draft, contextBudget],
+    () =>
+      contextBudget
+        ? analyzeModelConfig(draft, contextBudget, derivedHistoryLimits ?? undefined)
+        : null,
+    [draft, contextBudget, derivedHistoryLimits],
   );
   const [rejectFlash, setRejectFlash] = useState<ModelConfigIssue | null>(null);
 
@@ -78,7 +65,7 @@ export function ModelConfigPanel({
     onChange(result.settings);
   }
 
-  if (vramAvailableGb == null || !contextBudget || !analysis) {
+  if (vramAvailableGb == null) {
     return (
       <div className="model-config">
         <header className="model-config-header">
@@ -87,6 +74,23 @@ export function ModelConfigPanel({
         <p className="field-error">
           VRAM_AVAILABLE is required on the server. Add it to <code>.env</code>{" "}
           (e.g. <code>VRAM_AVAILABLE=24</code>) and restart the bot.
+        </p>
+      </div>
+    );
+  }
+
+  if (!contextBudget || !analysis) {
+    return (
+      <div className="model-config">
+        <header className="model-config-header">
+          <h3 className="section-title">Model parameters</h3>
+        </header>
+        <p className="hint">
+          {budgetLoading
+            ? "Computing context budget…"
+            : draft.model
+              ? "Could not compute context budget. Check the selected model and try refreshing."
+              : "Select a model to see context budget."}
         </p>
       </div>
     );

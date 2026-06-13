@@ -9,6 +9,21 @@ if (!model) {
   process.exit(1);
 }
 
+// Check that the server has been built before importing from dist/
+import { existsSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const distDir = resolve(__dirname, "..", "dist");
+if (!existsSync(distDir)) {
+  console.error(
+    "dist/ directory not found. Run `npm run build -w server` first.\n" +
+    `Expected: ${distDir}`,
+  );
+  process.exit(1);
+}
+
 const { default: OpenAI } = await import("openai");
 const { buildBaseSystemPrompt } = await import("../dist/prompts.js");
 const { extractTelegramReply } = await import("../dist/response-format.js");
@@ -65,6 +80,11 @@ async function oneTurn(userText, history = []) {
   return { content, reasoning, reply, ok: Boolean(reply.trim()) };
 }
 
+/** Number of runs per prompt (1–50). Default 1. Set LLM_TEST_RUNS to override. */
+const runsPerPrompt = Math.min(50, Math.max(1,
+  Number.parseInt(process.env.LLM_TEST_RUNS ?? "1", 10) || 1,
+));
+
 const prompts = ["аллоха", "привіт", "даров", "здаров", "hello"];
 let pass = 0;
 let fail = 0;
@@ -78,7 +98,7 @@ const history = Array.from({ length: 6 }, (_, i) => [
   },
 ]).flat();
 
-for (let run = 0; run < 10; run++) {
+for (let run = 0; run < runsPerPrompt; run++) {
   for (const p of prompts) {
     try {
       const r = await oneTurn(p, history);

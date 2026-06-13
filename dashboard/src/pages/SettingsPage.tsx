@@ -3,10 +3,6 @@ import { useDashboard } from "../context/DashboardContext";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { ModelConfigPanel } from "../components/ModelConfigPanel";
 import {
-  calculateContextBudget,
-  modelContextFromTags,
-} from "../contextBudgetCalc";
-import {
   analyzeModelConfig,
   hasModelConfigErrors,
 } from "../modelConfig";
@@ -20,6 +16,8 @@ export function SettingsPage() {
     setDraft,
     models,
     vramAvailableGb,
+    contextBudget,
+    derivedHistoryLimits,
     sectionErrors,
     setSectionError,
     configBlocked,
@@ -37,15 +35,9 @@ export function SettingsPage() {
   } = useDashboard();
 
   const modelConfigIssues = useMemo(() => {
-    if (!draft || vramAvailableGb == null) return [];
-    const tag = models.find((m) => m.name === draft.model);
-    const budget = calculateContextBudget(
-      vramAvailableGb,
-      modelContextFromTags(draft.model, tag),
-      draft.numPredict,
-    );
-    return analyzeModelConfig(draft, budget).issues;
-  }, [draft, models, vramAvailableGb]);
+    if (!draft || !contextBudget) return [];
+    return analyzeModelConfig(draft, contextBudget, derivedHistoryLimits ?? undefined).issues;
+  }, [draft, contextBudget, derivedHistoryLimits]);
   const modelConfigInvalid =
     vramAvailableGb == null || hasModelConfigErrors(modelConfigIssues);
 
@@ -481,8 +473,6 @@ export function SettingsPage() {
 
             <ModelConfigPanel
               draft={draft}
-              models={models}
-              vramAvailableGb={vramAvailableGb}
               disabled={configBlocked}
               onChange={(next) => setDraft(next)}
             />

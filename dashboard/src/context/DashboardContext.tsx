@@ -8,17 +8,20 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, type LlmModel, type Settings, type Stats } from "../api";
+import {
+  api,
+  type ContextBudget,
+  type DerivedHistoryLimits,
+  type LlmModel,
+  type Settings,
+  type Stats,
+} from "../api";
 import {
   getLiveSocket,
   useLiveSettings,
   useLiveSocketConnected,
   useLiveStats,
 } from "../liveSocket";
-import {
-  calculateContextBudget,
-  modelContextFromTags,
-} from "../contextBudgetCalc";
 import {
   analyzeModelConfig,
   hasModelConfigErrors,
@@ -64,6 +67,9 @@ interface DashboardContextValue {
   configBlocked: boolean;
   apiUnreachable: boolean;
   primaryLoadError: unknown;
+  contextBudget: ContextBudget | null;
+  derivedHistoryLimits: DerivedHistoryLimits | null;
+  budgetLoading: boolean;
 }
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
@@ -92,6 +98,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     Partial<Record<SectionKey, unknown>>
   >({});
   const [saveOk, setSaveOk] = useState(false);
+  const [contextBudget, setContextBudget] = useState<ContextBudget | null>(null);
+  const [derivedHistoryLimits, setDerivedHistoryLimits] = useState<DerivedHistoryLimits | null>(null);
+  const [budgetLoading, setBudgetLoading] = useState(false);
+  const budgetTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
@@ -103,6 +113,26 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       return next;
     });
   };
+
+  const refreshBudget = useCallback(
+    async (model: string, numPredict: number) => {
+      if (!model || numPredict == null) return null;
+      setBudgetLoading(true);
+      try {
+        const result = await api.getBudget(model, numPredict);
+        setContextBudget(result.contextBudget);
+        setDerivedHistoryLimits(result.derivedHistoryLimits);
+        return result;
+      } catch {
+        setContextBudget(null);
+        setDerivedHistoryLimits(null);
+        return null;
+      } finally {
+        setBudgetLoading(false);
+      }
+    },
+    [],
+  );
 
   const applyModels = useCallback((list: LlmModel[]) => {
     setModels(list);
@@ -191,6 +221,23 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Debounced budget fetch for live UI preview when model or
+  // generation budget changes.
+  useEffect(() => {
+    if (!draft?.model || draft.numPredict == null || vramAvailableGb == null) {
+      setContextBudget(null);
+      setDerivedHistoryLimits(null);
+      return;
+    }
+    if (budgetTimerRef.current) clearTimeout(budgetTimerRef.current);
+    budgetTimerRef.current = setTimeout(() => {
+      void refreshBudget(draft.model, draft.numPredict);
+    }, 300);
+    return () => {
+      if (budgetTimerRef.current) clearTimeout(budgetTimerRef.current);
+    };
+  }, [draft?.model, draft?.numPredict, vramAvailableGb, refreshBudget]);
 
   const handleSocketConnected = useCallback((connected: boolean) => {
     setApiOnline(connected);
@@ -327,7 +374,6 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   const save = async () => {
     if (!draft) return;
-    const tag = models.find((m) => m.name === draft.model);
     if (vramAvailableGb == null) {
       setSectionError(
         "save",
@@ -337,12 +383,20 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       );
       return;
     }
-    const budget = calculateContextBudget(
-      vramAvailableGb,
-      modelContextFromTags(draft.model, tag),
-      draft.numPredict,
+    // Fetch fresh budget from server (also updates cached state for UI).
+    const budgetResult = await refreshBudget(draft.model, draft.numPredict);
+    if (!budgetResult) {
+      setSectionError(
+        "save",
+        new Error("Failed to fetch context budget from server. Check server logs."),
+      );
+      return;
+    }
+    const analysis = analyzeModelConfig(
+      draft,
+      budgetResult.contextBudget,
+      budgetResult.derivedHistoryLimits,
     );
-    const analysis = analyzeModelConfig(draft, budget);
     if (hasModelConfigErrors(analysis.issues)) {
       setSectionError(
         "save",
@@ -415,6 +469,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     configBlocked,
     apiUnreachable,
     primaryLoadError,
+    contextBudget,
+    derivedHistoryLimits,
+    budgetLoading,
   };
 
   return (

@@ -1,3 +1,10 @@
+export interface DerivedHistoryLimits {
+  historyMaxMessages: number;
+  historyMaxChars: number;
+  historyMaxReplyChars: number;
+  numPredict: number;
+}
+
 export interface Settings {
   apiBaseUrl: string;
   model: string;
@@ -14,12 +21,7 @@ export interface Settings {
   repeatPenalty: number;
   chatTimeoutSec: number;
   visionMaxDimension: number;
-  derivedHistoryLimits?: {
-    historyMaxMessages: number;
-    historyMaxChars: number;
-    historyMaxReplyChars: number;
-    numPredict: number;
-  };
+  derivedHistoryLimits?: DerivedHistoryLimits;
   ownerUsername: string;
   ownerUserId: string;
   stickersEnabled: boolean;
@@ -468,6 +470,13 @@ export const api = {
   getModels: (host?: string) =>
     request<{ models: LlmModel[] }>(withHostQuery("/api/models", host)).then(
       (r) => r.models,
+    ),
+  getBudget: (model: string, numPredict: number) =>
+    request<{
+      contextBudget: ContextBudget;
+      derivedHistoryLimits: DerivedHistoryLimits;
+    }>(
+      `/api/budget?model=${encodeURIComponent(model)}&numPredict=${numPredict}`,
     ),
   getStats: () => request<Stats>("/api/stats"),
   clearErrors: () =>

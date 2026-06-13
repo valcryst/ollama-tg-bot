@@ -1,4 +1,4 @@
-import type { ContextBudget } from "./contextBudgetCalc";
+import type { ContextBudget, DerivedHistoryLimits } from "./api";
 import type { Settings } from "./api";
 import {
   NUM_CTX_GENERATION_HEADROOM,
@@ -6,7 +6,6 @@ import {
   maxNumPredictForContext,
   minNumCtxForPredict,
   snapNumPredict,
-  type DerivedHistoryLimits,
 } from "./tokenBudget";
 
 export type ModelConfigField =
@@ -70,10 +69,11 @@ function normalizeModelFields(
 export function analyzeModelConfig(
   settings: Settings,
   contextBudget: ContextBudget,
+  serverDerived?: DerivedHistoryLimits,
 ): ModelConfigAnalysis {
   const effectiveNumCtx = contextBudget.effectiveNumCtx;
   const normalized = normalizeModelFields(settings, effectiveNumCtx);
-  const derived = deriveHistoryLimits(
+  const derived = serverDerived ?? deriveHistoryLimits(
     effectiveNumCtx,
     normalized.numPredict,
   );
