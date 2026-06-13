@@ -26,8 +26,12 @@ npm run dev
 
 | Variable | Where | Default |
 |----------|-------|---------|
-| `BOT_TOKEN` | everywhere | required |
+| `BOT_TOKEN` | everywhere | required (skip if using IRC training mode) |
 | `VRAM_AVAILABLE` | everywhere | required (GPU GB, e.g. `24`) |
+| `IRC_TRAINING_MODE` | everywhere | `false` — enable local IRC testing mode |
+| `IRC_SERVER` | everywhere | `127.0.0.1:6667` |
+| `IRC_CHANNELS` | everywhere | `#bot-training` (comma-separated) |
+| `IRC_NICK` | everywhere | `ollama-bot` |
 | `OPENAI_API_KEY` | optional | empty (local servers usually skip this) |
 | `TAVILY_API_KEY` | optional | empty (web search off) |
 | `LOGGING_LEVEL` | optional | `ERROR` (`DEBUG`) |
@@ -51,6 +55,7 @@ When an addressed message contains `http(s)` links, the bot detects them, opens 
 - Optional web search via Tavily (model decides when to search)
 - Opens links in addressed messages via Playwright (auto-detected URLs)
 - **Maintenance mode** — dashboard toggle; when on, only the configured owner can trigger LLM-backed behavior (others are ignored silently)
+- **IRC training mode** — local testing with [pymcp-ircd](https://github.com/...). Set `IRC_TRAINING_MODE=true` and the bot connects to a local IRC server instead of Telegram. No internet, no `BOT_TOKEN` needed. Supports `!help`, `!reset`, `!mood`, `!remember` and more — with owner gating via `ownerUsername`.
 - Dashboard: API base URL, model, owner, prompts, stats
 
 ## Stack
