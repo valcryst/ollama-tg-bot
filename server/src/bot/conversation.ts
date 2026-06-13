@@ -25,8 +25,6 @@ import {
 import { isReplyThreadContext } from "./replies.js";
 import { currentSpeakerFromUser, type CurrentSpeaker } from "./speaker.js";
 
-export type { CurrentSpeaker } from "./speaker.js";
-
 export function resolveConversationKey(ctx: Context): string | null {
   const chatId = ctx.chat?.id;
   if (chatId == null) return null;

@@ -101,20 +101,6 @@ export async function loadStickerForVision(
   };
 }
 
-/** User message text when the turn includes a sticker image for vision. */
-export function stickerUserPrompt(
-  sticker: Sticker,
-  caption: string,
-  visionHint?: string,
-): string {
-  const parts: string[] = [];
-  if (caption) parts.push(caption);
-  parts.push("The user sent a Telegram sticker. The sticker image is attached.");
-  parts.push(STICKER_VISION_INSTRUCTION);
-  if (visionHint) parts.push(visionHint);
-  return parts.join("\n\n");
-}
-
 export function stickerUnavailableText(sticker: Sticker): string {
   const emoji = stickerEmoji(sticker);
   const suffix = emoji ? ` (${emoji})` : "";

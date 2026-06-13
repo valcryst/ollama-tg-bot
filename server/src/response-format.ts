@@ -23,8 +23,6 @@ Do not copy broken formatting, garbled markup, or error-like phrasing from chat 
 Formatting: HTML tags are optional — reply in plain text unless a tag genuinely adds emphasis. Never send empty tags (e.g. <b></b>).`;
 }
 
-/** Used by the dedicated memory extraction pass. */
-export const MEMORY_EXTRACT_FORMAT_SPEC = `Output ONLY [${MEMORY_TAG}], [${GROUP_MEMORY_TAG}], and [${GENERAL_MEMORY_TAG}] blocks as specified.`;
 
 export interface ParsedAssistantResponse {
   memoryFacts: string[];

@@ -2,10 +2,6 @@ import { config } from "./config.js";
 
 export type LoggingLevel = "ERROR" | "DEBUG";
 
-export function getLoggingLevel(): LoggingLevel {
-  return config.loggingLevel;
-}
-
 export function isDebugLogging(): boolean {
   return config.loggingLevel === "DEBUG";
 }

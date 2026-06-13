@@ -17,10 +17,6 @@ const STICKER_BLOCK = new RegExp(
   "i",
 );
 
-export function shouldTryStickerReply(chance: number): boolean {
-  return rollStickerReplyChance(chance).hit;
-}
-
 export interface StickerReplyRoll {
   chance: number;
   roll: number | null;

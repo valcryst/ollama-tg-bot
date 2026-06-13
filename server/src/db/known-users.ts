@@ -9,12 +9,6 @@ export interface KnownUserRecord {
   lastName: string | null;
 }
 
-/** @deprecated Use KnownUserRecord */
-export interface KnownUser {
-  userId: string;
-  username: string | null;
-}
-
 export function bindKnownUsersDatabase(
   database: import("node:sqlite").DatabaseSync,
 ): void {

@@ -8,7 +8,6 @@ import {
 } from "./bot-identity.js";
 import { isMessageForBot } from "./addressed.js";
 import { stripNonBotMentions } from "./mentions.js";
-import { stickerHistoryLabel } from "./stickers.js";
 import { logEvent, logEventError } from "../event-log.js";
 import { extractLastClosedBlock } from "../response-format.js";
 
@@ -62,26 +61,6 @@ function parseAddressDecision(raw: string): boolean {
   if (!value) return false;
   if (/^no\b/.test(value) || value === "n") return false;
   return /^y(es)?\b/.test(value) || value === "y";
-}
-
-export function messageTextForAddressCheck(ctx: Context): string {
-  const msg = ctx.message;
-  if (!msg) return "";
-
-  const text = (msg.text ?? msg.caption ?? "").trim();
-  if (text) return text;
-
-  if (msg.sticker) return stickerHistoryLabel(msg.sticker);
-  if (msg.photo?.length) return "[photo]";
-  if (msg.document?.mime_type?.startsWith("image/")) {
-    return msg.document.file_name
-      ? `[image file: ${msg.document.file_name}]`
-      : "[image file]";
-  }
-  if (msg.video) return "[video]";
-  if (msg.voice) return "[voice message]";
-  if (msg.audio) return "[audio]";
-  return "[message]";
 }
 
 function formatBotNamesForAnalyzer(bot: BotIdentity): string {

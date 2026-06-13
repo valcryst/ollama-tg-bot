@@ -24,10 +24,10 @@ import {
 } from "../tavily/client.js";
 import { resolveLinkFetchContext } from "./link-fetch.js";
 import { analyzeSearchNeed } from "./search-analyze.js";
+import type { CurrentSpeaker } from "./speaker.js";
 import {
   buildChatMessages,
   recordExchange,
-  type CurrentSpeaker,
 } from "./conversation.js";
 import { scheduleMemoryPersistence } from "../memory-extract.js";
 import type { MemoryExtractInput } from "../memory-extract.js";

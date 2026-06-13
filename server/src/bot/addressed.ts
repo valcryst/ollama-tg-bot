@@ -19,12 +19,6 @@ export function isMessageForBot(ctx: Context): boolean {
   return false;
 }
 
-export function stripBotMention(text: string, username?: string): string {
-  if (!text || !username) return text.trim();
-  const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return text.replace(new RegExp(`@${escaped}\\s*`, "gi"), "").trim();
-}
-
 function messageMentionsBot(
   msg: Message,
   botId: number,

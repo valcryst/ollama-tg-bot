@@ -2,7 +2,6 @@ import type { Message, User } from "@grammyjs/types";
 import type { KnownUserRecord } from "../db/known-users.js";
 
 export const ASSISTANT_ROLE = "assistant";
-export const COMPRESSED_ROLE = "compressed";
 
 /** Role key stored in DB: user:username:userId */
 export function userRoleTag(user: User | undefined): string | null {
@@ -68,10 +67,6 @@ export function formatRepliedContent(
   text: string,
 ): string {
   return `[${userTag} replied to ${replyToTag}]: ${text.trim()}`;
-}
-
-export function formatAssistantContent(text: string): string {
-  return `[assistant said]: ${text.trim()}`;
 }
 
 const ASSISTANT_SAID_PREFIX = /^\[assistant said\]\s*:?\s*/i;

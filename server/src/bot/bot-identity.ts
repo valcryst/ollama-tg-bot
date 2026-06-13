@@ -21,10 +21,6 @@ export function getBotIdentity(): BotIdentity {
   return identity;
 }
 
-export function tryGetBotIdentity(): BotIdentity | null {
-  return identity;
-}
-
 function buildBotIdentity(me: UserFromGetMe, username: string): BotIdentity {
   const aliases = new Set<string>();
   const userLower = username.toLowerCase();
