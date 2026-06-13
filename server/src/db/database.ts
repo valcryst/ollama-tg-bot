@@ -72,6 +72,14 @@ export interface Settings {
   sendThinkingEnabled: boolean;
   /** When on, only the owner can trigger LLM-backed bot behavior. */
   maintenanceModeEnabled: boolean;
+  /** Enable local IRC training mode (pymcp-ircd) instead of Telegram. */
+  ircTrainingMode: boolean;
+  /** IRC server host:port for training mode. */
+  ircServer: string;
+  /** Comma-separated IRC channels to join in training mode. */
+  ircChannels: string;
+  /** IRC nickname used in training mode. */
+  ircNick: string;
 }
 
 export interface Stats {
@@ -106,6 +114,10 @@ const DEFAULT_SETTINGS: Settings = {
   thinkingEnabled: false,
   sendThinkingEnabled: false,
   maintenanceModeEnabled: false,
+  ircTrainingMode: false,
+  ircServer: "127.0.0.1:6667",
+  ircChannels: "#bot-training",
+  ircNick: "ollama-bot",
 };
 
 let db: DatabaseSync;
@@ -218,6 +230,10 @@ export function getSettings(): Settings {
     thinkingEnabled: getSetting<boolean>("thinkingEnabled"),
     sendThinkingEnabled: getSetting<boolean>("sendThinkingEnabled"),
     maintenanceModeEnabled: getSetting<boolean>("maintenanceModeEnabled"),
+    ircTrainingMode: getSetting<boolean>("ircTrainingMode"),
+    ircServer: getSetting<string>("ircServer"),
+    ircChannels: getSetting<string>("ircChannels"),
+    ircNick: getSetting<string>("ircNick"),
   };
 }
 

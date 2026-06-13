@@ -8,6 +8,11 @@ import { syncStickerCatalogFromSettings } from "./sticker-catalog.js";
 let botInstance: Bot | null = null;
 let botUsername = "";
 
+/** Whether the Telegram bot has been initialized and is running. */
+export function isBotRunning(): boolean {
+  return botInstance !== null;
+}
+
 export function getBot(): Bot {
   if (!botInstance) throw new Error("Bot not initialized");
   return botInstance;

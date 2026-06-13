@@ -274,6 +274,70 @@ export function SettingsPage() {
               <label className="checkbox">
                 <input
                   type="checkbox"
+                  checked={draft.ircTrainingMode}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      ircTrainingMode: e.target.checked,
+                    })
+                  }
+                />
+                IRC training mode
+              </label>
+              <p className="hint">
+                When enabled, the bot connects to a local pymcp-ircd server
+                instead of Telegram. No internet or Telegram token required.
+                Restart the server after toggling.
+              </p>
+            </div>
+
+            {draft.ircTrainingMode && (
+              <>
+                <div className="field">
+                  <label htmlFor="ircServer">IRC server (host:port)</label>
+                  <input
+                    id="ircServer"
+                    type="text"
+                    value={draft.ircServer}
+                    onChange={(e) =>
+                      setDraft({ ...draft, ircServer: e.target.value })
+                    }
+                    placeholder="127.0.0.1:6667"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="ircChannels">
+                    IRC channels (comma-separated)
+                  </label>
+                  <input
+                    id="ircChannels"
+                    type="text"
+                    value={draft.ircChannels}
+                    onChange={(e) =>
+                      setDraft({ ...draft, ircChannels: e.target.value })
+                    }
+                    placeholder="#bot-training"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="ircNick">IRC nickname</label>
+                  <input
+                    id="ircNick"
+                    type="text"
+                    value={draft.ircNick}
+                    onChange={(e) =>
+                      setDraft({ ...draft, ircNick: e.target.value })
+                    }
+                    placeholder="ollama-bot"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="field toggle-row">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
                   checked={draft.randomReplyEnabled}
                   onChange={(e) =>
                     setDraft({

@@ -23,6 +23,39 @@ function resolveOpenAiApiKey(): string {
   return (process.env.OPENAI_API_KEY ?? "").trim();
 }
 
+/**
+ * Whether IRC training mode is active.
+ * When enabled, the bot connects to a local pymcp-ircd server instead of
+ * starting the Telegram bot. No internet or Telegram token required.
+ */
+function resolveIrcTrainingMode(): boolean {
+  const raw = (process.env.IRC_TRAINING_MODE ?? "").trim().toLowerCase();
+  return raw === "true" || raw === "1" || raw === "yes";
+}
+
+/** IRC server host:port (default 127.0.0.1:6667). */
+function resolveIrcServer(): string {
+  return (process.env.IRC_SERVER ?? "127.0.0.1:6667").trim();
+}
+
+/**
+ * Comma-separated IRC channel list (default #bot-training).
+ * Each channel is automatically joined on connect.
+ */
+function resolveIrcChannels(): string[] {
+  const raw = (process.env.IRC_CHANNELS ?? "#bot-training").trim();
+  return raw
+    .split(",")
+    .map((ch) => ch.trim())
+    .filter((ch) => ch.length > 0)
+    .map((ch) => (ch.startsWith("#") ? ch : `#${ch}`));
+}
+
+/** IRC nickname (default ollama-bot). */
+function resolveIrcNick(): string {
+  return (process.env.IRC_NICK ?? "ollama-bot").trim();
+}
+
 export type LoggingLevel = "ERROR" | "DEBUG";
 
 function resolveLoggingLevel(): LoggingLevel {
@@ -41,9 +74,10 @@ let startupEnv: StartupEnv | undefined;
 function collectRequiredEnvErrors(): string[] {
   const errors: string[] = [];
 
+  const ircMode = resolveIrcTrainingMode();
   const botToken = (process.env.BOT_TOKEN ?? "").trim();
-  if (!botToken) {
-    errors.push("BOT_TOKEN environment variable is required");
+  if (!ircMode && !botToken) {
+    errors.push("BOT_TOKEN environment variable is required (or enable IRC_TRAINING_MODE)");
   }
 
   const vramRaw = (process.env.VRAM_AVAILABLE ?? "").trim();
@@ -104,4 +138,11 @@ export const config = {
   openAiApiKey: resolveOpenAiApiKey(),
   /** ERROR = errors only; DEBUG = lifecycle events. Use dashboard Debug page for message traces. */
   loggingLevel: resolveLoggingLevel(),
+  /** IRC training mode — local testing without Telegram. */
+  irc: {
+    enabled: resolveIrcTrainingMode(),
+    server: resolveIrcServer(),
+    channels: resolveIrcChannels(),
+    nick: resolveIrcNick(),
+  },
 };

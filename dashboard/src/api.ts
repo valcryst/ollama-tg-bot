@@ -31,6 +31,10 @@ export interface Settings {
   thinkingEnabled: boolean;
   sendThinkingEnabled: boolean;
   maintenanceModeEnabled: boolean;
+  ircTrainingMode: boolean;
+  ircServer: string;
+  ircChannels: string;
+  ircNick: string;
   contextBudget?: ContextBudget;
   vramAvailableGb: number;
 }

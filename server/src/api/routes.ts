@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getBot } from "../bot/index.js";
+import { getBot, isBotRunning } from "../bot/index.js";
 import { resolveOwnerUsername } from "../bot/resolve-owner.js";
 import {
   getStickerCatalogState,
@@ -153,6 +153,10 @@ export function createApiRouter(): Router {
         "thinkingEnabled",
         "sendThinkingEnabled",
         "maintenanceModeEnabled",
+        "ircTrainingMode",
+        "ircServer",
+        "ircChannels",
+        "ircNick",
       ];
       const patch: Partial<Settings> = {};
       for (const key of allowed) {
@@ -164,7 +168,7 @@ export function createApiRouter(): Router {
         if (raw === "") {
           patch.ownerUsername = "";
           patch.ownerUserId = "";
-        } else {
+        } else if (isBotRunning()) {
           const bot = getBot();
           patch.ownerUserId = await resolveOwnerUsername(bot.api, raw);
         }
@@ -177,11 +181,13 @@ export function createApiRouter(): Router {
         body.stickersEnabled !== undefined ||
         body.stickerPackName !== undefined
       ) {
-        try {
-          const bot = getBot();
-          await syncStickerCatalogFromSettings(bot.api);
-        } catch {
-          // Bot may not be running during early setup; catalog syncs on startup.
+        if (isBotRunning()) {
+          try {
+            const bot = getBot();
+            await syncStickerCatalogFromSettings(bot.api);
+          } catch {
+            // Bot may not be running during early setup; catalog syncs on startup.
+          }
         }
       }
 
@@ -328,6 +334,10 @@ export function createApiRouter(): Router {
       const settings = getSettings();
       if (!settings.stickerPackName.trim()) {
         res.status(400).json({ error: "Sticker pack name is not configured" });
+        return;
+      }
+      if (!isBotRunning()) {
+        res.status(503).json({ error: "Bot not running (IRC mode active)" });
         return;
       }
       const bot = getBot();
