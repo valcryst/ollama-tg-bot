@@ -10,11 +10,13 @@ import { chatCompleteDetailed } from "../llm/client.js";
 import { extractTelegramReply } from "../response-format.js";
 import { getActivePersonalityPrompt } from "../db/personalities.js";
 import { getSettings, recordError } from "../db/database.js";
-import { getHistory, historyToChatMessages } from "../db/history.js";
+import { getHistory, historyToChatMessages, clearHistory } from "../db/history.js";
 import { buildSystemPrompt, type ParticipantFacts } from "../prompts.js";
 import { recordExchange } from "./conversation.js";
 import { logEvent, logEventError } from "../event-log.js";
 import { getOwnerUserId, getOwnerUsername } from "./owner.js";
+import { clearUserMemory } from "../db/user-memory.js";
+import { buildMoodCommandReply } from "./mood-command.js";
 
 /**
  * Input for an IRC chat turn.
@@ -38,6 +40,109 @@ export interface IrcTurnResult {
 
 /** Monotonic turn counter for IRC messages. */
 let ircTurnCounter = 0;
+
+/**
+ * Check whether an IRC nick matches the configured bot owner.
+ */
+function isIrcOwner(nick: string): boolean {
+  const ownerUser = getOwnerUsername();
+  const ownerId = getOwnerUserId();
+  if (ownerUser && nick.toLowerCase() === ownerUser.toLowerCase()) return true;
+  if (ownerId && nick === ownerId) return true;
+  return false;
+}
+
+/**
+ * Parsed IRC command extracted from a message.
+ */
+interface ParsedIrcCommand {
+  /** Command name without prefix (e.g. "help", "reset"). */
+  name: string;
+  /** Everything after the command name, trimmed. */
+  args: string;
+}
+
+/**
+ * Try to parse a message as an IRC command.
+ * Recognises both `!command` and `/command` prefixes.
+ *
+ * @returns Parsed command, or null if the message is not a command.
+ */
+function parseIrcCommand(text: string): ParsedIrcCommand | null {
+  const trimmed = text.trim();
+  const match = /^[!/]([a-zA-Z0-9_]+)(?:\s+(.*))?$/s.exec(trimmed);
+  if (!match) return null;
+  return { name: (match[1] ?? "").toLowerCase(), args: (match[2] ?? "").trim() };
+}
+
+/**
+ * Handle a recognised IRC command directly, without calling the LLM.
+ *
+ * @returns Reply text if the command was handled, null if the message
+ *          should fall through to the normal LLM pipeline.
+ */
+function handleIrcCommand(cmd: ParsedIrcCommand, nick: string, convKey: string, channel: string): string | null {
+  const settings = getSettings();
+  const owner = isIrcOwner(nick);
+
+  switch (cmd.name) {
+    case "start":
+      return [
+        `Hi ${nick}! I'm connected to the LLM.`,
+        "",
+        `Model: ${settings.model}`,
+        `Commands: !help !id !reset !forget !mood !remember`,
+        owner ? "You are the configured bot owner." : "",
+        "I remember recent messages in this conversation.",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+    case "help":
+      return [
+        "Available commands:",
+        "  !start     — Welcome message and status",
+        "  !id        — Show your identifier",
+        "  !reset     — Clear chat history (owner only)",
+        "  !forget    — Clear your stored memory",
+        "  !mood      — Show current mood (owner only)",
+        "  !remember  — Store a fact (owner only, e.g. !remember the sky is blue)",
+        "",
+        "You can also just chat normally — every message goes to the LLM.",
+      ].join("\n");
+
+    case "id":
+      return `Your IRC nick: ${nick}\nChannel: ${channel}` +
+        (owner ? "\nYou are the configured bot owner." : "");
+
+    case "reset":
+      if (!owner) return "Only the bot owner can use !reset.";
+      clearHistory(convKey);
+      return "Chat history cleared for this conversation.";
+
+    case "forget":
+      clearUserMemory(nick);
+      return "Your stored memory has been cleared.";
+
+    case "mood":
+      if (!owner) return "Only the bot owner can use !mood.";
+      try {
+        return buildMoodCommandReply();
+      } catch (err) {
+        return "Sorry, I could not load mood.";
+      }
+
+    case "remember":
+      if (!owner) return "Only the bot owner can use !remember.";
+      if (!cmd.args) return "Usage: !remember <fact to store>";
+      // Fall through to LLM — the fact is passed as the message text.
+      return null;
+
+    default:
+      // Unknown command — let the LLM handle it naturally.
+      return null;
+  }
+}
 
 /**
  * Build a conversation key scoped to an IRC user within a channel.
@@ -99,7 +204,8 @@ function buildIrcMessages(
  */
 export async function runIrcTurn(input: IrcTurnInput): Promise<IrcTurnResult> {
   const turnNumber = ++ircTurnCounter;
-  const { channel, nick, text } = input;
+  const { channel, nick } = input;
+  let text = input.text;
   const convKey = ircConversationKey(channel, nick);
 
   const turnLog = {
@@ -108,6 +214,18 @@ export async function runIrcTurn(input: IrcTurnInput): Promise<IrcTurnResult> {
     nick,
     convKey,
   };
+
+  // Check for !command or /command before hitting the LLM.
+  const cmd = parseIrcCommand(text);
+  if (cmd) {
+    const cmdReply = handleIrcCommand(cmd, nick, convKey, channel);
+    if (cmdReply !== null) {
+      logEvent("irc_command_handled", { ...turnLog, command: cmd.name });
+      return { reply: cmdReply };
+    }
+    // Command wants fall-through (e.g. !remember) — use the args as text.
+    text = cmd.args || text;
+  }
 
   try {
     logEvent("irc_turn_started", turnLog);
